@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Copy Page as Markdown</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="icon">📄</div>
+      <h1 class="title">Copy as Markdown</h1>
+    </header>
+
+    <main class="main">
+      <div class="info">
+        <p class="description">
+          Convert the current page to clean markdown format, perfect for sharing with AI assistants.
+        </p>
+      </div>
+
+      <div class="actions">
+        <button id="extractBtn" class="btn btn-primary">
+          <span class="btn-icon">📋</span>
+          <span class="btn-text">Copy Page as Markdown</span>
+        </button>
+      </div>
+
+      <div id="status" class="status hidden">
+        <div class="status-icon"></div>
+        <div class="status-message"></div>
+      </div>
+
+      <div id="progress" class="progress hidden">
+        <div class="progress-bar">
+          <div class="progress-fill"></div>
+        </div>
+        <div class="progress-text">Extracting content...</div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="tips">
+        <div class="tip">
+          <span class="tip-icon">💡</span>
+          <span class="tip-text">Click the extension icon for quick copy</span>
+        </div>
+        <div class="tip">
+          <span class="tip-icon">🤖</span>
+          <span class="tip-text">Perfect for ChatGPT, Claude & other AIs</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html> 
