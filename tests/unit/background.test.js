@@ -18,6 +18,14 @@ describe('BackgroundScript', () => {
     chrome.tabs.onRemoved.addListener.mockReset();
     chrome.tabs.onUpdated.addListener.mockReset();
     global.navigator.clipboard.writeText.mockReset();
+    chrome.storage.local.get.mockReset();
+    chrome.storage.local.set.mockReset();
+    chrome.downloads.download.mockReset();
+    chrome.storage.local.get.mockResolvedValue({});
+    chrome.storage.local.set.mockResolvedValue();
+    chrome.downloads.download.mockImplementation((options, callback) => {
+      if (callback) callback(1);
+    });
 
     // Fresh import — module re-evaluates, constructor runs, listeners attached
     BackgroundScript = require('../../src/background/background');
@@ -75,7 +83,8 @@ describe('BackgroundScript', () => {
       });
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
-        action: 'extractContent'
+        action: 'extractContent',
+        options: { includeMetadata: true }
       });
 
       expect(result.success).toBe(true);
@@ -136,6 +145,8 @@ describe('BackgroundScript', () => {
 
     test('should handle clipboard errors', async () => {
       navigator.clipboard.writeText.mockRejectedValue(new Error('Clipboard access denied'));
+      // No active tab for fallback either
+      chrome.tabs.query.mockResolvedValue([]);
 
       const result = await BackgroundScript.copyToClipboard('Test content');
 
@@ -185,7 +196,8 @@ describe('BackgroundScript', () => {
       await flush();
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
-        action: 'extractContent'
+        action: 'extractContent',
+        options: { includeMetadata: true }
       });
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Test Content');
     });
@@ -254,7 +266,8 @@ describe('BackgroundScript', () => {
 
       expect(sendResponse).toHaveBeenCalledWith({
         success: true,
-        message: 'Content copied to clipboard'
+        message: 'Content copied to clipboard',
+        method: 'clipboard'
       });
     });
 
@@ -416,6 +429,156 @@ describe('BackgroundScript', () => {
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(456, {
         action: 'startSelectionMode'
+      });
+    });
+  });
+
+  describe('generateFilename', () => {
+    test('should create filename from title and date', () => {
+      const filename = BackgroundScript.generateFilename({ title: 'My Page' });
+      expect(filename).toMatch(/^My Page - \d{4}-\d{2}-\d{2}\.md$/);
+    });
+
+    test('should strip invalid filename characters', () => {
+      const filename = BackgroundScript.generateFilename({ title: 'File: with/bad*chars?"<>|' });
+      expect(filename).not.toMatch(/[\/\\:*?"<>|]/);
+      expect(filename).toContain('File');
+    });
+
+    test('should collapse whitespace', () => {
+      const filename = BackgroundScript.generateFilename({ title: 'Lots   of    spaces' });
+      expect(filename).toContain('Lots of spaces');
+    });
+
+    test('should truncate long titles to 80 chars', () => {
+      const longTitle = 'A'.repeat(120);
+      const filename = BackgroundScript.generateFilename({ title: longTitle });
+      // Title portion should be 80 chars max, plus " - YYYY-MM-DD.md"
+      const titlePart = filename.split(' - ')[0];
+      expect(titlePart.length).toBeLessThanOrEqual(80);
+    });
+
+    test('should fallback to "page" when title is missing', () => {
+      const filename = BackgroundScript.generateFilename({});
+      expect(filename).toMatch(/^page - \d{4}-\d{2}-\d{2}\.md$/);
+    });
+
+    test('should fallback to "page" when metadata is null', () => {
+      const filename = BackgroundScript.generateFilename(null);
+      expect(filename).toMatch(/^page - /);
+    });
+  });
+
+  describe('saveAsFile', () => {
+    test('should delegate file save to content script', async () => {
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+
+      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md');
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+        action: 'saveAsFile',
+        markdown: '# Hello',
+        filename: 'test.md'
+      });
+      expect(result.success).toBe(true);
+      expect(result.method).toBe('file');
+    });
+
+    test('should handle content script save failure', async () => {
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: false, error: 'Save failed' });
+
+      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Save failed');
+    });
+
+    test('should handle no active tab', async () => {
+      chrome.tabs.query.mockResolvedValue([]);
+
+      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('dispatchOutput', () => {
+    test('should copy to clipboard when outputMode is clipboard', async () => {
+      chrome.storage.local.get.mockResolvedValue({ outputMode: 'clipboard' });
+      navigator.clipboard.writeText.mockResolvedValue();
+
+      const result = await BackgroundScript.dispatchOutput('# Content', { title: 'Test' });
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Content');
+      expect(result.success).toBe(true);
+      expect(result.method).toBe('clipboard');
+    });
+
+    test('should save as file when outputMode is file', async () => {
+      chrome.storage.local.get.mockResolvedValue({ outputMode: 'file' });
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+
+      const result = await BackgroundScript.dispatchOutput('# Content', { title: 'Test Page' });
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, expect.objectContaining({
+        action: 'saveAsFile'
+      }));
+      expect(result.success).toBe(true);
+      expect(result.method).toBe('file');
+    });
+
+    test('should default to clipboard when no preference stored', async () => {
+      chrome.storage.local.get.mockResolvedValue({});
+      navigator.clipboard.writeText.mockResolvedValue();
+
+      const result = await BackgroundScript.dispatchOutput('# Content', { title: 'Test' });
+
+      expect(result.method).toBe('clipboard');
+    });
+  });
+
+  describe('clipboard fallback', () => {
+    test('should fallback to content script when navigator.clipboard fails', async () => {
+      navigator.clipboard.writeText.mockRejectedValue(new Error('Not allowed'));
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+
+      const result = await BackgroundScript.copyToClipboard('Test content');
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+        action: 'writeToClipboard',
+        text: 'Test content'
+      });
+      expect(result.success).toBe(true);
+    });
+
+    test('should fail if both clipboard API and fallback fail', async () => {
+      navigator.clipboard.writeText.mockRejectedValue(new Error('Not allowed'));
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: false });
+
+      const result = await BackgroundScript.copyToClipboard('Test content');
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('extractContentFromActiveTab with preferences', () => {
+    test('should pass includeMetadata option to content script', async () => {
+      chrome.storage.local.get.mockResolvedValue({ includeMetadata: false });
+      chrome.tabs.query.mockResolvedValue([{ id: 123, url: 'https://example.com' }]);
+      chrome.tabs.sendMessage.mockResolvedValue({
+        success: true,
+        markdown: '# Test',
+        metadata: { title: 'Test' }
+      });
+
+      await BackgroundScript.extractContentFromActiveTab();
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+        action: 'extractContent',
+        options: { includeMetadata: false }
       });
     });
   });

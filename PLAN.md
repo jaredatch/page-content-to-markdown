@@ -25,7 +25,7 @@ A Firefox-first (with Chrome support) browser extension that converts web page c
 - Two Turndown instances: full-page (content filtering) and fragment (minimal filtering)
 - Lazy-loaded image resolution (data-src, data-lazy-src, srcset fallbacks)
 - Webpack build system with Babel transpilation
-- Jest test suite (6 unit test files, 123 tests passing + E2E setup)
+- Jest test suite (7 unit test files, 156 tests passing + E2E setup)
 - Firefox and Chrome compatible manifest (contextMenus permission, commands section)
 - MIT license, README
 
@@ -103,11 +103,11 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 ### Phase 3: Output Options — Clipboard & File
 > Give users control over what happens with the converted markdown.
 
-- [ ] **3.1** Ensure clipboard copy works reliably on both browsers
-- [ ] **3.2** Add "Save as file" option (downloads `.md` file)
-- [ ] **3.3** Add filename generation (from page title + date)
-- [ ] **3.4** Add option to include/exclude page metadata header (title, URL, date)
-- [ ] **3.5** Update popup UI with output format options
+- [x] **3.1** Ensure clipboard copy works reliably on both browsers (background + content script fallback)
+- [x] **3.2** Add "Save as file" option (Blob URL download via content script)
+- [x] **3.3** Add filename generation (from page title + date, sanitized, truncated to 80 chars)
+- [x] **3.4** Add option to include/exclude page metadata header (title, URL, date)
+- [x] **3.5** Update popup UI with output format options (segmented toggle, metadata checkbox, dynamic button text)
 
 ### Phase 4: Site-Specific Presets — X (Twitter)
 > Native support for converting X/Twitter content with predefined templates.
@@ -144,6 +144,7 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 | 2026-03-20 | — | Initial assessment | Forked project reviewed, PLAN.md and CLAUDE.md created |
 | 2026-03-20 | Phase 1 | 1.1–1.8 | Foundation complete. Turndown wired as primary converter, fallback chain working, icons created, Firefox manifest updated, dead code removed, 66 tests passing. Tested manually in Firefox — working. Fixed Turndown ES module interop issue discovered during browser testing. |
 | 2026-03-20 | Phase 2 | 2.1–2.7 | Selective conversion complete. ElementPicker with shadow DOM UI, hover highlights, click-to-select with numbered badges, floating toolbar. Two context menu items (text selection + element selection with pre-select). Keyboard shortcut (Cmd+Shift+M). Separate Turndown instance for fragments (no content filtering on user selections). Fixed lazy-loaded image resolution (data-src/srcset fallback). Fixed false-positive pattern matching ("ad" in "header"). 123 tests passing. |
+| 2026-03-20 | Phase 3 | 3.1–3.5 | Output options complete. Preferences module (chrome.storage.local). Popup UI: metadata checkbox, output mode segmented toggle (Copy/Save), dynamic button text. Background: dispatchOutput() routes to clipboard or file, generateFilename() with sanitization/truncation, clipboard fallback via content script. Content script: conditional metadata header, writeToClipboard handler, saveAsFile handler (Blob URL + `<a>` click). Firefox data URI blocked in chrome.downloads — switched to Blob approach. 156 tests passing. |
 
 ---
 
@@ -167,17 +168,18 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 
 ```
 src/
-  background/background.js     — Service worker, message routing, clipboard, per-tab selection state, context menus, commands
-  content/content-script.js    — Page-context script, Turndown primary + fallback chain, selection mode, text selection conversion
+  background/background.js     — Service worker, message routing, clipboard (with fallback), output dispatch, file save, per-tab selection state, context menus, commands
+  content/content-script.js    — Page-context script, Turndown primary + fallback chain, selection mode, text selection conversion, clipboard fallback, file save (Blob URL)
   content/element-picker.js    — ElementPicker class (shadow DOM UI, hover/select overlays, floating toolbar)
-  popup/popup.html              — Extension popup markup (two action buttons + selection-active state)
-  popup/popup.css               — Popup styles (polished, gradient theme)
-  popup/popup.js                — Popup controller, button handling, selection state check, status UI
+  popup/popup.html              — Extension popup markup (action buttons, options section, selection-active state)
+  popup/popup.css               — Popup styles (polished, gradient theme, options/toggle controls)
+  popup/popup.js                — Popup controller, button handling, preferences loading, selection state check, status UI
   utils/
     markdown-converter.js           — Turndown-based HTML→Markdown (two instances: full-page + fragment)
+    preferences.js                  — Preferences wrapper (chrome.storage.local, defaults + merge)
     simple-universal-extractor.js   — Text extraction (FALLBACK)
 icons/                          — Placeholder extension icons (16, 32, 48, 128px)
 tests/
-  unit/                         — 6 test suites (123 tests)
+  unit/                         — 7 test suites (156 tests)
   e2e/                          — Puppeteer-based E2E tests
 ```

@@ -24,8 +24,9 @@ class ContentScript {
    * Fallback: SimpleUniversalExtractor text dump.
    * Emergency: Basic error markdown with page title/URL.
    */
-  async convertPageToMarkdown() {
+  async convertPageToMarkdown(options = {}) {
     const metadata = this.getPageMetadata();
+    const includeMetadata = options.includeMetadata !== false;
 
     try {
       console.log('🔄 [content-script] Starting page conversion (Turndown primary)');
@@ -36,7 +37,7 @@ class ContentScript {
 
       if (markdown && markdown.trim().length > 50) {
         console.log('✅ [content-script] Turndown conversion succeeded');
-        const result = this.addMetadataHeader(markdown, metadata);
+        const result = includeMetadata ? this.addMetadataHeader(markdown, metadata) : markdown;
         return {
           success: true,
           markdown: result,
@@ -110,8 +111,19 @@ class ContentScript {
   /**
    * Convert user-selected elements to markdown.
    */
-  convertElementsToMarkdown(elements) {
+  async convertElementsToMarkdown(elements, options = {}) {
     const metadata = this.getPageMetadata();
+    let includeMetadata = options.includeMetadata;
+
+    // If not explicitly provided, read from storage
+    if (includeMetadata === undefined) {
+      try {
+        const stored = await chrome.storage.local.get(['includeMetadata']);
+        includeMetadata = stored.includeMetadata !== false;
+      } catch (e) {
+        includeMetadata = true;
+      }
+    }
 
     try {
       const htmlParts = elements.map(el => el.outerHTML);
@@ -123,7 +135,9 @@ class ContentScript {
         markdown = elements.map(el => el.textContent.trim()).join('\n\n---\n\n');
       }
 
-      markdown = this.addMetadataHeader(markdown, metadata);
+      if (includeMetadata) {
+        markdown = this.addMetadataHeader(markdown, metadata);
+      }
 
       return {
         success: true,
@@ -146,13 +160,21 @@ class ContentScript {
   /**
    * Convert the current text selection (from context menu) to markdown.
    */
-  convertTextSelection() {
+  async convertTextSelection() {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       return { success: false, error: 'No text selected' };
     }
 
     const metadata = this.getPageMetadata();
+
+    let includeMetadata = true;
+    try {
+      const stored = await chrome.storage.local.get(['includeMetadata']);
+      includeMetadata = stored.includeMetadata !== false;
+    } catch (e) {
+      // default true
+    }
 
     try {
       const range = selection.getRangeAt(0);
@@ -166,7 +188,9 @@ class ContentScript {
         markdown = selection.toString().trim();
       }
 
-      markdown = this.addMetadataHeader(markdown, metadata);
+      if (includeMetadata) {
+        markdown = this.addMetadataHeader(markdown, metadata);
+      }
 
       return {
         success: true,
@@ -256,7 +280,7 @@ class ContentScript {
       console.log('📨 [content-script] Received message:', request);
 
       if (request.action === 'extractContent') {
-        this.convertPageToMarkdown()
+        this.convertPageToMarkdown(request.options || {})
           .then(result => {
             console.log('📤 [content-script] Sending response');
             sendResponse(result);
@@ -296,8 +320,34 @@ class ContentScript {
       }
 
       if (request.action === 'convertTextSelection') {
-        const result = this.convertTextSelection();
-        sendResponse(result);
+        this.convertTextSelection()
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true; // async response
+      }
+
+      if (request.action === 'writeToClipboard') {
+        navigator.clipboard.writeText(request.text)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true; // async response
+      }
+
+      if (request.action === 'saveAsFile') {
+        try {
+          const blob = new Blob([request.markdown], { type: 'text/markdown;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = request.filename || 'page.md';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          sendResponse({ success: true });
+        } catch (error) {
+          sendResponse({ success: false, error: error.message });
+        }
         return false;
       }
 

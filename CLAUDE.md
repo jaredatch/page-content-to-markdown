@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phase 2 complete. Full-page and selective conversion working. Element picker, context menus, keyboard shortcut all functional. 123 tests passing.
+**Status:** Phase 3 complete. Full-page and selective conversion with output options (clipboard or save-as-file), metadata header toggle, and user preferences. 156 tests passing.
 
 ## Quick Reference
 
@@ -25,23 +25,28 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
                                                                          ↘ ElementPicker (selection mode)
 ```
 
-- **Popup** (`src/popup/`) — User-facing UI. Two actions: "Copy Page as Markdown" and "Select Elements". Shows selection-active state when picker is running.
-- **Background** (`src/background/background.js`) — Service worker. Routes messages, handles clipboard, manages per-tab selection state (`Map`), context menus, keyboard commands.
-- **Content Script** (`src/content/content-script.js`) — Injected into web pages. Full-page extraction, element selection mode, text selection conversion.
+- **Popup** (`src/popup/`) — User-facing UI. Actions: "Copy/Save Page as Markdown" and "Select Elements". Options: metadata toggle, output mode (clipboard/file). Shows selection-active state when picker is running.
+- **Background** (`src/background/background.js`) — Service worker. Routes messages, handles clipboard (with content script fallback), output dispatch (clipboard or file), manages per-tab selection state (`Map`), context menus, keyboard commands.
+- **Content Script** (`src/content/content-script.js`) — Injected into web pages. Full-page extraction, element selection mode, text selection conversion, clipboard fallback, file save via Blob URL.
 - **Element Picker** (`src/content/element-picker.js`) — Shadow DOM overlay for hover-highlight, click-to-select, floating toolbar. Bundled with content script via webpack.
-- **Utils** (`src/utils/`) — Extraction and conversion modules.
+- **Utils** (`src/utils/`) — Extraction, conversion, and preferences modules.
 
 ### Message Flow — Full Page
 1. Popup sends `"extractAndCopy"` → Background
-2. Background sends `"extractContent"` → Content Script
-3. Content Script extracts + converts → returns markdown + metadata
-4. Background copies to clipboard → notifies popup
+2. Background reads preferences, sends `"extractContent"` with `options: { includeMetadata }` → Content Script
+3. Content Script extracts + converts (conditionally adds metadata header) → returns markdown + metadata
+4. Background calls `dispatchOutput()` → routes to clipboard or file based on preferences → notifies popup
 
 ### Message Flow — Selective Conversion
 1. Popup sends `"startSelectionMode"` → Background → Content Script
 2. Content Script activates ElementPicker (user interacts with page)
 3. User confirms → Content Script sends `"selectionComplete"` with markdown → Background
-4. Background copies to clipboard → shows notification
+4. Background calls `dispatchOutput()` → clipboard or file → shows notification
+
+### Message Flow — File Save
+1. Background sends `"saveAsFile"` with markdown + filename → Content Script
+2. Content Script creates Blob URL via `URL.createObjectURL`, triggers download via `<a>` click
+3. Content Script responds with success/failure
 
 ### Message Flow — Context Menu
 - **Text selected:** "Copy selection as Markdown" → `"convertTextSelection"` → Content Script converts selection DOM fragment
@@ -54,6 +59,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `manifest.json` | Extension manifest (MV3) — permissions, commands, context menus |
 | `src/content/element-picker.js` | ElementPicker class — shadow DOM UI for selective conversion |
 | `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown — two instances: full-page (with content filtering) and fragment (minimal filtering for user selections) |
+| `src/utils/preferences.js` | Preferences wrapper around `chrome.storage.local` (outputMode, includeMetadata) |
 | `src/utils/simple-universal-extractor.js` | Text extraction fallback (guaranteed to return something) |
 | `webpack.config.js` | Build config — 3 entry points → `dist/` |
 | `PLAN.md` | Project plan, phases, progress tracking |
@@ -89,6 +95,8 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - Some Chrome notification APIs may not be available in Firefox — check before using.
 - `Cmd+Shift+S` conflicts with Firefox screenshot tool — keyboard shortcut uses `Cmd+Shift+M` instead.
 - Context menu `info.targetElementId` is Chrome-only — content script tracks last right-clicked element via `contextmenu` event listener instead (works in both browsers).
+- Firefox blocks `data:` URIs in `chrome.downloads.download` ("Access denied") — file save uses Blob URL created in content script via `URL.createObjectURL` instead.
+- `navigator.clipboard.writeText` may fail in Firefox MV3 service workers — background script falls back to sending `writeToClipboard` message to content script.
 
 ## Dependencies
 
@@ -105,3 +113,5 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Two Turndown instances** in `markdown-converter.js`: `turndownService` (full-page, aggressive content filtering) and `_fragmentService` (selective mode, only strips universally junk elements). This is intentional — user-selected content should not be filtered.
 - **Lazy-loaded images:** `_resolveImageSrc()` handles sites that put placeholder SVGs in `src` and real URLs in `data-src`, `data-lazy-src`, or `srcset`/`data-srcset`.
 - **Content filtering patterns** use word-boundary regex for short patterns like `ad` to avoid false positives (e.g., `header` contains `ad` as a substring).
+- **Preferences** stored in `chrome.storage.local`. `Preferences.get()` merges stored values with defaults (`outputMode: 'clipboard'`, `includeMetadata: true`). Shared by popup and background via webpack.
+- **Output dispatch** — `dispatchOutput()` in background reads preferences and routes to `copyToClipboard()` or `saveAsFile()`. All output paths (full page, selection, context menu) go through this single dispatcher.

@@ -72,6 +72,8 @@ describe('ContentScript', () => {
 
     // Reset chrome API mocks
     chrome.runtime.onMessage.addListener.mockReset();
+    chrome.storage.local.get.mockReset();
+    chrome.storage.local.get.mockResolvedValue({});
 
     ContentScript = require('../../src/content/content-script');
   });
@@ -247,15 +249,19 @@ describe('ContentScript', () => {
       expect(sendResponse).toHaveBeenCalledWith({ success: true });
     });
 
-    test('should respond to convertTextSelection message', () => {
+    test('should respond to convertTextSelection message', async () => {
       const sendResponse = jest.fn();
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
 
-      messageHandler(
+      const returnValue = messageHandler(
         { action: 'convertTextSelection' },
         { tab: { id: 1 } },
         sendResponse
       );
+
+      expect(returnValue).toBe(true); // async
+
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Should respond (even if no selection exists)
       expect(sendResponse).toHaveBeenCalled();
@@ -276,14 +282,14 @@ describe('ContentScript', () => {
   });
 
   describe('convertElementsToMarkdown', () => {
-    test('should convert selected DOM elements to markdown', () => {
+    test('should convert selected DOM elements to markdown', async () => {
       const instance = new ContentScript();
       const el1 = document.createElement('p');
       el1.textContent = 'First selected paragraph';
       const el2 = document.createElement('p');
       el2.textContent = 'Second selected paragraph';
 
-      const result = instance.convertElementsToMarkdown([el1, el2]);
+      const result = await instance.convertElementsToMarkdown([el1, el2]);
 
       expect(result.success).toBe(true);
       expect(result.markdown).toBeDefined();
@@ -291,15 +297,182 @@ describe('ContentScript', () => {
       expect(result.extractionInfo.note).toContain('2 selected element');
     });
 
-    test('should include metadata header', () => {
+    test('should include metadata header', async () => {
       const instance = new ContentScript();
       const el = document.createElement('div');
       el.innerHTML = '<h2>Section</h2><p>Content</p>';
 
-      const result = instance.convertElementsToMarkdown([el]);
+      const result = await instance.convertElementsToMarkdown([el]);
 
       expect(result.markdown).toContain('**Source:**');
       expect(result.markdown).toContain('---');
+    });
+  });
+
+  describe('metadata toggle', () => {
+    test('convertPageToMarkdown should skip metadata header when includeMetadata is false', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown({ includeMetadata: false });
+
+      expect(result.success).toBe(true);
+      expect(result.markdown).not.toContain('**Source:**');
+      expect(result.markdown).toContain('## Heading');
+    });
+
+    test('convertPageToMarkdown should include metadata header by default', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.markdown).toContain('**Source:**');
+    });
+
+    test('convertElementsToMarkdown should skip metadata when storage says false', async () => {
+      chrome.storage.local.get.mockResolvedValue({ includeMetadata: false });
+
+      const instance = new ContentScript();
+      const el = document.createElement('p');
+      el.textContent = 'Some content';
+
+      const result = await instance.convertElementsToMarkdown([el]);
+
+      expect(result.success).toBe(true);
+      expect(result.markdown).not.toContain('**Source:**');
+    });
+
+    test('convertElementsToMarkdown should include metadata by default', async () => {
+      chrome.storage.local.get.mockResolvedValue({});
+
+      const instance = new ContentScript();
+      const el = document.createElement('p');
+      el.textContent = 'Some content';
+
+      const result = await instance.convertElementsToMarkdown([el]);
+
+      expect(result.success).toBe(true);
+      expect(result.markdown).toContain('**Source:**');
+    });
+
+    test('convertTextSelection should skip metadata when storage says false', async () => {
+      chrome.storage.local.get.mockResolvedValue({ includeMetadata: false });
+
+      // Set up a selection
+      const p = document.createElement('p');
+      p.textContent = 'Selected text content here';
+      document.body.appendChild(p);
+
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      const instance = new ContentScript();
+      const result = await instance.convertTextSelection();
+
+      expect(result.success).toBe(true);
+      expect(result.markdown).not.toContain('**Source:**');
+    });
+
+    test('extractContent message should pass options through', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      messageHandler(
+        { action: 'extractContent', options: { includeMetadata: false } },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+      // The markdown should not contain the metadata header
+      const calledWith = sendResponse.mock.calls[0][0];
+      expect(calledWith.markdown).not.toContain('**Source:**');
+    });
+  });
+
+  describe('writeToClipboard handler', () => {
+    test('should write text to clipboard via message', async () => {
+      navigator.clipboard.writeText.mockResolvedValue();
+
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      const returnValue = messageHandler(
+        { action: 'writeToClipboard', text: 'Hello markdown' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      expect(returnValue).toBe(true);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Hello markdown');
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    test('should handle clipboard write failure', async () => {
+      navigator.clipboard.writeText.mockRejectedValue(new Error('Denied'));
+
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      messageHandler(
+        { action: 'writeToClipboard', text: 'Hello' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+  });
+
+  describe('saveAsFile handler', () => {
+    test('should create a blob download link and click it', () => {
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      // Mock URL.createObjectURL and URL.revokeObjectURL
+      const mockUrl = 'blob:http://localhost/fake-blob-url';
+      global.URL.createObjectURL = jest.fn().mockReturnValue(mockUrl);
+      global.URL.revokeObjectURL = jest.fn();
+
+      const clickSpy = jest.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      jest.spyOn(document, 'createElement').mockImplementation((tag) => {
+        const el = originalCreateElement(tag);
+        if (tag === 'a') {
+          el.click = clickSpy;
+        }
+        return el;
+      });
+
+      messageHandler(
+        { action: 'saveAsFile', markdown: '# Test', filename: 'test.md' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      expect(global.URL.createObjectURL).toHaveBeenCalled();
+      expect(clickSpy).toHaveBeenCalled();
+      expect(global.URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+
+      document.createElement.mockRestore();
     });
   });
 

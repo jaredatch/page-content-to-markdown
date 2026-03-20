@@ -1,6 +1,8 @@
 // Popup script for browser extension
 // Handles user interactions in the popup interface
 
+const Preferences = require('../utils/preferences');
+
 console.log('🚀 [popup] Popup script loaded');
 
 class PopupController {
@@ -14,7 +16,9 @@ class PopupController {
       progress: document.getElementById('progress'),
       statusIcon: document.querySelector('.status-icon'),
       statusMessage: document.querySelector('.status-message'),
-      progressText: document.querySelector('.progress-text')
+      progressText: document.querySelector('.progress-text'),
+      metadataToggle: document.getElementById('metadataToggle'),
+      outputToggle: document.getElementById('outputToggle')
     };
 
     this.init();
@@ -28,6 +32,7 @@ class PopupController {
     this.setupEventListeners();
     this.checkCurrentTab();
     this.checkSelectionState();
+    this.loadPreferences();
   }
 
   /**
@@ -57,6 +62,24 @@ class PopupController {
       }
     });
 
+    // Metadata toggle
+    this.elements.metadataToggle.addEventListener('change', (e) => {
+      Preferences.set({ includeMetadata: e.target.checked });
+    });
+
+    // Output mode toggle
+    this.elements.outputToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.toggle-btn');
+      if (!btn) return;
+      const mode = btn.dataset.mode;
+
+      this.elements.outputToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      Preferences.set({ outputMode: mode });
+      this.updateButtonText(mode);
+    });
+
     console.log('👂 [popup] Event listeners set up');
   }
 
@@ -74,6 +97,41 @@ class PopupController {
       }
     } catch (error) {
       console.log('📋 [popup] Could not check selection state:', error.message);
+    }
+  }
+
+  /**
+   * Load preferences and set UI state
+   */
+  async loadPreferences() {
+    try {
+      const prefs = await Preferences.get();
+
+      this.elements.metadataToggle.checked = prefs.includeMetadata;
+
+      // Set output toggle active state
+      this.elements.outputToggle.querySelectorAll('.toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === prefs.outputMode);
+      });
+
+      this.updateButtonText(prefs.outputMode);
+    } catch (error) {
+      console.log('📋 [popup] Could not load preferences:', error.message);
+    }
+  }
+
+  /**
+   * Update the primary action button text based on output mode
+   */
+  updateButtonText(mode) {
+    const btnText = this.elements.extractBtn.querySelector('.btn-text');
+    const btnIcon = this.elements.extractBtn.querySelector('.btn-icon');
+    if (mode === 'file') {
+      btnText.textContent = 'Save Page as Markdown';
+      btnIcon.textContent = '💾';
+    } else {
+      btnText.textContent = 'Copy Page as Markdown';
+      btnIcon.textContent = '📋';
     }
   }
 
@@ -294,7 +352,10 @@ class PopupController {
    */
   enableExtraction() {
     this.elements.extractBtn.disabled = false;
-    this.elements.extractBtn.querySelector('.btn-text').textContent = 'Copy Page as Markdown';
+    // Restore button text based on current toggle state
+    const activeToggle = this.elements.outputToggle.querySelector('.toggle-btn.active');
+    const mode = activeToggle ? activeToggle.dataset.mode : 'clipboard';
+    this.updateButtonText(mode);
     this.elements.selectBtn.disabled = false;
   }
 

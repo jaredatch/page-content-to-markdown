@@ -37,6 +37,17 @@ global.chrome = {
     onCommand: {
       addListener: jest.fn()
     }
+  },
+  storage: {
+    local: {
+      get: jest.fn().mockResolvedValue({}),
+      set: jest.fn().mockResolvedValue()
+    }
+  },
+  downloads: {
+    download: jest.fn().mockImplementation((options, callback) => {
+      if (callback) callback(1);
+    })
   }
 };
 

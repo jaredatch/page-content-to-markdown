@@ -1,6 +1,8 @@
 // Background script for browser extension
 // This script runs in the background and coordinates the extension functionality
 
+const Preferences = require('../utils/preferences');
+
 console.log('🚀 [background] Background script loaded');
 
 class BackgroundScript {
@@ -129,7 +131,6 @@ class BackgroundScript {
     try {
       console.log('🔄 [background] Starting content extraction for tab:', tab.id);
 
-      // Extract content from the active tab
       const extractResult = await this.extractContentFromActiveTab();
 
       if (!extractResult.success) {
@@ -138,20 +139,16 @@ class BackgroundScript {
         return;
       }
 
-      // Copy to clipboard
-      const copyResult = await this.copyToClipboard(extractResult.markdown);
+      const result = await this.dispatchOutput(extractResult.markdown, extractResult.metadata);
 
-      if (copyResult.success) {
-        console.log('✅ [background] Content successfully copied to clipboard');
+      if (result.success) {
+        console.log(`✅ [background] Content successfully ${result.method === 'file' ? 'saved' : 'copied'}`);
         const pageTitle = (extractResult.metadata && extractResult.metadata.title) || 'page';
-        this.showNotification(
-          'Success',
-          `Page "${pageTitle}" copied as markdown!`,
-          'success'
-        );
+        const verb = result.method === 'file' ? 'saved' : 'copied';
+        this.showNotification('Success', `Page "${pageTitle}" ${verb} as markdown!`, 'success');
       } else {
-        console.error('🚨 [background] Failed to copy to clipboard:', copyResult.error);
-        this.showNotification('Error', copyResult.error, 'error');
+        console.error('🚨 [background] Failed to output content:', result.error);
+        this.showNotification('Error', result.error, 'error');
       }
 
     } catch (error) {
@@ -168,16 +165,14 @@ class BackgroundScript {
     try {
       console.log('🔄 [background] Handling extractAndCopy message');
 
-      // Extract content
       const extractResult = await this.extractContentFromActiveTab();
       if (!extractResult.success) {
         sendResponse(extractResult);
         return;
       }
 
-      // Copy to clipboard
-      const copyResult = await this.copyToClipboard(extractResult.markdown);
-      sendResponse(copyResult);
+      const result = await this.dispatchOutput(extractResult.markdown, extractResult.metadata);
+      sendResponse(result);
 
     } catch (error) {
       console.error('🚨 [background] Error in handleExtractAndCopy:', error);
@@ -261,12 +256,13 @@ class BackgroundScript {
     }
 
     if (result && result.success && result.markdown) {
-      const copyResult = await this.copyToClipboard(result.markdown);
-      if (copyResult.success) {
+      const outputResult = await this.dispatchOutput(result.markdown, result.metadata);
+      if (outputResult.success) {
         const count = result.extractionInfo ? result.extractionInfo.note : '';
-        this.showNotification('Success', `Selected content copied as markdown! ${count}`, 'success');
+        const verb = outputResult.method === 'file' ? 'saved' : 'copied';
+        this.showNotification('Success', `Selected content ${verb} as markdown! ${count}`, 'success');
       } else {
-        this.showNotification('Error', copyResult.error, 'error');
+        this.showNotification('Error', outputResult.error, 'error');
       }
     } else {
       this.showNotification('Error', (result && result.error) || 'Selection conversion failed', 'error');
@@ -319,11 +315,12 @@ class BackgroundScript {
       });
 
       if (response && response.success && response.markdown) {
-        const copyResult = await this.copyToClipboard(response.markdown);
-        if (copyResult.success) {
-          this.showNotification('Success', 'Selection copied as markdown!', 'success');
+        const outputResult = await this.dispatchOutput(response.markdown, response.metadata);
+        if (outputResult.success) {
+          const verb = outputResult.method === 'file' ? 'saved' : 'copied';
+          this.showNotification('Success', `Selection ${verb} as markdown!`, 'success');
         } else {
-          this.showNotification('Error', copyResult.error, 'error');
+          this.showNotification('Error', outputResult.error, 'error');
         }
       } else {
         this.showNotification('Error', (response && response.error) || 'Failed to convert selection', 'error');
@@ -370,11 +367,15 @@ class BackgroundScript {
       const activeTab = tabs[0];
       console.log(`📋 [background] Active tab found: ${activeTab.url}`);
 
+      // Read preferences to pass includeMetadata option
+      const prefs = await Preferences.get();
+
       // Send message to content script to extract content
       console.log('📤 [background] Sending extraction request to content script');
 
       const response = await chrome.tabs.sendMessage(activeTab.id, {
-        action: 'extractContent'
+        action: 'extractContent',
+        options: { includeMetadata: prefs.includeMetadata }
       });
 
       console.log('📨 [background] Received response from content script:', response);
@@ -406,7 +407,23 @@ class BackgroundScript {
 
       console.log('📋 [background] Copying to clipboard...');
 
-      await navigator.clipboard.writeText(text);
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (clipboardError) {
+        // Fallback: ask content script to write to clipboard (needed in Firefox service worker)
+        console.log('📋 [background] Clipboard API failed, trying content script fallback');
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length === 0) throw clipboardError;
+
+        const response = await chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'writeToClipboard',
+          text
+        });
+
+        if (!response || !response.success) {
+          throw clipboardError;
+        }
+      }
 
       console.log('✅ [background] Successfully copied to clipboard');
 
@@ -422,6 +439,66 @@ class BackgroundScript {
         error: `Failed to copy to clipboard: ${error.message}`
       };
     }
+  }
+
+  /**
+   * Generate a sanitized filename from page metadata
+   */
+  generateFilename(metadata) {
+    let title = (metadata && metadata.title) || 'page';
+    // Strip invalid filename characters
+    title = title.replace(/[\/\\:*?"<>|]/g, '');
+    // Collapse whitespace
+    title = title.replace(/\s+/g, ' ').trim();
+    // Truncate to 80 chars
+    if (title.length > 80) {
+      title = title.substring(0, 80).trim();
+    }
+    const date = new Date().toISOString().split('T')[0];
+    return `${title} - ${date}.md`;
+  }
+
+  /**
+   * Save markdown as a file download.
+   * Delegates to content script which has access to Blob/URL.createObjectURL.
+   */
+  async saveAsFile(markdown, filename) {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        return { success: false, error: 'No active tab found for file save' };
+      }
+
+      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+        action: 'saveAsFile',
+        markdown,
+        filename
+      });
+
+      if (response && response.success) {
+        return { success: true, message: 'File saved', method: 'file' };
+      }
+
+      return { success: false, error: (response && response.error) || 'Failed to save file' };
+    } catch (error) {
+      console.error('🚨 [background] Error saving file:', error);
+      return { success: false, error: `Failed to save file: ${error.message}` };
+    }
+  }
+
+  /**
+   * Dispatch output based on user preferences (clipboard or file)
+   */
+  async dispatchOutput(markdown, metadata) {
+    const prefs = await Preferences.get();
+
+    if (prefs.outputMode === 'file') {
+      const filename = this.generateFilename(metadata);
+      return this.saveAsFile(markdown, filename);
+    }
+
+    const result = await this.copyToClipboard(markdown);
+    return { ...result, method: 'clipboard' };
   }
 
   /**
@@ -459,6 +536,9 @@ if (typeof module !== 'undefined' && module.exports) {
     handleActionClick: (tab) => backgroundScript.handleActionClick(tab),
     handleExtractAndCopy: (sendResponse) => backgroundScript.handleExtractAndCopy(sendResponse),
     getSelectionState: () => backgroundScript.selectionState,
-    toggleSelectionMode: () => backgroundScript.toggleSelectionMode()
+    toggleSelectionMode: () => backgroundScript.toggleSelectionMode(),
+    generateFilename: (metadata) => backgroundScript.generateFilename(metadata),
+    saveAsFile: (markdown, filename) => backgroundScript.saveAsFile(markdown, filename),
+    dispatchOutput: (markdown, metadata) => backgroundScript.dispatchOutput(markdown, metadata)
   };
 }
