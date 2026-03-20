@@ -52,12 +52,13 @@ class BackgroundScript {
 
       // Copy to clipboard
       const copyResult = await this.copyToClipboard(extractResult.markdown);
-      
+
       if (copyResult.success) {
         console.log('✅ [background] Content successfully copied to clipboard');
+        const pageTitle = (extractResult.metadata && extractResult.metadata.title) || 'page';
         this.showNotification(
-          'Success', 
-          `Page "${extractResult.metadata.title}" copied as markdown!`,
+          'Success',
+          `Page "${pageTitle}" copied as markdown!`,
           'success'
         );
       } else {

@@ -5,8 +5,7 @@ module.exports = {
   entry: {
     'background': './src/background/background.js',
     'content-script': './src/content/content-script.js',
-    'popup': './src/popup/popup.js',
-    'simple-universal-extractor': './src/utils/simple-universal-extractor.js'
+    'popup': './src/popup/popup.js'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -27,15 +26,19 @@ module.exports = {
       }
     ]
   },
+  externals: {
+    'jsdom': 'commonjs jsdom'
+  },
   plugins: [
     new CopyPlugin({
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'src/popup/popup.html', to: 'popup.html' },
-        { from: 'src/popup/popup.css', to: 'popup.css' }
+        { from: 'src/popup/popup.css', to: 'popup.css' },
+        { from: 'icons', to: 'icons' }
       ]
     })
   ],
   mode: 'development',
   devtool: 'source-map'
-}; 
+};

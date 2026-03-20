@@ -1,137 +1,181 @@
-// Mock the MarkdownConverter since it will be bundled with the content script
-const mockConverter = {
-  convertToMarkdown: jest.fn()
-};
+// Mock MarkdownConverter before requiring content-script
+jest.mock('../../src/utils/markdown-converter', () => {
+  return jest.fn().mockImplementation(() => ({
+    convertToMarkdown: jest.fn().mockReturnValue('')
+  }));
+});
 
-// Mock the content script functions
+jest.mock('../../src/utils/simple-universal-extractor', () => {
+  return jest.fn().mockImplementation(() => ({
+    extractContent: jest.fn().mockResolvedValue({
+      success: true,
+      markdown: '# Fallback Content\n\nExtracted text.',
+      method: 'guaranteed-text-extraction',
+      note: 'Fallback'
+    })
+  }));
+});
+
+let MarkdownConverter;
+let SimpleUniversalExtractor;
 let ContentScript;
 
 describe('ContentScript', () => {
+  let mockConvertToMarkdown;
+  let mockExtractContent;
+
   beforeEach(() => {
-    // Reset mocks
     jest.clearAllMocks();
-    mockConverter.convertToMarkdown.mockReset();
-    
+    jest.resetModules();
+
+    // Re-require mocked modules after resetModules
+    MarkdownConverter = require('../../src/utils/markdown-converter');
+    SimpleUniversalExtractor = require('../../src/utils/simple-universal-extractor');
+
+    // Set up mock return values
+    mockConvertToMarkdown = jest.fn().mockReturnValue('');
+    MarkdownConverter.mockImplementation(() => ({
+      convertToMarkdown: mockConvertToMarkdown
+    }));
+
+    mockExtractContent = jest.fn().mockResolvedValue({
+      success: true,
+      markdown: '# Fallback\n\nFallback text content here for testing purposes.',
+      method: 'guaranteed-text-extraction',
+      note: 'Fallback'
+    });
+    SimpleUniversalExtractor.mockImplementation(() => ({
+      extractContent: mockExtractContent
+    }));
+
     // Mock DOM
     document.body.innerHTML = `
-      <div>
+      <article>
         <h1>Test Page</h1>
-        <p>This is test content.</p>
-      </div>
+        <p>This is test content with enough text to pass the threshold for conversion.</p>
+      </article>
     `;
+    document.title = 'Test Page';
 
     // Reset chrome API mocks
-    chrome.runtime.sendMessage.mockReset();
     chrome.runtime.onMessage.addListener.mockReset();
 
-    // Import content script functionality
     ContentScript = require('../../src/content/content-script');
   });
 
-  describe('extractPageContent', () => {
-    test('should extract page HTML content', () => {
-      const content = ContentScript.extractPageContent();
-      
-      expect(content).toContain('<h1>Test Page</h1>');
-      expect(content).toContain('<p>This is test content.</p>');
-      expect(typeof content).toBe('string');
+  describe('convertPageToMarkdown', () => {
+    test('should use Turndown as primary converter when it returns substantial content', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Test Page\n\nThis is test content with enough text to pass the threshold.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.success).toBe(true);
+      expect(result.extractionInfo.method).toBe('turndown');
+      expect(result.markdown).toContain('Test Page');
+      expect(result.metadata).toBeDefined();
+      expect(result.metadata.title).toBe('Test Page');
     });
 
-    test('should extract page title', () => {
-      document.title = 'Test Page Title';
-      const content = ContentScript.extractPageContent();
-      
-      expect(content).toBeDefined();
-      expect(typeof content).toBe('string');
+    test('should fall back to SimpleUniversalExtractor when Turndown returns short content', async () => {
+      mockConvertToMarkdown.mockReturnValue('short');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.success).toBe(true);
+      expect(result.extractionInfo.method).toBe('guaranteed-text-extraction');
+      expect(mockExtractContent).toHaveBeenCalled();
     });
 
-    test('should handle empty page', () => {
-      document.body.innerHTML = '';
-      const content = ContentScript.extractPageContent();
-      
-      expect(content).toBe('');
-    });
-  });
-
-  describe('getPageMetadata', () => {
-    test('should extract basic page metadata', () => {
-      document.title = 'Test Page Title';
-      const url = 'https://example.com/test';
-      
-      // Mock window.location
-      Object.defineProperty(window, 'location', {
-        value: { href: url },
-        writable: true
+    test('should fall back to SimpleUniversalExtractor when Turndown throws', async () => {
+      mockConvertToMarkdown.mockImplementation(() => {
+        throw new Error('Turndown conversion failed');
       });
 
-      const metadata = ContentScript.getPageMetadata();
-      
-      expect(metadata).toEqual({
-        title: 'Test Page Title',
-        url: url,
-        timestamp: expect.any(String)
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.success).toBe(true);
+      expect(result.extractionInfo.method).toBe('guaranteed-text-extraction');
+      expect(mockExtractContent).toHaveBeenCalled();
+    });
+
+    test('should return emergency fallback when both converters fail', async () => {
+      mockConvertToMarkdown.mockImplementation(() => {
+        throw new Error('Turndown failed');
+      });
+      mockExtractContent.mockRejectedValue(new Error('Extractor failed'));
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.success).toBe(true);
+      expect(result.extractionInfo.method).toBe('emergency-fallback');
+      expect(result.markdown).toContain('Test Page');
+    });
+
+    test('should include metadata in response', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.metadata).toEqual({
+        title: 'Test Page',
+        url: expect.any(String),
+        timestamp: expect.any(String),
+        domain: expect.any(String)
       });
     });
 
-    test('should handle missing title', () => {
-      document.title = '';
-      
-      const metadata = ContentScript.getPageMetadata();
-      
-      expect(metadata.title).toBe('Untitled Page');
+    test('should add metadata header when Turndown succeeds', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.markdown).toContain('# Test Page');
+      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('---');
     });
   });
 
   describe('message handling', () => {
     test('should respond to extractContent message', async () => {
+      mockConvertToMarkdown.mockReturnValue('## Test\n\nEnough content here to pass the fifty character threshold for sure.');
+
       const sendResponse = jest.fn();
-      mockConverter.convertToMarkdown.mockReturnValue('# Test\n\nContent');
-      
-      // Simulate the message listener
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-      
-      await messageHandler(
+
+      // The handler returns true (async) and calls sendResponse later
+      const returnValue = messageHandler(
         { action: 'extractContent' },
         { tab: { id: 1 } },
         sendResponse
       );
 
-      expect(sendResponse).toHaveBeenCalledWith({
-        success: true,
-        markdown: expect.stringContaining('# Test'),
-        metadata: expect.objectContaining({
-          title: expect.any(String),
-          url: expect.any(String)
+      expect(returnValue).toBe(true);
+
+      // Wait for the async operation
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          markdown: expect.any(String),
+          extractionInfo: expect.objectContaining({
+            method: expect.any(String)
+          })
         })
-      });
-    });
-
-    test('should handle extraction errors', async () => {
-      const sendResponse = jest.fn();
-      mockConverter.convertToMarkdown.mockImplementation(() => {
-        throw new Error('Conversion failed');
-      });
-      
-      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-      
-      await messageHandler(
-        { action: 'extractContent' },
-        { tab: { id: 1 } },
-        sendResponse
       );
-
-      expect(sendResponse).toHaveBeenCalledWith({
-        success: false,
-        error: 'Failed to extract content: Conversion failed'
-      });
     });
 
-    test('should ignore unknown messages', async () => {
+    test('should ignore unknown messages', () => {
       const sendResponse = jest.fn();
-      
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-      
-      const result = await messageHandler(
+
+      const result = messageHandler(
         { action: 'unknownAction' },
         { tab: { id: 1 } },
         sendResponse
@@ -151,16 +195,35 @@ describe('ContentScript', () => {
 
     test('should log initialization', () => {
       const consoleSpy = jest.spyOn(console, 'log');
-      
-      // Re-require to trigger initialization
-      delete require.cache[require.resolve('../../src/content/content-script')];
+      jest.resetModules();
+
       require('../../src/content/content-script');
-      
+
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('🚀 [content-script] Content script loaded')
       );
-      
+
       consoleSpy.mockRestore();
     });
   });
-}); 
+
+  describe('getPageMetadata', () => {
+    test('should return page metadata', () => {
+      const instance = new ContentScript();
+      const metadata = instance.getPageMetadata();
+
+      expect(metadata.title).toBe('Test Page');
+      expect(metadata).toHaveProperty('url');
+      expect(metadata).toHaveProperty('timestamp');
+      expect(metadata).toHaveProperty('domain');
+    });
+
+    test('should handle missing title', () => {
+      document.title = '';
+      const instance = new ContentScript();
+      const metadata = instance.getPageMetadata();
+
+      expect(metadata.title).toBe('Untitled Page');
+    });
+  });
+});

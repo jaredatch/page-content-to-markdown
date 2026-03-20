@@ -35,8 +35,8 @@ describe('MarkdownConverter', () => {
       expect(result).toContain('## Section Title');
       expect(result).toContain('**bold**');
       expect(result).toContain('*italic*');
-      expect(result).toContain('- Item 1');
-      expect(result).toContain('- Item 2');
+      expect(result).toMatch(/- +Item 1/);
+      expect(result).toMatch(/- +Item 2/);
     });
 
     test('should preserve links', () => {
@@ -85,14 +85,14 @@ describe('MarkdownConverter', () => {
         <header>Header</header>
         <article>
           <h1>Article Title</h1>
-          <p>Article content</p>
+          <p>This is a substantial article with enough content to pass the significance threshold for extraction. It contains multiple sentences and meaningful text that would be found on a real web page.</p>
         </article>
         <sidebar>Sidebar</sidebar>
       `;
       const result = converter.extractMainContent(html);
-      
+
       expect(result).toContain('Article Title');
-      expect(result).toContain('Article content');
+      expect(result).toContain('substantial article');
       expect(result).not.toContain('Header');
       expect(result).not.toContain('Sidebar');
     });
@@ -102,14 +102,14 @@ describe('MarkdownConverter', () => {
         <nav>Navigation</nav>
         <main>
           <h1>Main Title</h1>
-          <p>Main content</p>
+          <p>This is the main content area with enough text to pass the significance threshold. It contains multiple sentences and meaningful paragraphs that represent real page content.</p>
         </main>
         <footer>Footer</footer>
       `;
       const result = converter.extractMainContent(html);
-      
+
       expect(result).toContain('Main Title');
-      expect(result).toContain('Main content');
+      expect(result).toContain('main content area');
       expect(result).not.toContain('Navigation');
       expect(result).not.toContain('Footer');
     });

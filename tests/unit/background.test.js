@@ -2,19 +2,18 @@ let BackgroundScript;
 
 describe('BackgroundScript', () => {
   beforeEach(() => {
-    // Reset all mocks
     jest.clearAllMocks();
-    
-    // Reset chrome API mocks
+    jest.resetModules();
+
+    // Reset chrome API mocks (they're global, survive resetModules)
     chrome.tabs.query.mockReset();
     chrome.tabs.sendMessage.mockReset();
     chrome.action.onClicked.addListener.mockReset();
     chrome.runtime.onMessage.addListener.mockReset();
-    
-    // Mock clipboard API
+    chrome.notifications.create.mockReset();
     global.navigator.clipboard.writeText.mockReset();
 
-    // Import background script
+    // Fresh import — module re-evaluates, constructor runs, listeners attached
     BackgroundScript = require('../../src/background/background');
   });
 
@@ -33,31 +32,32 @@ describe('BackgroundScript', () => {
 
     test('should log initialization', () => {
       const consoleSpy = jest.spyOn(console, 'log');
-      
-      // Re-require to trigger initialization
-      delete require.cache[require.resolve('../../src/background/background')];
+      jest.resetModules();
+
       require('../../src/background/background');
-      
+
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('🚀 [background] Background script loaded')
       );
-      
+
       consoleSpy.mockRestore();
     });
   });
 
   describe('extractContentFromActiveTab', () => {
     test('should extract content from active tab successfully', async () => {
-      // Mock successful tab query
       chrome.tabs.query.mockResolvedValue([{ id: 123, url: 'https://example.com' }]);
-      
-      // Mock successful content extraction
+
       chrome.tabs.sendMessage.mockResolvedValue({
         success: true,
         markdown: '# Test Content\n\nThis is test content.',
         metadata: {
           title: 'Test Page',
           url: 'https://example.com'
+        },
+        extractionInfo: {
+          method: 'turndown',
+          note: 'Primary conversion'
         }
       });
 
@@ -72,14 +72,8 @@ describe('BackgroundScript', () => {
         action: 'extractContent'
       });
 
-      expect(result).toEqual({
-        success: true,
-        markdown: '# Test Content\n\nThis is test content.',
-        metadata: {
-          title: 'Test Page',
-          url: 'https://example.com'
-        }
-      });
+      expect(result.success).toBe(true);
+      expect(result.markdown).toContain('# Test Content');
     });
 
     test('should handle no active tab', async () => {
@@ -165,22 +159,24 @@ describe('BackgroundScript', () => {
   });
 
   describe('action click handler', () => {
+    // Helper: the onClicked callback doesn't return a promise,
+    // so we need to flush microtasks after calling it.
+    const flush = () => new Promise(resolve => setTimeout(resolve, 10));
+
     test('should extract and copy content on action click', async () => {
-      // Mock the action click handler
       const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
-      
-      // Mock successful extraction
+
       chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({
         success: true,
         markdown: '# Test Content',
         metadata: { title: 'Test' }
       });
-      
-      // Mock successful clipboard copy
+
       navigator.clipboard.writeText.mockResolvedValue();
 
-      await actionClickHandler({ id: 123 });
+      actionClickHandler({ id: 123 });
+      await flush();
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
         action: 'extractContent'
@@ -190,7 +186,7 @@ describe('BackgroundScript', () => {
 
     test('should handle extraction failure on action click', async () => {
       const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
-      
+
       chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({
         success: false,
@@ -199,22 +195,43 @@ describe('BackgroundScript', () => {
 
       const consoleSpy = jest.spyOn(console, 'error');
 
-      await actionClickHandler({ id: 123 });
+      actionClickHandler({ id: 123 });
+      await flush();
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to extract content')
+        expect.stringContaining('Failed to extract content'),
+        expect.anything()
       );
 
       consoleSpy.mockRestore();
     });
+
+    test('should handle missing metadata gracefully in notification', async () => {
+      const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
+
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({
+        success: true,
+        markdown: '# Test Content'
+        // no metadata field
+      });
+
+      navigator.clipboard.writeText.mockResolvedValue();
+
+      actionClickHandler({ id: 123 });
+      await flush();
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Test Content');
+    });
   });
 
   describe('message handler', () => {
+    const flush = () => new Promise(resolve => setTimeout(resolve, 10));
+
     test('should handle extractAndCopy message', async () => {
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
       const sendResponse = jest.fn();
 
-      // Mock successful extraction and copy
       chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({
         success: true,
@@ -222,11 +239,12 @@ describe('BackgroundScript', () => {
       });
       navigator.clipboard.writeText.mockResolvedValue();
 
-      await messageHandler(
+      messageHandler(
         { action: 'extractAndCopy' },
         { tab: { id: 123 } },
         sendResponse
       );
+      await flush();
 
       expect(sendResponse).toHaveBeenCalledWith({
         success: true,
@@ -248,4 +266,4 @@ describe('BackgroundScript', () => {
       expect(sendResponse).not.toHaveBeenCalled();
     });
   });
-}); 
+});

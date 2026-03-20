@@ -14,6 +14,9 @@ global.chrome = {
     onClicked: {
       addListener: jest.fn()
     }
+  },
+  notifications: {
+    create: jest.fn()
   }
 };
 
