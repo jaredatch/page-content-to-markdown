@@ -6,12 +6,16 @@ console.log('🚀 [content-script] Content script loaded');
 
 const MarkdownConverter = require('../utils/markdown-converter');
 const SimpleUniversalExtractor = require('../utils/simple-universal-extractor');
+const ElementPicker = require('./element-picker');
 
 class ContentScript {
   constructor() {
     this.converter = new MarkdownConverter();
     this.fallbackExtractor = new SimpleUniversalExtractor();
+    this.elementPicker = null;
+    this.lastRightClickedElement = null;
     this.setupMessageListener();
+    this.setupContextMenuTracker();
   }
 
   /**
@@ -104,6 +108,147 @@ class ContentScript {
   }
 
   /**
+   * Convert user-selected elements to markdown.
+   */
+  convertElementsToMarkdown(elements) {
+    const metadata = this.getPageMetadata();
+
+    try {
+      const htmlParts = elements.map(el => el.outerHTML);
+      const markdownParts = htmlParts.map(html => this.converter.convertHtmlFragment(html));
+      let markdown = markdownParts.join('\n\n---\n\n');
+
+      if (!markdown || markdown.trim().length === 0) {
+        // Fallback: extract text content directly
+        markdown = elements.map(el => el.textContent.trim()).join('\n\n---\n\n');
+      }
+
+      markdown = this.addMetadataHeader(markdown, metadata);
+
+      return {
+        success: true,
+        markdown,
+        metadata,
+        extractionInfo: {
+          method: 'selective-turndown',
+          note: `Converted ${elements.length} selected element(s) via Turndown`
+        }
+      };
+    } catch (error) {
+      console.error('🚨 [content-script] Error converting selected elements:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Convert the current text selection (from context menu) to markdown.
+   */
+  convertTextSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return { success: false, error: 'No text selected' };
+    }
+
+    const metadata = this.getPageMetadata();
+
+    try {
+      const range = selection.getRangeAt(0);
+      const fragment = range.cloneContents();
+      const tempDiv = document.createElement('div');
+      tempDiv.appendChild(fragment);
+      const html = tempDiv.innerHTML;
+
+      let markdown = this.converter.convertHtmlFragment(html);
+      if (!markdown || markdown.trim().length === 0) {
+        markdown = selection.toString().trim();
+      }
+
+      markdown = this.addMetadataHeader(markdown, metadata);
+
+      return {
+        success: true,
+        markdown,
+        metadata,
+        extractionInfo: {
+          method: 'text-selection',
+          note: 'Converted text selection via Turndown'
+        }
+      };
+    } catch (error) {
+      console.error('🚨 [content-script] Error converting text selection:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Start element selection mode.
+   */
+  startSelectionMode() {
+    if (this.elementPicker) {
+      this.elementPicker.deactivate();
+    }
+
+    this.elementPicker = new ElementPicker({
+      onConfirm: (selectedElements) => {
+        console.log(`🎯 [content-script] Selection confirmed: ${selectedElements.length} element(s)`);
+        const result = this.convertElementsToMarkdown(selectedElements);
+
+        chrome.runtime.sendMessage({
+          action: 'selectionComplete',
+          result
+        });
+
+        this.elementPicker.deactivate();
+        this.elementPicker = null;
+      },
+      onCancel: () => {
+        console.log('🎯 [content-script] Selection cancelled');
+        chrome.runtime.sendMessage({ action: 'selectionCancelled' });
+        this.elementPicker = null;
+      }
+    });
+
+    this.elementPicker.activate();
+    console.log('🎯 [content-script] Selection mode started');
+  }
+
+  /**
+   * Cancel element selection mode.
+   */
+  cancelSelectionMode() {
+    if (this.elementPicker) {
+      this.elementPicker.deactivate();
+      this.elementPicker = null;
+      console.log('🎯 [content-script] Selection mode cancelled');
+    }
+  }
+
+  /**
+   * Track the last right-clicked element so we can pre-select it
+   * when "Select element for Markdown" is chosen from the context menu.
+   */
+  setupContextMenuTracker() {
+    document.addEventListener('contextmenu', (e) => {
+      this.lastRightClickedElement = e.target;
+    }, true);
+  }
+
+  /**
+   * Start selection mode with the last right-clicked element pre-selected.
+   */
+  startSelectionWithElement() {
+    this.startSelectionMode();
+
+    if (this.lastRightClickedElement && this.elementPicker) {
+      this.elementPicker.preselectElement(this.lastRightClickedElement);
+      console.log('🎯 [content-script] Pre-selected right-clicked element');
+    }
+  }
+
+  /**
    * Set up message listener for communication with background script
    */
   setupMessageListener() {
@@ -130,6 +275,30 @@ class ContentScript {
           });
 
         return true; // async response
+      }
+
+      if (request.action === 'startSelectionMode') {
+        this.startSelectionMode();
+        sendResponse({ success: true });
+        return false;
+      }
+
+      if (request.action === 'startSelectionWithElement') {
+        this.startSelectionWithElement();
+        sendResponse({ success: true });
+        return false;
+      }
+
+      if (request.action === 'cancelSelectionMode') {
+        this.cancelSelectionMode();
+        sendResponse({ success: true });
+        return false;
+      }
+
+      if (request.action === 'convertTextSelection') {
+        const result = this.convertTextSelection();
+        sendResponse(result);
+        return false;
       }
 
       return false;

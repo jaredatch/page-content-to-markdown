@@ -131,6 +131,39 @@ body {
   box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
 }
 
+.btn + .btn {
+  margin-top: 10px;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: #667eea;
+  border: 2px solid #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.btn-secondary:hover {
+  background: #f0f2ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.25);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+}
+
+.btn-outline {
+  background: transparent;
+  color: #667eea;
+  border: 1px solid #667eea;
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+.btn-outline:hover {
+  background: #f0f2ff;
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -249,6 +282,24 @@ body {
 
 .tip-text {
   line-height: 1.4;
+}
+
+/* Selection active indicator */
+.selection-active {
+  background: linear-gradient(135deg, #f0f2ff 0%, #ede9fe 100%);
+  border: 1px solid #c4b5fd;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  margin-bottom: 16px;
+  animation: slideIn 0.3s ease;
+}
+
+.selection-active p {
+  font-size: 13px;
+  color: #5b21b6;
+  margin: 0 0 12px 0;
+  font-weight: 500;
 }
 
 /* Utility classes */

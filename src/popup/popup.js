@@ -7,6 +7,9 @@ class PopupController {
   constructor() {
     this.elements = {
       extractBtn: document.getElementById('extractBtn'),
+      selectBtn: document.getElementById('selectBtn'),
+      cancelSelectBtn: document.getElementById('cancelSelectBtn'),
+      selectionActive: document.getElementById('selectionActive'),
       status: document.getElementById('status'),
       progress: document.getElementById('progress'),
       statusIcon: document.querySelector('.status-icon'),
@@ -24,6 +27,7 @@ class PopupController {
     console.log('🔧 [popup] Initializing popup controller');
     this.setupEventListeners();
     this.checkCurrentTab();
+    this.checkSelectionState();
   }
 
   /**
@@ -33,6 +37,16 @@ class PopupController {
     this.elements.extractBtn.addEventListener('click', () => {
       console.log('🖱️ [popup] Extract button clicked');
       this.handleExtractClick();
+    });
+
+    this.elements.selectBtn.addEventListener('click', () => {
+      console.log('🖱️ [popup] Select button clicked');
+      this.handleSelectClick();
+    });
+
+    this.elements.cancelSelectBtn.addEventListener('click', () => {
+      console.log('🖱️ [popup] Cancel select button clicked');
+      this.handleCancelSelectClick();
     });
 
     // Handle keyboard shortcuts
@@ -47,12 +61,47 @@ class PopupController {
   }
 
   /**
+   * Check if selection mode is active for the current tab
+   */
+  async checkSelectionState() {
+    try {
+      const response = await this.sendMessageToBackground({
+        action: 'getSelectionState'
+      });
+
+      if (response && response.active) {
+        this.showSelectionActive();
+      }
+    } catch (error) {
+      console.log('📋 [popup] Could not check selection state:', error.message);
+    }
+  }
+
+  /**
+   * Show selection-active UI (hide buttons, show cancel option)
+   */
+  showSelectionActive() {
+    this.elements.extractBtn.classList.add('hidden');
+    this.elements.selectBtn.classList.add('hidden');
+    this.elements.selectionActive.classList.remove('hidden');
+  }
+
+  /**
+   * Hide selection-active UI (show buttons again)
+   */
+  hideSelectionActive() {
+    this.elements.extractBtn.classList.remove('hidden');
+    this.elements.selectBtn.classList.remove('hidden');
+    this.elements.selectionActive.classList.add('hidden');
+  }
+
+  /**
    * Check if current tab is valid for content extraction
    */
   async checkCurrentTab() {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       if (tabs.length === 0) {
         this.showError('No active tab found');
         this.disableExtraction();
@@ -107,7 +156,7 @@ class PopupController {
 
     try {
       console.log('🔄 [popup] Starting content extraction');
-      
+
       this.showProgress('Extracting content...');
       this.disableExtraction();
 
@@ -121,7 +170,7 @@ class PopupController {
       if (response.success) {
         console.log('✅ [popup] Content extraction successful');
         this.showSuccess(response.message || 'Content copied to clipboard!');
-        
+
         // Auto-close popup after successful extraction
         setTimeout(() => {
           window.close();
@@ -137,6 +186,45 @@ class PopupController {
       this.hideProgress();
       this.showError('Unexpected error occurred');
       this.enableExtraction();
+    }
+  }
+
+  /**
+   * Handle select elements button click
+   */
+  async handleSelectClick() {
+    try {
+      console.log('🎯 [popup] Starting selection mode');
+
+      const response = await this.sendMessageToBackground({
+        action: 'startSelectionMode'
+      });
+
+      if (response && response.success) {
+        // Close popup so user can interact with the page
+        window.close();
+      } else {
+        this.showError((response && response.error) || 'Failed to start selection mode');
+      }
+    } catch (error) {
+      console.error('🚨 [popup] Error starting selection mode:', error);
+      this.showError('Failed to start selection mode');
+    }
+  }
+
+  /**
+   * Handle cancel selection button click
+   */
+  async handleCancelSelectClick() {
+    try {
+      await this.sendMessageToBackground({
+        action: 'cancelSelectionMode'
+      });
+
+      this.hideSelectionActive();
+    } catch (error) {
+      console.error('🚨 [popup] Error cancelling selection:', error);
+      this.hideSelectionActive();
     }
   }
 
@@ -207,6 +295,7 @@ class PopupController {
   enableExtraction() {
     this.elements.extractBtn.disabled = false;
     this.elements.extractBtn.querySelector('.btn-text').textContent = 'Copy Page as Markdown';
+    this.elements.selectBtn.disabled = false;
   }
 
   /**
@@ -215,6 +304,7 @@ class PopupController {
   disableExtraction() {
     this.elements.extractBtn.disabled = true;
     this.elements.extractBtn.querySelector('.btn-text').textContent = 'Cannot Extract from This Page';
+    this.elements.selectBtn.disabled = true;
   }
 }
 
@@ -227,4 +317,4 @@ document.addEventListener('DOMContentLoaded', () => {
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = PopupController;
-} 
+}

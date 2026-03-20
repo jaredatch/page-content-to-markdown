@@ -21,29 +21,34 @@ class MarkdownConverter {
     // Remove script and style elements
     this.turndownService.remove(['script', 'style', 'iframe', 'object', 'embed', 'noscript']);
     
-    // Remove navigation, ads, and other non-content elements
+    // Remove navigation, ads, and other non-content elements.
+    // Long patterns use substring matching; short patterns that could cause
+    // false positives (e.g. "ad" in "header") use word-boundary regex.
+    const nonContentSubstringPatterns = [
+      'navigation', 'sidebar',
+      'advertisement', 'banner',
+      'social', 'share', 'comment', 'related', 'recommended',
+      'popup', 'modal', 'overlay', 'cookie', 'gdpr',
+      'subscription', 'newsletter', 'signup',
+      'buy-now', 'purchase', 'cart', 'checkout',
+      'engagement', 'breadcrumb', 'pagination'
+    ];
+    const nonContentWordRegex = /(?:^|[\s_-])(?:ad|nav|menu|aside|header|footer|like|vote|rating)(?:[\s_-]|$)/i;
+    const nonContentTags = new Set(['nav', 'aside', 'header', 'footer']);
+
     this.turndownService.addRule('removeNonContent', {
       filter: (node) => {
-        const className = node.className || '';
-        const id = node.id || '';
+        const className = (node.className || '').toLowerCase();
+        const id = (node.id || '').toLowerCase();
         const tagName = node.tagName?.toLowerCase();
-        
-        // Remove common non-content elements
-        const nonContentPatterns = [
-          'nav', 'navigation', 'menu', 'sidebar', 'aside',
-          'ad', 'advertisement', 'banner', 'header', 'footer',
-          'social', 'share', 'comment', 'related', 'recommended',
-          'popup', 'modal', 'overlay', 'cookie', 'gdpr',
-          'subscription', 'newsletter', 'signup',
-          'buy-now', 'purchase', 'cart', 'checkout',
-          'like', 'vote', 'rating', 'engagement',
-          'breadcrumb', 'pagination'
-        ];
-        
-        return nonContentPatterns.some(pattern => 
-          className.toLowerCase().includes(pattern) ||
-          id.toLowerCase().includes(pattern) ||
-          tagName === pattern
+
+        if (nonContentTags.has(tagName)) return true;
+
+        const text = className + ' ' + id;
+        if (nonContentWordRegex.test(text)) return true;
+
+        return nonContentSubstringPatterns.some(pattern =>
+          className.includes(pattern) || id.includes(pattern)
         );
       },
       replacement: () => ''
@@ -55,13 +60,14 @@ class MarkdownConverter {
       replacement: () => '\n'
     });
 
-    // Handle images better
+    // Handle images — resolve lazy-loaded src and keep images without alt text
     this.turndownService.addRule('betterImages', {
       filter: 'img',
       replacement: (content, node) => {
         const alt = node.getAttribute('alt') || '';
-        const src = node.getAttribute('src') || '';
-        return alt ? `![${alt}](${src})` : '';
+        const src = this._resolveImageSrc(node);
+        if (!src) return '';
+        return `![${alt}](${src})`;
       }
     });
 
@@ -74,6 +80,83 @@ class MarkdownConverter {
       },
       replacement: (content) => content
     });
+  }
+
+  /**
+   * Convert an HTML fragment directly to markdown — no content extraction heuristics.
+   * The user already chose what they want, so we only strip universally junk elements
+   * (ads, popups, consent banners, e-commerce CTAs) and leave everything else intact.
+   */
+  convertHtmlFragment(html) {
+    if (!html || typeof html !== 'string') {
+      return '';
+    }
+
+    try {
+      if (!this._fragmentService) {
+        this._fragmentService = new TurndownService({
+          headingStyle: 'atx',
+          codeBlockStyle: 'fenced',
+          fence: '```',
+          emDelimiter: '*',
+          strongDelimiter: '**',
+          linkStyle: 'inlined',
+          linkReferenceStyle: 'full'
+        });
+        // Strip truly unwanted elements
+        this._fragmentService.remove(['script', 'style', 'iframe', 'noscript']);
+
+        // Remove universally junk elements (ads, popups, consent banners, etc.)
+        // but NOT content-level filtering (nav, header, social, comments, etc.)
+        // since the user explicitly selected what they want.
+        // Uses word-boundary regex to avoid false positives (e.g. "ad" in "header").
+        const junkPatterns = [
+          'advertisement',
+          'popup', 'modal', 'overlay',
+          'cookie', 'gdpr',
+          'subscription', 'newsletter', 'signup',
+          'buy-now', 'purchase', 'cart', 'checkout'
+        ];
+        // Short patterns that need word-boundary matching to avoid false positives
+        const junkRegexes = [
+          /(?:^|[\s_-])ad(?:[\s_-]|$)/,  // "ad" as a whole word/segment
+          ...junkPatterns.map(p => new RegExp(p.replace(/-/g, '\\-'), 'i'))
+        ];
+        this._fragmentService.addRule('removeJunk', {
+          filter: (node) => {
+            const className = (node.className || '').toLowerCase();
+            const id = (node.id || '').toLowerCase();
+            const text = className + ' ' + id;
+            return junkRegexes.some(re => re.test(text));
+          },
+          replacement: () => ''
+        });
+
+        // Handle lazy-loaded images (same rule as the full-page service)
+        this._fragmentService.addRule('betterImages', {
+          filter: 'img',
+          replacement: (content, node) => {
+            const alt = node.getAttribute('alt') || '';
+            const src = this._resolveImageSrc(node);
+            if (!src) return '';
+            return `![${alt}](${src})`;
+          }
+        });
+
+        // Clean up line breaks
+        this._fragmentService.addRule('cleanLineBreaks', {
+          filter: 'br',
+          replacement: () => '\n'
+        });
+      }
+
+      let markdown = this._fragmentService.turndown(html);
+      markdown = this.cleanupMarkdown(markdown);
+      return markdown;
+    } catch (error) {
+      console.error('🚨 [markdown-converter] Error converting HTML fragment:', error);
+      return '';
+    }
   }
 
   convertToMarkdown(html) {
@@ -308,6 +391,57 @@ class MarkdownConverter {
     );
 
     return !isExcluded;
+  }
+
+  /**
+   * Resolve the best image URL from an <img> element, handling lazy-loading
+   * patterns where the real URL lives in data-src, data-lazy-src, srcset, etc.
+   * and src holds a placeholder (data URI or tiny SVG).
+   */
+  _resolveImageSrc(node) {
+    const src = node.getAttribute('src') || '';
+    const dataSrc = node.getAttribute('data-src') || '';
+    const dataLazySrc = node.getAttribute('data-lazy-src') || '';
+    const srcset = node.getAttribute('srcset') || '';
+    const dataSrcset = node.getAttribute('data-srcset') || '';
+
+    const isPlaceholder = !src || src.startsWith('data:');
+
+    // If src is a placeholder, prefer lazy-load attributes
+    if (isPlaceholder) {
+      if (dataSrc) return dataSrc;
+      if (dataLazySrc) return dataLazySrc;
+
+      // Parse srcset/data-srcset for the best URL
+      const resolved = this._parseSrcsetBest(dataSrcset || srcset);
+      if (resolved) return resolved;
+
+      return ''; // no real URL found
+    }
+
+    return src;
+  }
+
+  /**
+   * Extract the highest-resolution URL from a srcset string.
+   * Format: "url1 100w, url2 200w" or "url1 1x, url2 2x"
+   */
+  _parseSrcsetBest(srcset) {
+    if (!srcset) return '';
+
+    const candidates = srcset.split(',').map(s => {
+      const parts = s.trim().split(/\s+/);
+      const url = parts[0];
+      const descriptor = parts[1] || '0w';
+      const value = parseFloat(descriptor) || 0;
+      return { url, value };
+    }).filter(c => c.url);
+
+    if (candidates.length === 0) return '';
+
+    // Pick the highest resolution
+    candidates.sort((a, b) => b.value - a.value);
+    return candidates[0].url;
   }
 
   cleanupMarkdown(markdown) {

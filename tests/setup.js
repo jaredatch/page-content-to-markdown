@@ -4,11 +4,20 @@ global.chrome = {
     sendMessage: jest.fn(),
     onMessage: {
       addListener: jest.fn()
+    },
+    onInstalled: {
+      addListener: jest.fn()
     }
   },
   tabs: {
     query: jest.fn(),
-    sendMessage: jest.fn()
+    sendMessage: jest.fn(),
+    onRemoved: {
+      addListener: jest.fn()
+    },
+    onUpdated: {
+      addListener: jest.fn()
+    }
   },
   action: {
     onClicked: {
@@ -17,6 +26,17 @@ global.chrome = {
   },
   notifications: {
     create: jest.fn()
+  },
+  contextMenus: {
+    create: jest.fn(),
+    onClicked: {
+      addListener: jest.fn()
+    }
+  },
+  commands: {
+    onCommand: {
+      addListener: jest.fn()
+    }
   }
 };
 
@@ -41,4 +61,4 @@ expect.extend({
       pass
     };
   }
-}); 
+});

@@ -130,6 +130,127 @@ describe('MarkdownConverter', () => {
     });
   });
 
+  describe('convertHtmlFragment', () => {
+    test('should convert HTML fragment without content extraction', () => {
+      const html = '<h2>Selected Heading</h2><p>Selected paragraph text.</p>';
+      const result = converter.convertHtmlFragment(html);
+
+      expect(result).toContain('## Selected Heading');
+      expect(result).toContain('Selected paragraph text.');
+      expect(result).toBeValidMarkdown();
+    });
+
+    test('should preserve content that full-page mode would strip', () => {
+      // Nav, social, header elements would be stripped by the full-page
+      // Turndown rules, but convertHtmlFragment trusts the user's selection
+      const html = '<nav><a href="/home">Home</a> | <a href="/about">About</a></nav>';
+      const result = converter.convertHtmlFragment(html);
+
+      expect(result).toContain('Home');
+      expect(result).toContain('About');
+    });
+
+    test('should still strip universally junk elements', () => {
+      const html = `
+        <div>
+          <p>Real content the user selected.</p>
+          <div class="cookie-notice">Accept cookies</div>
+          <div class="advertisement">Buy stuff</div>
+          <div id="gdpr-banner">Privacy consent</div>
+          <div class="popup-overlay">Sign up now!</div>
+        </div>
+      `;
+      const result = converter.convertHtmlFragment(html);
+
+      expect(result).toContain('Real content');
+      expect(result).not.toContain('Accept cookies');
+      expect(result).not.toContain('Buy stuff');
+      expect(result).not.toContain('Privacy consent');
+      expect(result).not.toContain('Sign up now');
+    });
+
+    test('should preserve social, header, comment content in fragments', () => {
+      const html = `
+        <div>
+          <div class="article-header"><p>By John Doe, Product Manager</p></div>
+          <div class="social-links"><a href="/twitter">@author</a></div>
+          <div class="comment-count">42 comments</div>
+        </div>
+      `;
+      const result = converter.convertHtmlFragment(html);
+
+      expect(result).toContain('John Doe');
+      expect(result).toContain('@author');
+      expect(result).toContain('42 comments');
+    });
+
+    test('should handle lists in fragments', () => {
+      const html = '<ul><li>Item A</li><li>Item B</li><li>Item C</li></ul>';
+      const result = converter.convertHtmlFragment(html);
+
+      expect(result).toContain('Item A');
+      expect(result).toContain('Item B');
+      expect(result).toContain('Item C');
+    });
+
+    test('should handle empty input', () => {
+      expect(converter.convertHtmlFragment('')).toBe('');
+      expect(converter.convertHtmlFragment(null)).toBe('');
+      expect(converter.convertHtmlFragment(undefined)).toBe('');
+    });
+
+    test('should clean up markdown output', () => {
+      const html = '<p>Text</p><p></p><p></p><p>More text</p>';
+      const result = converter.convertHtmlFragment(html);
+
+      // Should not have excessive line breaks
+      expect(result).not.toMatch(/\n{3,}/);
+    });
+  });
+
+  describe('image handling', () => {
+    test('should use src when it is a real URL', () => {
+      const html = '<img src="https://example.com/photo.jpg" alt="A photo">';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('![A photo](https://example.com/photo.jpg)');
+    });
+
+    test('should fall back to data-src when src is a data URI placeholder', () => {
+      const html = `<img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='100'%20height='100'%3E%3C/svg%3E"
+        data-src="https://example.com/real-image.png" alt="Lazy image">`;
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('![Lazy image](https://example.com/real-image.png)');
+      expect(result).not.toContain('data:image');
+    });
+
+    test('should fall back to data-lazy-src when src is a placeholder', () => {
+      const html = `<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP"
+        data-lazy-src="https://example.com/lazy.jpg" alt="Lazy loaded">`;
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('![Lazy loaded](https://example.com/lazy.jpg)');
+    });
+
+    test('should parse srcset when src is a placeholder and no data-src', () => {
+      const html = `<img src="data:image/svg+xml,%3Csvg%3E%3C/svg%3E"
+        srcset="https://example.com/small.jpg 400w, https://example.com/large.jpg 1600w"
+        alt="Responsive">`;
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('![Responsive](https://example.com/large.jpg)');
+    });
+
+    test('should include images without alt text', () => {
+      const html = '<img src="https://example.com/photo.jpg">';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('![](https://example.com/photo.jpg)');
+    });
+
+    test('should drop images with no resolvable URL', () => {
+      const html = `<img src="data:image/svg+xml,%3Csvg%3E%3C/svg%3E" alt="No real src">`;
+      const result = converter.convertToMarkdown(html);
+      expect(result).not.toContain('![No real src]');
+    });
+  });
+
   describe('cleanupMarkdown', () => {
     test('should remove excessive whitespace', () => {
       const markdown = '# Title\n\n\n\n\nParagraph\n\n\n';

@@ -5,7 +5,10 @@ console.log('🚀 [background] Background script loaded');
 
 class BackgroundScript {
   constructor() {
+    this.selectionState = new Map(); // tabId → { active: boolean }
     this.setupEventListeners();
+    this.setupContextMenu();
+    this.setupTabCleanup();
   }
 
   /**
@@ -21,16 +24,101 @@ class BackgroundScript {
     // Handle messages from popup or content scripts
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log('📨 [background] Received message:', request);
-      
+
       if (request.action === 'extractAndCopy') {
         this.handleExtractAndCopy(sendResponse);
         return true; // Indicates async response
       }
 
+      if (request.action === 'startSelectionMode') {
+        this.handleStartSelectionMode(sendResponse);
+        return true;
+      }
+
+      if (request.action === 'cancelSelectionMode') {
+        this.handleCancelSelectionMode(sendResponse);
+        return true;
+      }
+
+      if (request.action === 'getSelectionState') {
+        this.handleGetSelectionState(sendResponse);
+        return true;
+      }
+
+      if (request.action === 'selectionComplete') {
+        this.handleSelectionComplete(request.result, sender);
+        return false;
+      }
+
+      if (request.action === 'selectionCancelled') {
+        this.handleSelectionCancelled(sender);
+        return false;
+      }
+
       return false; // Let other handlers process the message
     });
 
+    // Handle keyboard commands
+    if (chrome.commands && chrome.commands.onCommand) {
+      chrome.commands.onCommand.addListener((command) => {
+        console.log('⌨️ [background] Command received:', command);
+        if (command === 'toggle-selection-mode') {
+          this.toggleSelectionMode();
+        }
+      });
+    }
+
     console.log('👂 [background] Event listeners set up');
+  }
+
+  /**
+   * Set up context menu for "Copy selection as Markdown"
+   */
+  setupContextMenu() {
+    if (!chrome.contextMenus) return;
+
+    chrome.runtime.onInstalled.addListener(() => {
+      chrome.contextMenus.create({
+        id: 'convert-selection',
+        title: 'Copy selection as Markdown',
+        contexts: ['selection']
+      });
+      chrome.contextMenus.create({
+        id: 'select-element',
+        title: 'Select element for Markdown',
+        contexts: ['page', 'image', 'link']
+      });
+      console.log('📋 [background] Context menus created');
+    });
+
+    chrome.contextMenus.onClicked.addListener((info, tab) => {
+      if (info.menuItemId === 'convert-selection') {
+        this.handleConvertTextSelection(tab);
+      }
+      if (info.menuItemId === 'select-element') {
+        this.handleSelectElement(tab);
+      }
+    });
+  }
+
+  /**
+   * Set up tab lifecycle cleanup for selection state
+   */
+  setupTabCleanup() {
+    if (chrome.tabs.onRemoved) {
+      chrome.tabs.onRemoved.addListener((tabId) => {
+        this.selectionState.delete(tabId);
+      });
+    }
+
+    if (chrome.tabs.onUpdated) {
+      chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+        // Clear selection state on navigation
+        if (changeInfo.status === 'loading') {
+          this.selectionState.delete(tabId);
+        }
+      });
+    }
   }
 
   /**
@@ -43,7 +131,7 @@ class BackgroundScript {
 
       // Extract content from the active tab
       const extractResult = await this.extractContentFromActiveTab();
-      
+
       if (!extractResult.success) {
         console.error('🚨 [background] Failed to extract content:', extractResult.error);
         this.showNotification('Error', extractResult.error, 'error');
@@ -101,6 +189,167 @@ class BackgroundScript {
   }
 
   /**
+   * Handle startSelectionMode message from popup
+   */
+  async handleStartSelectionMode(sendResponse) {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        sendResponse({ success: false, error: 'No active tab found' });
+        return;
+      }
+
+      const tabId = tabs[0].id;
+      await chrome.tabs.sendMessage(tabId, { action: 'startSelectionMode' });
+      this.selectionState.set(tabId, { active: true });
+      console.log(`🎯 [background] Selection mode started for tab ${tabId}`);
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('🚨 [background] Error starting selection mode:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle cancelSelectionMode message from popup
+   */
+  async handleCancelSelectionMode(sendResponse) {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        sendResponse({ success: false, error: 'No active tab found' });
+        return;
+      }
+
+      const tabId = tabs[0].id;
+      await chrome.tabs.sendMessage(tabId, { action: 'cancelSelectionMode' });
+      this.selectionState.delete(tabId);
+      console.log(`🎯 [background] Selection mode cancelled for tab ${tabId}`);
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('🚨 [background] Error cancelling selection mode:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle getSelectionState message from popup
+   */
+  async handleGetSelectionState(sendResponse) {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        sendResponse({ active: false });
+        return;
+      }
+
+      const tabId = tabs[0].id;
+      const state = this.selectionState.get(tabId);
+      sendResponse({ active: !!(state && state.active) });
+    } catch (error) {
+      sendResponse({ active: false });
+    }
+  }
+
+  /**
+   * Handle selectionComplete message from content script
+   */
+  async handleSelectionComplete(result, sender) {
+    const tabId = sender.tab ? sender.tab.id : null;
+    if (tabId) {
+      this.selectionState.delete(tabId);
+    }
+
+    if (result && result.success && result.markdown) {
+      const copyResult = await this.copyToClipboard(result.markdown);
+      if (copyResult.success) {
+        const count = result.extractionInfo ? result.extractionInfo.note : '';
+        this.showNotification('Success', `Selected content copied as markdown! ${count}`, 'success');
+      } else {
+        this.showNotification('Error', copyResult.error, 'error');
+      }
+    } else {
+      this.showNotification('Error', (result && result.error) || 'Selection conversion failed', 'error');
+    }
+  }
+
+  /**
+   * Handle selectionCancelled message from content script
+   */
+  handleSelectionCancelled(sender) {
+    const tabId = sender.tab ? sender.tab.id : null;
+    if (tabId) {
+      this.selectionState.delete(tabId);
+    }
+    console.log('🎯 [background] Selection cancelled by user');
+  }
+
+  /**
+   * Toggle selection mode for the active tab (keyboard shortcut)
+   */
+  async toggleSelectionMode() {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) return;
+
+      const tabId = tabs[0].id;
+      const state = this.selectionState.get(tabId);
+
+      if (state && state.active) {
+        await chrome.tabs.sendMessage(tabId, { action: 'cancelSelectionMode' });
+        this.selectionState.delete(tabId);
+        console.log(`🎯 [background] Selection mode toggled OFF for tab ${tabId}`);
+      } else {
+        await chrome.tabs.sendMessage(tabId, { action: 'startSelectionMode' });
+        this.selectionState.set(tabId, { active: true });
+        console.log(`🎯 [background] Selection mode toggled ON for tab ${tabId}`);
+      }
+    } catch (error) {
+      console.error('🚨 [background] Error toggling selection mode:', error);
+    }
+  }
+
+  /**
+   * Handle context menu "Copy selection as Markdown"
+   */
+  async handleConvertTextSelection(tab) {
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'convertTextSelection'
+      });
+
+      if (response && response.success && response.markdown) {
+        const copyResult = await this.copyToClipboard(response.markdown);
+        if (copyResult.success) {
+          this.showNotification('Success', 'Selection copied as markdown!', 'success');
+        } else {
+          this.showNotification('Error', copyResult.error, 'error');
+        }
+      } else {
+        this.showNotification('Error', (response && response.error) || 'Failed to convert selection', 'error');
+      }
+    } catch (error) {
+      console.error('🚨 [background] Error converting text selection:', error);
+      this.showNotification('Error', 'Failed to convert selection', 'error');
+    }
+  }
+
+  /**
+   * Handle context menu "Select element for Markdown"
+   * Starts selection mode with the right-clicked element pre-selected.
+   */
+  async handleSelectElement(tab) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: 'startSelectionWithElement' });
+      this.selectionState.set(tab.id, { active: true });
+      console.log(`🎯 [background] Selection mode started with element for tab ${tab.id}`);
+    } catch (error) {
+      console.error('🚨 [background] Error starting selection with element:', error);
+      this.showNotification('Error', 'Failed to start element selection', 'error');
+    }
+  }
+
+  /**
    * Extract content from the currently active tab
    * @returns {Promise<object>} Result object with success status and content/error
    */
@@ -110,7 +359,7 @@ class BackgroundScript {
 
       // Get the active tab
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       if (tabs.length === 0) {
         return {
           success: false,
@@ -123,7 +372,7 @@ class BackgroundScript {
 
       // Send message to content script to extract content
       console.log('📤 [background] Sending extraction request to content script');
-      
+
       const response = await chrome.tabs.sendMessage(activeTab.id, {
         action: 'extractContent'
       });
@@ -156,11 +405,11 @@ class BackgroundScript {
       }
 
       console.log('📋 [background] Copying to clipboard...');
-      
+
       await navigator.clipboard.writeText(text);
-      
+
       console.log('✅ [background] Successfully copied to clipboard');
-      
+
       return {
         success: true,
         message: 'Content copied to clipboard'
@@ -186,7 +435,7 @@ class BackgroundScript {
     // In a full implementation, you might use chrome.notifications API
     const icon = type === 'success' ? '✅' : type === 'error' ? '🚨' : 'ℹ️';
     console.log(`${icon} [background] ${title}: ${message}`);
-    
+
     // If notifications permission is available, create a notification
     if (chrome.notifications) {
       chrome.notifications.create({
@@ -208,6 +457,8 @@ if (typeof module !== 'undefined' && module.exports) {
     extractContentFromActiveTab: () => backgroundScript.extractContentFromActiveTab(),
     copyToClipboard: (text) => backgroundScript.copyToClipboard(text),
     handleActionClick: (tab) => backgroundScript.handleActionClick(tab),
-    handleExtractAndCopy: (sendResponse) => backgroundScript.handleExtractAndCopy(sendResponse)
+    handleExtractAndCopy: (sendResponse) => backgroundScript.handleExtractAndCopy(sendResponse),
+    getSelectionState: () => backgroundScript.selectionState,
+    toggleSelectionMode: () => backgroundScript.toggleSelectionMode()
   };
-} 
+}

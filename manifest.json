@@ -5,7 +5,8 @@
   "description": "Copy web pages as lean markdown for AI consumption",
   "permissions": [
     "activeTab",
-    "clipboardWrite"
+    "clipboardWrite",
+    "contextMenus"
   ],
   "content_scripts": [
     {
@@ -38,5 +39,14 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "commands": {
+    "toggle-selection-mode": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+M",
+        "mac": "Command+Shift+M"
+      },
+      "description": "Toggle element selection mode"
+    }
   }
 }

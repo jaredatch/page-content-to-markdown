@@ -10,7 +10,13 @@ describe('BackgroundScript', () => {
     chrome.tabs.sendMessage.mockReset();
     chrome.action.onClicked.addListener.mockReset();
     chrome.runtime.onMessage.addListener.mockReset();
+    chrome.runtime.onInstalled.addListener.mockReset();
     chrome.notifications.create.mockReset();
+    chrome.contextMenus.create.mockReset();
+    chrome.contextMenus.onClicked.addListener.mockReset();
+    chrome.commands.onCommand.addListener.mockReset();
+    chrome.tabs.onRemoved.addListener.mockReset();
+    chrome.tabs.onUpdated.addListener.mockReset();
     global.navigator.clipboard.writeText.mockReset();
 
     // Fresh import — module re-evaluates, constructor runs, listeners attached
@@ -264,6 +270,185 @@ describe('BackgroundScript', () => {
 
       expect(result).toBe(false);
       expect(sendResponse).not.toHaveBeenCalled();
+    });
+
+    test('should handle startSelectionMode message', async () => {
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+
+      messageHandler(
+        { action: 'startSelectionMode' },
+        {},
+        sendResponse
+      );
+      await flush();
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+        action: 'startSelectionMode'
+      });
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    test('should handle getSelectionState message', async () => {
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+
+      // No selection active yet
+      messageHandler(
+        { action: 'getSelectionState' },
+        {},
+        sendResponse
+      );
+      await flush();
+
+      expect(sendResponse).toHaveBeenCalledWith({ active: false });
+    });
+
+    test('should handle selectionComplete message', async () => {
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      navigator.clipboard.writeText.mockResolvedValue();
+
+      messageHandler(
+        {
+          action: 'selectionComplete',
+          result: {
+            success: true,
+            markdown: '## Selected\n\nContent here.',
+            extractionInfo: { note: '1 element' }
+          }
+        },
+        { tab: { id: 123 } },
+        sendResponse
+      );
+      await flush();
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('## Selected\n\nContent here.');
+    });
+
+    test('should handle selectionCancelled message', () => {
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      // Set up selection state first
+      BackgroundScript.getSelectionState().set(123, { active: true });
+
+      messageHandler(
+        { action: 'selectionCancelled' },
+        { tab: { id: 123 } },
+        sendResponse
+      );
+
+      expect(BackgroundScript.getSelectionState().has(123)).toBe(false);
+    });
+
+    test('should handle cancelSelectionMode message', async () => {
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+
+      messageHandler(
+        { action: 'cancelSelectionMode' },
+        {},
+        sendResponse
+      );
+      await flush();
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+        action: 'cancelSelectionMode'
+      });
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+  });
+
+  describe('context menu', () => {
+    test('should register context menus on install', () => {
+      expect(chrome.runtime.onInstalled.addListener).toHaveBeenCalled();
+
+      // Simulate onInstalled callback
+      const onInstalledCallback = chrome.runtime.onInstalled.addListener.mock.calls[0][0];
+      onInstalledCallback();
+
+      expect(chrome.contextMenus.create).toHaveBeenCalledWith({
+        id: 'convert-selection',
+        title: 'Copy selection as Markdown',
+        contexts: ['selection']
+      });
+      expect(chrome.contextMenus.create).toHaveBeenCalledWith({
+        id: 'select-element',
+        title: 'Select element for Markdown',
+        contexts: ['page', 'image', 'link']
+      });
+    });
+
+    test('should set up context menu click listener', () => {
+      expect(chrome.contextMenus.onClicked.addListener).toHaveBeenCalledWith(
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('commands', () => {
+    const flush = () => new Promise(resolve => setTimeout(resolve, 10));
+
+    test('should set up command listener', () => {
+      expect(chrome.commands.onCommand.addListener).toHaveBeenCalledWith(
+        expect.any(Function)
+      );
+    });
+
+    test('should toggle selection mode on command', async () => {
+      const commandHandler = chrome.commands.onCommand.addListener.mock.calls[0][0];
+
+      chrome.tabs.query.mockResolvedValue([{ id: 456 }]);
+      chrome.tabs.sendMessage.mockResolvedValue({ success: true });
+
+      commandHandler('toggle-selection-mode');
+      await flush();
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(456, {
+        action: 'startSelectionMode'
+      });
+    });
+  });
+
+  describe('tab cleanup', () => {
+    test('should set up tab removal listener', () => {
+      expect(chrome.tabs.onRemoved.addListener).toHaveBeenCalledWith(
+        expect.any(Function)
+      );
+    });
+
+    test('should set up tab update listener', () => {
+      expect(chrome.tabs.onUpdated.addListener).toHaveBeenCalledWith(
+        expect.any(Function)
+      );
+    });
+
+    test('should clear selection state on tab removal', () => {
+      BackgroundScript.getSelectionState().set(999, { active: true });
+
+      const removeHandler = chrome.tabs.onRemoved.addListener.mock.calls[0][0];
+      removeHandler(999);
+
+      expect(BackgroundScript.getSelectionState().has(999)).toBe(false);
+    });
+
+    test('should clear selection state on navigation', () => {
+      BackgroundScript.getSelectionState().set(888, { active: true });
+
+      const updateHandler = chrome.tabs.onUpdated.addListener.mock.calls[0][0];
+      updateHandler(888, { status: 'loading' });
+
+      expect(BackgroundScript.getSelectionState().has(888)).toBe(false);
     });
   });
 });

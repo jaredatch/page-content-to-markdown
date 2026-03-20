@@ -16,6 +16,17 @@ jest.mock('../../src/utils/simple-universal-extractor', () => {
   }));
 });
 
+jest.mock('../../src/content/element-picker', () => {
+  return jest.fn().mockImplementation(({ onConfirm, onCancel }) => ({
+    activate: jest.fn(),
+    deactivate: jest.fn(),
+    onConfirm,
+    onCancel,
+    selectedElements: [],
+    getSelectedHtml: jest.fn().mockReturnValue([])
+  }));
+});
+
 let MarkdownConverter;
 let SimpleUniversalExtractor;
 let ContentScript;
@@ -34,8 +45,10 @@ describe('ContentScript', () => {
 
     // Set up mock return values
     mockConvertToMarkdown = jest.fn().mockReturnValue('');
+    const mockConvertHtmlFragment = jest.fn().mockReturnValue('## Fragment\n\nConverted fragment text.');
     MarkdownConverter.mockImplementation(() => ({
-      convertToMarkdown: mockConvertToMarkdown
+      convertToMarkdown: mockConvertToMarkdown,
+      convertHtmlFragment: mockConvertHtmlFragment
     }));
 
     mockExtractContent = jest.fn().mockResolvedValue({
@@ -204,6 +217,89 @@ describe('ContentScript', () => {
       );
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('selection mode message handling', () => {
+    test('should respond to startSelectionMode message', () => {
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      const result = messageHandler(
+        { action: 'startSelectionMode' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    test('should respond to cancelSelectionMode message', () => {
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      messageHandler(
+        { action: 'cancelSelectionMode' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    test('should respond to convertTextSelection message', () => {
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      messageHandler(
+        { action: 'convertTextSelection' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      // Should respond (even if no selection exists)
+      expect(sendResponse).toHaveBeenCalled();
+    });
+
+    test('should respond to startSelectionWithElement message', () => {
+      const sendResponse = jest.fn();
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      messageHandler(
+        { action: 'startSelectionWithElement' },
+        { tab: { id: 1 } },
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+  });
+
+  describe('convertElementsToMarkdown', () => {
+    test('should convert selected DOM elements to markdown', () => {
+      const instance = new ContentScript();
+      const el1 = document.createElement('p');
+      el1.textContent = 'First selected paragraph';
+      const el2 = document.createElement('p');
+      el2.textContent = 'Second selected paragraph';
+
+      const result = instance.convertElementsToMarkdown([el1, el2]);
+
+      expect(result.success).toBe(true);
+      expect(result.markdown).toBeDefined();
+      expect(result.extractionInfo.method).toBe('selective-turndown');
+      expect(result.extractionInfo.note).toContain('2 selected element');
+    });
+
+    test('should include metadata header', () => {
+      const instance = new ContentScript();
+      const el = document.createElement('div');
+      el.innerHTML = '<h2>Section</h2><p>Content</p>';
+
+      const result = instance.convertElementsToMarkdown([el]);
+
+      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('---');
     });
   });
 
