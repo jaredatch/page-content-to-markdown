@@ -17,21 +17,20 @@ A Firefox-first (with Chrome support) browser extension that converts web page c
 
 ## 2. Current State Assessment
 
-### What Exists
-- Manifest V3 browser extension with popup UI, background service worker, content script, and utility modules
+### What Exists (post-Phase 1)
+- Manifest V3 browser extension with popup UI, background service worker, content script
 - Polished popup interface (gradient theme, animations, progress/success/error states)
-- Three content extraction modules (only one is wired up)
+- Two-tier extraction pipeline: Turndown (primary) → SimpleUniversalExtractor (fallback)
 - Webpack build system with Babel transpilation
-- Jest test suite (6 unit test files + E2E setup)
+- Jest test suite (5 unit test files, 66 tests passing + E2E setup)
+- Firefox and Chrome compatible manifest
 - MIT license, README
 
 ### Architecture (Current)
 ```
-popup.js  →  background.js  →  content-script.js  →  SimpleUniversalExtractor
-   UI          messaging          page access            text extraction
+popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Turndown)
+   UI          messaging          page access        ↘ SimpleUniversalExtractor (fallback)
 ```
-
-### Overall Rating: 6.5/10 — Decent skeleton, but the core conversion (the whole point) is the weakest part.
 
 ---
 
@@ -85,7 +84,7 @@ popup.js  →  background.js  →  content-script.js  →  SimpleUniversalExtrac
   - Tables converted
   - Bold/italic/strikethrough preserved
 - [x] **1.7** Update and fix test suite to match new pipeline
-- [ ] **1.8** Test extension manually in Firefox and Chrome
+- [x] **1.8** Test extension manually in Firefox and Chrome
 
 ### Phase 2: Core Features — Selective Conversion
 > Let users convert specific parts of a page, not just the whole thing.
@@ -140,7 +139,7 @@ popup.js  →  background.js  →  content-script.js  →  SimpleUniversalExtrac
 | Date | Phase | Items Completed | Notes |
 |------|-------|----------------|-------|
 | 2026-03-20 | — | Initial assessment | Forked project reviewed, PLAN.md and CLAUDE.md created |
-| 2026-03-20 | Phase 1 | 1.1–1.7 | Foundation fixed: Turndown wired as primary converter, fallback chain working, icons created, Firefox manifest updated, dead code removed, all 66 tests passing. Manual browser testing (1.8) still needed. |
+| 2026-03-20 | Phase 1 | 1.1–1.8 | Foundation complete. Turndown wired as primary converter, fallback chain working, icons created, Firefox manifest updated, dead code removed, 66 tests passing. Tested manually in Firefox — working. Fixed Turndown ES module interop issue discovered during browser testing. |
 
 ---
 

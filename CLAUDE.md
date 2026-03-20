@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Early development. Forked from an untested project; under active rework.
+**Status:** Phase 1 complete. Core conversion working (Turndown primary, text fallback). Builds and loads in Firefox + Chrome.
 
 ## Quick Reference
 
@@ -40,10 +40,9 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | File | Purpose |
 |------|---------|
 | `manifest.json` | Extension manifest (MV3) |
-| `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown (intended primary converter) |
+| `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown (primary converter) |
 | `src/utils/simple-universal-extractor.js` | Text extraction fallback (guaranteed to return something) |
-| `src/utils/universal-content-extractor.js` | DOM-scoring extractor (currently unused, candidate for removal) |
-| `webpack.config.js` | Build config — 4 entry points → `dist/` |
+| `webpack.config.js` | Build config — 3 entry points → `dist/` |
 | `PLAN.md` | Project plan, phases, progress tracking |
 
 ## Build & Load Extension
@@ -83,5 +82,6 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 
 - See `PLAN.md` for the full project plan, known issues, and progress tracking.
 - See `ABOUT.md` for the original project vision and goals.
-- The project was forked from an existing repo. All original code is subject to change — nothing is sacred.
 - Firefox is the primary target. Chrome support is desired but secondary.
+- Turndown `require()` needs `TurndownImport.default || TurndownImport` due to webpack ES module interop with Turndown's browser bundle.
+- `jsdom` is marked as a webpack external — it's only used in the Node.js branch of `markdown-converter.js` for testing, never in the browser.
