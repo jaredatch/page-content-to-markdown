@@ -17,13 +17,16 @@ A Firefox-first (with Chrome support) browser extension that converts web page c
 
 ## 2. Current State Assessment
 
-### What Exists (post-Phase 1)
+### What Exists (post-Phase 2)
 - Manifest V3 browser extension with popup UI, background service worker, content script
 - Polished popup interface (gradient theme, animations, progress/success/error states)
 - Two-tier extraction pipeline: Turndown (primary) → SimpleUniversalExtractor (fallback)
+- Selective element conversion: ElementPicker (shadow DOM), context menus, keyboard shortcut
+- Two Turndown instances: full-page (content filtering) and fragment (minimal filtering)
+- Lazy-loaded image resolution (data-src, data-lazy-src, srcset fallbacks)
 - Webpack build system with Babel transpilation
-- Jest test suite (5 unit test files, 66 tests passing + E2E setup)
-- Firefox and Chrome compatible manifest
+- Jest test suite (6 unit test files, 123 tests passing + E2E setup)
+- Firefox and Chrome compatible manifest (contextMenus permission, commands section)
 - MIT license, README
 
 ### Architecture (Current)
@@ -89,13 +92,13 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 ### Phase 2: Core Features — Selective Conversion
 > Let users convert specific parts of a page, not just the whole thing.
 
-- [ ] **2.1** Design element selection UX (element picker / highlight on hover)
-- [ ] **2.2** Implement content script overlay for element selection mode
-- [ ] **2.3** Add "Select elements" option to popup UI alongside "Copy full page"
-- [ ] **2.4** Support converting selected element(s) to markdown
-- [ ] **2.5** Handle multi-selection (user picks several sections)
-- [ ] **2.6** Add keyboard shortcut to toggle selection mode
-- [ ] **2.7** Add right-click context menu integration ("Convert selection to markdown")
+- [x] **2.1** Design element selection UX (element picker / highlight on hover)
+- [x] **2.2** Implement content script overlay for element selection mode (shadow DOM, floating toolbar)
+- [x] **2.3** Add "Select elements" option to popup UI alongside "Copy full page"
+- [x] **2.4** Support converting selected element(s) to markdown (`convertHtmlFragment` with separate Turndown instance)
+- [x] **2.5** Handle multi-selection (user picks several sections, nested element replacement)
+- [x] **2.6** Add keyboard shortcut to toggle selection mode (`Cmd+Shift+M` / `Ctrl+Shift+M`)
+- [x] **2.7** Add right-click context menu integration ("Copy selection as Markdown" for text, "Select element for Markdown" with pre-selection for elements)
 
 ### Phase 3: Output Options — Clipboard & File
 > Give users control over what happens with the converted markdown.
@@ -140,6 +143,7 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 |------|-------|----------------|-------|
 | 2026-03-20 | — | Initial assessment | Forked project reviewed, PLAN.md and CLAUDE.md created |
 | 2026-03-20 | Phase 1 | 1.1–1.8 | Foundation complete. Turndown wired as primary converter, fallback chain working, icons created, Firefox manifest updated, dead code removed, 66 tests passing. Tested manually in Firefox — working. Fixed Turndown ES module interop issue discovered during browser testing. |
+| 2026-03-20 | Phase 2 | 2.1–2.7 | Selective conversion complete. ElementPicker with shadow DOM UI, hover highlights, click-to-select with numbered badges, floating toolbar. Two context menu items (text selection + element selection with pre-select). Keyboard shortcut (Cmd+Shift+M). Separate Turndown instance for fragments (no content filtering on user selections). Fixed lazy-loaded image resolution (data-src/srcset fallback). Fixed false-positive pattern matching ("ad" in "header"). 123 tests passing. |
 
 ---
 
@@ -163,16 +167,17 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 
 ```
 src/
-  background/background.js     — Service worker, message routing, clipboard
-  content/content-script.js    — Page-context script, Turndown primary + fallback chain
-  popup/popup.html              — Extension popup markup
+  background/background.js     — Service worker, message routing, clipboard, per-tab selection state, context menus, commands
+  content/content-script.js    — Page-context script, Turndown primary + fallback chain, selection mode, text selection conversion
+  content/element-picker.js    — ElementPicker class (shadow DOM UI, hover/select overlays, floating toolbar)
+  popup/popup.html              — Extension popup markup (two action buttons + selection-active state)
   popup/popup.css               — Popup styles (polished, gradient theme)
-  popup/popup.js                — Popup controller, button handling, status UI
+  popup/popup.js                — Popup controller, button handling, selection state check, status UI
   utils/
-    markdown-converter.js           — Turndown-based HTML→Markdown (PRIMARY converter)
+    markdown-converter.js           — Turndown-based HTML→Markdown (two instances: full-page + fragment)
     simple-universal-extractor.js   — Text extraction (FALLBACK)
 icons/                          — Placeholder extension icons (16, 32, 48, 128px)
 tests/
-  unit/                         — 5 test suites (66 tests)
+  unit/                         — 6 test suites (123 tests)
   e2e/                          — Puppeteer-based E2E tests
 ```
