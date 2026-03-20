@@ -1,4 +1,5 @@
-const TurndownService = require('turndown');
+const TurndownImport = require('turndown');
+const TurndownService = TurndownImport.default || TurndownImport;
 
 class MarkdownConverter {
   constructor() {
