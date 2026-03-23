@@ -17,15 +17,17 @@ A Firefox-first (with Chrome support) browser extension that converts web page c
 
 ## 2. Current State Assessment
 
-### What Exists (post-Phase 2)
+### What Exists (post-Phase 4)
 - Manifest V3 browser extension with popup UI, background service worker, content script
 - Polished popup interface (gradient theme, animations, progress/success/error states)
 - Two-tier extraction pipeline: Turndown (primary) → SimpleUniversalExtractor (fallback)
 - Selective element conversion: ElementPicker (shadow DOM), context menus, keyboard shortcut
 - Two Turndown instances: full-page (content filtering) and fragment (minimal filtering)
 - Lazy-loaded image resolution (data-src, data-lazy-src, srcset fallbacks)
+- Output options: clipboard or save-as-file, metadata toggle, user preferences
+- X/Twitter site-specific presets: XExtractor + XFormatter with auto-detection, 3 content types (tweet, thread, article)
 - Webpack build system with Babel transpilation
-- Jest test suite (7 unit test files, 156 tests passing + E2E setup)
+- Jest test suite (10 unit test files, 237 tests passing + E2E setup)
 - Firefox and Chrome compatible manifest (contextMenus permission, commands section)
 - MIT license, README
 
@@ -112,16 +114,15 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 ### Phase 4: Site-Specific Presets — X (Twitter)
 > Native support for converting X/Twitter content with predefined templates.
 
-- [ ] **4.1** Research X/Twitter DOM structure for tweets, replies, articles
-- [ ] **4.2** Build X-specific content extractor:
-  - Single tweet → markdown
-  - Tweet + replies thread → markdown
-  - X article (long-form) → markdown
-  - X article + replies → markdown
-- [ ] **4.3** Auto-detect when user is on X and show preset options in popup
-- [ ] **4.4** Design preset selector UI in popup
-- [ ] **4.5** Handle X's dynamic loading (infinite scroll, lazy-loaded replies)
-- [ ] **4.6** Test against X's frequent DOM changes — build resilience
+- [x] **4.1** Research X/Twitter DOM structure for tweets, replies, articles
+- [x] **4.2** Build X-specific content extractor (XExtractor + XFormatter):
+  - Single tweet → structured markdown (author, timestamp, text, media, engagement)
+  - Tweet + replies thread → sequential tweet blocks
+  - X article (long-form) → title, author, body converted via Turndown fragment
+- [x] **4.3** Auto-detect when user is on X and show preset options in popup (SiteDetector utility)
+- [x] **4.4** Design preset selector UI in popup (compact button grid with Copy/Save text toggle)
+- [x] **4.5** Tiered selector strategy for resilience (data-testid → ARIA roles → structural selectors)
+- [x] **4.6** Fallback to generic Turndown conversion when X-specific extraction fails
 
 ### Phase 5: Polish & Release
 > Final cleanup and preparation for distribution.
@@ -145,6 +146,7 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 | 2026-03-20 | Phase 1 | 1.1–1.8 | Foundation complete. Turndown wired as primary converter, fallback chain working, icons created, Firefox manifest updated, dead code removed, 66 tests passing. Tested manually in Firefox — working. Fixed Turndown ES module interop issue discovered during browser testing. |
 | 2026-03-20 | Phase 2 | 2.1–2.7 | Selective conversion complete. ElementPicker with shadow DOM UI, hover highlights, click-to-select with numbered badges, floating toolbar. Two context menu items (text selection + element selection with pre-select). Keyboard shortcut (Cmd+Shift+M). Separate Turndown instance for fragments (no content filtering on user selections). Fixed lazy-loaded image resolution (data-src/srcset fallback). Fixed false-positive pattern matching ("ad" in "header"). 123 tests passing. |
 | 2026-03-20 | Phase 3 | 3.1–3.5 | Output options complete. Preferences module (chrome.storage.local). Popup UI: metadata checkbox, output mode segmented toggle (Copy/Save), dynamic button text. Background: dispatchOutput() routes to clipboard or file, generateFilename() with sanitization/truncation, clipboard fallback via content script. Content script: conditional metadata header, writeToClipboard handler, saveAsFile handler (Blob URL + `<a>` click). Firefox data URI blocked in chrome.downloads — switched to Blob approach. 156 tests passing. |
+| 2026-03-23 | Phase 4 | 4.1–4.6 | X/Twitter presets complete. Extractor/Formatter separation: XExtractor (DOM parsing with tiered selectors) + XFormatter (structured markdown output). SiteDetector for URL-based auto-detection. Popup shows X preset buttons (Copy/Save Tweet, Thread, Article) when on x.com/twitter.com. Content types: single tweet, thread, article. Structured format with author heading, timestamp, media, engagement stats. Falls back to generic Turndown on failure. Tweet and thread presets tested and working well. Article preset functional but needs formatting polish (deferred — requires Chrome extension DOM inspection). 237 tests passing (10 suites). |
 
 ---
 
@@ -162,24 +164,31 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 - Do we want a configurable options/settings page from the start, or defer to Phase 5?
 - Should the extension support converting pages to formats beyond markdown (e.g., plain text, HTML snippet)?
 
+### Future Ideas
+- **X Article extraction polish** — Article extraction works but needs formatting/conversion improvement. Requires inspecting real X article DOM structure (use `claude --chrome` with Chrome extension for live DOM inspection). Single tweet and thread presets are solid; article is the remaining rough edge.
+- **Video extraction via Downie integration** — When converting posts/articles that contain video, integrate with [Downie](https://software.charliemonroe.net/downie/) (macOS video downloader) to extract and save the video alongside the markdown. Currently X videos render as `[Video](thumbnail-url)` pointing at the poster/thumbnail image, not the actual video. Could pass the tweet/page URL to Downie via its URL scheme (`downie://`) or AppleScript to trigger a download.
+
 ---
 
 ## 7. File Map (Current)
 
 ```
 src/
-  background/background.js     — Service worker, message routing, clipboard (with fallback), output dispatch, file save, per-tab selection state, context menus, commands
-  content/content-script.js    — Page-context script, Turndown primary + fallback chain, selection mode, text selection conversion, clipboard fallback, file save (Blob URL)
+  background/background.js     — Service worker, message routing, clipboard (with fallback), output dispatch, file save, per-tab selection state, context menus, commands, X content routing
+  content/content-script.js    — Page-context script, Turndown primary + fallback chain, selection mode, text selection conversion, clipboard fallback, file save (Blob URL), X extraction handler
   content/element-picker.js    — ElementPicker class (shadow DOM UI, hover/select overlays, floating toolbar)
-  popup/popup.html              — Extension popup markup (action buttons, options section, selection-active state)
-  popup/popup.css               — Popup styles (polished, gradient theme, options/toggle controls)
-  popup/popup.js                — Popup controller, button handling, preferences loading, selection state check, status UI
+  popup/popup.html              — Extension popup markup (action buttons, options section, X presets section, selection-active state)
+  popup/popup.css               — Popup styles (polished, gradient theme, options/toggle controls, X preset buttons)
+  popup/popup.js                — Popup controller, button handling, preferences loading, site detection, X preset handlers, selection state check, status UI
   utils/
     markdown-converter.js           — Turndown-based HTML→Markdown (two instances: full-page + fragment)
     preferences.js                  — Preferences wrapper (chrome.storage.local, defaults + merge)
     simple-universal-extractor.js   — Text extraction (FALLBACK)
+    site-detector.js                — URL-based site detection for auto-showing presets
+    x-extractor.js                  — X/Twitter DOM parser (tweets, threads, articles → structured data)
+    x-formatter.js                  — X/Twitter markdown formatter (structured data → markdown)
 icons/                          — Placeholder extension icons (16, 32, 48, 128px)
 tests/
-  unit/                         — 7 test suites (156 tests)
+  unit/                         — 10 test suites (237 tests)
   e2e/                          — Puppeteer-based E2E tests
 ```

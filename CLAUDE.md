@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phase 3 complete. Full-page and selective conversion with output options (clipboard or save-as-file), metadata header toggle, and user preferences. 156 tests passing.
+**Status:** Phase 4 complete. Full-page conversion, selective element conversion, output options (clipboard/file), and X/Twitter site-specific presets (single tweet, thread work well; article functional but needs polish). 237 tests passing.
 
 ## Quick Reference
 
@@ -23,13 +23,16 @@ npm run lint         # ESLint
 ```
 Popup (UI) → Background (service worker) → Content Script (page context) → Extractor/Converter
                                                                          ↘ ElementPicker (selection mode)
+                                                                         ↘ XExtractor + XFormatter (X/Twitter)
 ```
 
 - **Popup** (`src/popup/`) — User-facing UI. Actions: "Copy/Save Page as Markdown" and "Select Elements". Options: metadata toggle, output mode (clipboard/file). Shows selection-active state when picker is running.
 - **Background** (`src/background/background.js`) — Service worker. Routes messages, handles clipboard (with content script fallback), output dispatch (clipboard or file), manages per-tab selection state (`Map`), context menus, keyboard commands.
 - **Content Script** (`src/content/content-script.js`) — Injected into web pages. Full-page extraction, element selection mode, text selection conversion, clipboard fallback, file save via Blob URL.
 - **Element Picker** (`src/content/element-picker.js`) — Shadow DOM overlay for hover-highlight, click-to-select, floating toolbar. Bundled with content script via webpack.
-- **Utils** (`src/utils/`) — Extraction, conversion, and preferences modules.
+- **Utils** (`src/utils/`) — Extraction, conversion, preferences, and site-specific modules.
+- **X/Twitter** (`src/utils/x-extractor.js`, `x-formatter.js`) — Site-specific extraction for tweets, threads, articles. XExtractor reads DOM with tiered selectors (data-testid → ARIA → structural). XFormatter produces structured markdown.
+- **Site Detector** (`src/utils/site-detector.js`) — URL-based site detection for auto-showing presets in popup.
 
 ### Message Flow — Full Page
 1. Popup sends `"extractAndCopy"` → Background
@@ -52,6 +55,14 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Text selected:** "Copy selection as Markdown" → `"convertTextSelection"` → Content Script converts selection DOM fragment
 - **No text selected:** "Select element for Markdown" → `"startSelectionWithElement"` → Content Script activates picker with right-clicked element pre-selected
 
+### Message Flow — X/Twitter Preset
+1. Popup detects X via `SiteDetector.detect(url)`, shows preset buttons
+2. User clicks "Copy Tweet" → Popup sends `"extractXContent"` with `contentType: "single-tweet"` → Background
+3. Background reads preferences, sends `"extractXContent"` with contentType + options → Content Script
+4. Content Script creates XExtractor + XFormatter, extracts and formats → returns markdown
+5. On failure, Content Script falls back to generic `convertPageToMarkdown()`
+6. Background calls `dispatchOutput()` → clipboard or file → notifies popup
+
 ## Key Files
 
 | File | Purpose |
@@ -61,6 +72,9 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown — two instances: full-page (with content filtering) and fragment (minimal filtering for user selections) |
 | `src/utils/preferences.js` | Preferences wrapper around `chrome.storage.local` (outputMode, includeMetadata) |
 | `src/utils/simple-universal-extractor.js` | Text extraction fallback (guaranteed to return something) |
+| `src/utils/site-detector.js` | URL-based site detection (X/Twitter auto-detection) |
+| `src/utils/x-extractor.js` | X/Twitter DOM parser — extracts tweets, threads, articles as structured data |
+| `src/utils/x-formatter.js` | X/Twitter markdown formatter — structured data → markdown strings |
 | `webpack.config.js` | Build config — 3 entry points → `dist/` |
 | `PLAN.md` | Project plan, phases, progress tracking |
 
@@ -114,4 +128,8 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Lazy-loaded images:** `_resolveImageSrc()` handles sites that put placeholder SVGs in `src` and real URLs in `data-src`, `data-lazy-src`, or `srcset`/`data-srcset`.
 - **Content filtering patterns** use word-boundary regex for short patterns like `ad` to avoid false positives (e.g., `header` contains `ad` as a substring).
 - **Preferences** stored in `chrome.storage.local`. `Preferences.get()` merges stored values with defaults (`outputMode: 'clipboard'`, `includeMetadata: true`). Shared by popup and background via webpack.
-- **Output dispatch** — `dispatchOutput()` in background reads preferences and routes to `copyToClipboard()` or `saveAsFile()`. All output paths (full page, selection, context menu) go through this single dispatcher.
+- **Output dispatch** — `dispatchOutput()` in background reads preferences and routes to `copyToClipboard()` or `saveAsFile()`. All output paths (full page, selection, context menu, X presets) go through this single dispatcher.
+- **X/Twitter Extractor/Formatter separation** — `XExtractor` returns structured data objects (TweetData, ThreadData, ArticleData), `XFormatter` converts them to markdown. This makes extraction testable against mock DOM independently of formatting.
+- **X selector resilience** — `_query()` and `_queryAll()` helpers try selectors in priority order: `data-testid` (primary) → ARIA roles (fallback) → structural tags (last resort). When all selectors fail, extraction returns `null` and the content script falls back to generic Turndown conversion.
+- **X extraction methods accept URL parameter** — `extractSingleTweet(doc, url)` and `extractThread(doc, url)` take an optional URL to identify the focal tweet. This avoids needing to mock `document.location` in jsdom tests.
+- **Popup auto-detection is URL-only** — `SiteDetector.detect()` checks hostname, called directly in popup (no background round-trip). All three X buttons always show; wrong content type gives a clear error message rather than pre-detecting at popup-open time.

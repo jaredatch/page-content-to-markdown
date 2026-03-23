@@ -7,6 +7,8 @@ console.log('🚀 [content-script] Content script loaded');
 const MarkdownConverter = require('../utils/markdown-converter');
 const SimpleUniversalExtractor = require('../utils/simple-universal-extractor');
 const ElementPicker = require('./element-picker');
+const XExtractor = require('../utils/x-extractor');
+const XFormatter = require('../utils/x-formatter');
 
 class ContentScript {
   constructor() {
@@ -208,6 +210,63 @@ class ContentScript {
   }
 
   /**
+   * Extract X/Twitter-specific content.
+   * Falls back to generic convertPageToMarkdown on failure.
+   */
+  async extractXContent(contentType, options = {}) {
+    const metadata = this.getPageMetadata();
+    const includeMetadata = options.includeMetadata !== false;
+
+    try {
+      console.log(`🐦 [content-script] Starting X extraction: ${contentType}`);
+      const extractor = new XExtractor();
+      const formatter = new XFormatter();
+      let markdown;
+
+      switch (contentType) {
+        case 'single-tweet': {
+          const tweetData = extractor.extractSingleTweet(document, window.location.href);
+          if (!tweetData) throw new Error('Could not find tweet on this page');
+          markdown = formatter.formatTweet(tweetData);
+          break;
+        }
+        case 'thread': {
+          const threadData = extractor.extractThread(document, window.location.href);
+          if (!threadData) throw new Error('Could not find thread on this page');
+          markdown = formatter.formatThread(threadData);
+          break;
+        }
+        case 'article': {
+          const articleData = extractor.extractArticle(document);
+          if (!articleData) throw new Error('Could not find article on this page');
+          markdown = formatter.formatArticle(articleData, this.converter);
+          break;
+        }
+        default:
+          throw new Error(`Unknown X content type: ${contentType}`);
+      }
+
+      if (includeMetadata) {
+        markdown = this.addMetadataHeader(markdown, metadata);
+      }
+
+      console.log(`✅ [content-script] X extraction succeeded: ${contentType}`);
+      return {
+        success: true,
+        markdown,
+        metadata,
+        extractionInfo: {
+          method: `x-${contentType}`,
+          note: `Extracted X ${contentType} via site-specific extractor`
+        }
+      };
+    } catch (error) {
+      console.warn(`⚠️ [content-script] X extraction failed for ${contentType}, falling back to generic:`, error.message);
+      return this.convertPageToMarkdown(options);
+    }
+  }
+
+  /**
    * Start element selection mode.
    */
   startSelectionMode() {
@@ -298,6 +357,13 @@ class ContentScript {
             });
           });
 
+        return true; // async response
+      }
+
+      if (request.action === 'extractXContent') {
+        this.extractXContent(request.contentType, request.options || {})
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: error.message }));
         return true; // async response
       }
 

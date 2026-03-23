@@ -614,4 +614,87 @@ describe('BackgroundScript', () => {
       expect(BackgroundScript.getSelectionState().has(888)).toBe(false);
     });
   });
+
+  describe('X content extraction', () => {
+    test('should route extractXContent message to content script', async () => {
+      const mockTab = { id: 1, url: 'https://x.com/user/status/123' };
+      chrome.tabs.query.mockResolvedValue([mockTab]);
+      chrome.tabs.sendMessage.mockResolvedValue({
+        success: true,
+        markdown: '## @user\n\nTweet\n\n---',
+        metadata: { title: 'Tweet', url: 'https://x.com/user/status/123' }
+      });
+      global.navigator.clipboard.writeText.mockResolvedValue();
+
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      const result = messageHandler(
+        { action: 'extractXContent', contentType: 'single-tweet' },
+        {},
+        sendResponse
+      );
+
+      expect(result).toBe(true); // async response
+
+      // Wait for async operations
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          action: 'extractXContent',
+          contentType: 'single-tweet'
+        })
+      );
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+
+    test('should handle X extraction failure', async () => {
+      chrome.tabs.query.mockResolvedValue([]);
+
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      messageHandler(
+        { action: 'extractXContent', contentType: 'single-tweet' },
+        {},
+        sendResponse
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    test('should dispatch X content through output pipeline', async () => {
+      const mockTab = { id: 1, url: 'https://x.com/user/status/123' };
+      chrome.tabs.query.mockResolvedValue([mockTab]);
+      chrome.storage.local.get.mockResolvedValue({ outputMode: 'clipboard' });
+      chrome.tabs.sendMessage.mockResolvedValue({
+        success: true,
+        markdown: '## @user\n\nTweet content\n\n---',
+        metadata: { title: 'Tweet' }
+      });
+      global.navigator.clipboard.writeText.mockResolvedValue();
+
+      const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const sendResponse = jest.fn();
+
+      messageHandler(
+        { action: 'extractXContent', contentType: 'thread' },
+        {},
+        sendResponse
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Clipboard should have been called with the markdown
+      expect(global.navigator.clipboard.writeText).toHaveBeenCalled();
+    });
+  });
 });

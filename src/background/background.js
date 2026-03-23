@@ -47,6 +47,11 @@ class BackgroundScript {
         return true;
       }
 
+      if (request.action === 'extractXContent') {
+        this.handleExtractXContent(request.contentType, sendResponse);
+        return true;
+      }
+
       if (request.action === 'selectionComplete') {
         this.handleSelectionComplete(request.result, sender);
         return false;
@@ -343,6 +348,42 @@ class BackgroundScript {
     } catch (error) {
       console.error('🚨 [background] Error starting selection with element:', error);
       this.showNotification('Error', 'Failed to start element selection', 'error');
+    }
+  }
+
+  /**
+   * Handle X/Twitter-specific content extraction
+   */
+  async handleExtractXContent(contentType, sendResponse) {
+    try {
+      console.log(`🐦 [background] Extracting X content: ${contentType}`);
+
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        sendResponse({ success: false, error: 'No active tab found' });
+        return;
+      }
+
+      const prefs = await Preferences.get();
+
+      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+        action: 'extractXContent',
+        contentType,
+        options: { includeMetadata: prefs.includeMetadata }
+      });
+
+      if (!response || !response.success) {
+        sendResponse(response || { success: false, error: 'X extraction failed' });
+        return;
+      }
+
+      const result = await this.dispatchOutput(response.markdown, response.metadata);
+      const verb = result.method === 'file' ? 'saved' : 'copied';
+      this.showNotification('Success', `X ${contentType} ${verb} as markdown`, 'success');
+      sendResponse(result);
+    } catch (error) {
+      console.error('🚨 [background] Error extracting X content:', error);
+      sendResponse({ success: false, error: error.message });
     }
   }
 

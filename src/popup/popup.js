@@ -2,6 +2,7 @@
 // Handles user interactions in the popup interface
 
 const Preferences = require('../utils/preferences');
+const SiteDetector = require('../utils/site-detector');
 
 console.log('🚀 [popup] Popup script loaded');
 
@@ -18,19 +19,22 @@ class PopupController {
       statusMessage: document.querySelector('.status-message'),
       progressText: document.querySelector('.progress-text'),
       metadataToggle: document.getElementById('metadataToggle'),
-      outputToggle: document.getElementById('outputToggle')
+      outputToggle: document.getElementById('outputToggle'),
+      xPresets: document.getElementById('xPresets')
     };
 
+    this.currentTab = null;
     this.init();
   }
 
   /**
    * Initialize the popup
    */
-  init() {
+  async init() {
     console.log('🔧 [popup] Initializing popup controller');
     this.setupEventListeners();
-    this.checkCurrentTab();
+    await this.checkCurrentTab();
+    this.detectSitePresets();
     this.checkSelectionState();
     this.loadPreferences();
   }
@@ -121,6 +125,75 @@ class PopupController {
   }
 
   /**
+   * Detect site-specific presets based on current tab URL
+   */
+  detectSitePresets() {
+    if (!this.currentTab || !this.currentTab.url) return;
+
+    const detection = SiteDetector.detect(this.currentTab.url);
+    if (detection.site === 'x') {
+      this.showXPresets();
+    }
+  }
+
+  /**
+   * Show X/Twitter preset buttons and attach handlers
+   */
+  showXPresets() {
+    if (!this.elements.xPresets) return;
+
+    this.elements.xPresets.classList.remove('hidden');
+
+    // Event delegation for preset buttons
+    this.elements.xPresets.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-preset');
+      if (!btn) return;
+      const contentType = btn.dataset.xType;
+      if (contentType) {
+        this.handleXExtract(contentType);
+      }
+    });
+
+    console.log('🐦 [popup] X/Twitter presets shown');
+  }
+
+  /**
+   * Handle X-specific extraction
+   */
+  async handleXExtract(contentType) {
+    try {
+      console.log(`🐦 [popup] Extracting X content: ${contentType}`);
+
+      this.showProgress('Extracting X content...');
+      this.elements.extractBtn.disabled = true;
+      this.elements.selectBtn.disabled = true;
+      this.elements.xPresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = true);
+
+      const response = await this.sendMessageToBackground({
+        action: 'extractXContent',
+        contentType
+      });
+
+      this.hideProgress();
+
+      if (response && response.success) {
+        console.log('✅ [popup] X extraction successful');
+        this.showSuccess(response.message || 'X content processed!');
+        setTimeout(() => { window.close(); }, 1500);
+      } else {
+        console.error('🚨 [popup] X extraction failed:', response && response.error);
+        this.showError((response && response.error) || 'Failed to extract X content');
+        this.enableExtraction();
+      }
+    } catch (error) {
+      console.error('🚨 [popup] Unexpected error in X extraction:', error);
+      this.hideProgress();
+      this.showError('Unexpected error occurred');
+      this.enableExtraction();
+    }
+  }
+
+  /**
    * Update the primary action button text based on output mode
    */
   updateButtonText(mode) {
@@ -132,6 +205,19 @@ class PopupController {
     } else {
       btnText.textContent = 'Copy Page as Markdown';
       btnIcon.textContent = '📋';
+    }
+
+    // Also update X preset button text
+    if (this.elements.xPresets) {
+      const verb = mode === 'file' ? 'Save' : 'Copy';
+      this.elements.xPresets.querySelectorAll('.btn-preset').forEach(btn => {
+        const textEl = btn.querySelector('.btn-text');
+        if (!textEl) return;
+        const type = btn.dataset.xType;
+        if (type === 'single-tweet') textEl.textContent = `${verb} Tweet`;
+        else if (type === 'thread') textEl.textContent = `${verb} Thread`;
+        else if (type === 'article') textEl.textContent = `${verb} Article`;
+      });
     }
   }
 
@@ -166,8 +252,8 @@ class PopupController {
         return;
       }
 
-      const currentTab = tabs[0];
-      const url = currentTab.url;
+      this.currentTab = tabs[0];
+      const url = this.currentTab.url;
 
       // Check if the URL is valid for content extraction
       if (this.isRestrictedUrl(url)) {
@@ -357,6 +443,11 @@ class PopupController {
     const mode = activeToggle ? activeToggle.dataset.mode : 'clipboard';
     this.updateButtonText(mode);
     this.elements.selectBtn.disabled = false;
+
+    // Re-enable X preset buttons if present
+    if (this.elements.xPresets) {
+      this.elements.xPresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = false);
+    }
   }
 
   /**
