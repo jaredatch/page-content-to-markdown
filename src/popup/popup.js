@@ -198,13 +198,10 @@ class PopupController {
    */
   updateButtonText(mode) {
     const btnText = this.elements.extractBtn.querySelector('.btn-text');
-    const btnIcon = this.elements.extractBtn.querySelector('.btn-icon');
     if (mode === 'file') {
       btnText.textContent = 'Save Page as Markdown';
-      btnIcon.textContent = '💾';
     } else {
       btnText.textContent = 'Copy Page as Markdown';
-      btnIcon.textContent = '📋';
     }
 
     // Also update X preset button text

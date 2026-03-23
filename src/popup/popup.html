@@ -3,53 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Copy Page as Markdown</title>
+  <title>Markdown</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header class="header">
-      <div class="icon">📄</div>
-      <h1 class="title">Copy as Markdown</h1>
+      <h1 class="title">Markdown</h1>
     </header>
 
     <main class="main">
-      <div class="info">
-        <p class="description">
-          Convert the current page to clean markdown format, perfect for sharing with AI assistants.
-        </p>
-      </div>
-
       <div class="options">
-        <div class="option-row">
-          <label class="checkbox-label" for="metadataToggle">
-            <input type="checkbox" id="metadataToggle" checked>
-            <span>Include page info</span>
-          </label>
-        </div>
-        <div class="option-row">
-          <div class="output-toggle" id="outputToggle">
-            <button class="toggle-btn active" data-mode="clipboard">📋 Copy</button>
-            <button class="toggle-btn" data-mode="file">💾 Save</button>
-          </div>
+        <label class="checkbox-label" for="metadataToggle">
+          <input type="checkbox" id="metadataToggle" checked>
+          <span>Include page info</span>
+        </label>
+        <div class="output-toggle" id="outputToggle">
+          <button class="toggle-btn active" data-mode="clipboard">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="toggle-btn" data-mode="file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Save
+          </button>
         </div>
       </div>
 
       <div id="xPresets" class="x-presets hidden">
-        <div class="preset-header">
-          <span class="preset-label">X / Twitter</span>
-        </div>
+        <div class="section-label">X / Twitter</div>
         <div class="preset-actions">
           <button class="btn btn-preset" data-x-type="single-tweet">
-            <span class="btn-icon">💬</span>
+            <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span class="btn-text">Copy Tweet</span>
           </button>
           <button class="btn btn-preset" data-x-type="thread">
-            <span class="btn-icon">🧵</span>
+            <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             <span class="btn-text">Copy Thread</span>
           </button>
           <button class="btn btn-preset" data-x-type="article">
-            <span class="btn-icon">📝</span>
+            <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             <span class="btn-text">Copy Article</span>
           </button>
         </div>
@@ -57,11 +50,11 @@
 
       <div class="actions">
         <button id="extractBtn" class="btn btn-primary">
-          <span class="btn-icon">📋</span>
+          <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           <span class="btn-text">Copy Page as Markdown</span>
         </button>
         <button id="selectBtn" class="btn btn-secondary">
-          <span class="btn-icon">🎯</span>
+          <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
           <span class="btn-text">Select Elements</span>
         </button>
       </div>
@@ -83,21 +76,8 @@
         <div class="progress-text">Extracting content...</div>
       </div>
     </main>
-
-    <footer class="footer">
-      <div class="tips">
-        <div class="tip">
-          <span class="tip-icon">💡</span>
-          <span class="tip-text">Click the extension icon for quick copy</span>
-        </div>
-        <div class="tip">
-          <span class="tip-icon">🤖</span>
-          <span class="tip-text">Perfect for ChatGPT, Claude & other AIs</span>
-        </div>
-      </div>
-    </footer>
   </div>
 
   <script src="popup.js"></script>
 </body>
-</html> 
+</html>

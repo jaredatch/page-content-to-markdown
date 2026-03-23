@@ -275,9 +275,9 @@ class ContentScript {
     }
 
     this.elementPicker = new ElementPicker({
-      onConfirm: (selectedElements) => {
+      onConfirm: async (selectedElements) => {
         console.log(`🎯 [content-script] Selection confirmed: ${selectedElements.length} element(s)`);
-        const result = this.convertElementsToMarkdown(selectedElements);
+        const result = await this.convertElementsToMarkdown(selectedElements);
 
         chrome.runtime.sendMessage({
           action: 'selectionComplete',

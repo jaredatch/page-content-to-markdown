@@ -316,25 +316,25 @@ class ElementPicker {
       }
       .picker-hover {
         border: 2px dashed #3b82f6;
-        background: rgba(59, 130, 246, 0.08);
+        background: rgba(59, 130, 246, 0.06);
         display: none;
       }
       .picker-selected {
-        border: 2px solid #7c3aed;
-        background: rgba(124, 58, 237, 0.08);
+        border: 2px solid #1a1a1a;
+        background: rgba(0, 0, 0, 0.04);
         display: block;
       }
       .picker-badge {
         position: absolute;
-        top: -10px;
-        left: -10px;
-        width: 22px;
-        height: 22px;
-        background: #7c3aed;
+        top: -9px;
+        left: -9px;
+        width: 20px;
+        height: 20px;
+        background: #1a1a1a;
         color: #fff;
         border-radius: 50%;
-        font-size: 12px;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 600;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -343,53 +343,59 @@ class ElementPicker {
       }
       .picker-toolbar {
         position: fixed;
-        bottom: 20px;
+        bottom: 16px;
         left: 50%;
         transform: translateX(-50%);
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #1a1a1a;
         color: #fff;
-        padding: 12px 20px;
-        border-radius: 12px;
+        padding: 8px 14px;
+        border-radius: 8px;
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 10px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 14px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        font-size: 13px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
         z-index: 2147483647;
         white-space: nowrap;
       }
       .picker-count {
         font-weight: 500;
+        font-size: 12px;
+        color: #aaa;
       }
       .picker-copy-btn, .picker-cancel-btn {
         border: none;
-        border-radius: 6px;
-        padding: 6px 14px;
-        font-size: 13px;
-        font-weight: 600;
+        border-radius: 5px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 500;
         cursor: pointer;
         font-family: inherit;
-        transition: opacity 0.15s;
+        transition: background 0.15s;
       }
       .picker-copy-btn {
         background: #fff;
-        color: #7c3aed;
+        color: #1a1a1a;
+      }
+      .picker-copy-btn:hover {
+        background: #e5e5e5;
       }
       .picker-copy-btn:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: not-allowed;
       }
       .picker-cancel-btn {
+        background: rgba(255, 255, 255, 0.12);
+        color: #ccc;
+      }
+      .picker-cancel-btn:hover {
         background: rgba(255, 255, 255, 0.2);
         color: #fff;
       }
-      .picker-cancel-btn:hover {
-        background: rgba(255, 255, 255, 0.3);
-      }
       .picker-hint {
         font-size: 11px;
-        opacity: 0.7;
+        color: #666;
       }
     `;
   }
