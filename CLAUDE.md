@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phase 4 complete. Full-page conversion, selective element conversion, output options (clipboard/file), and X/Twitter site-specific presets (single tweet, thread work well; article functional but needs polish). 237 tests passing.
+**Status:** Phase 4 complete, Phase 5.2–5.3 complete. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. 255 tests passing.
 
 ## Quick Reference
 
@@ -70,12 +70,13 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `manifest.json` | Extension manifest (MV3) — permissions, commands, context menus |
 | `src/content/element-picker.js` | ElementPicker class — shadow DOM UI for selective conversion |
 | `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown — two instances: full-page (with content filtering) and fragment (minimal filtering for user selections) |
-| `src/utils/preferences.js` | Preferences wrapper around `chrome.storage.local` (outputMode, includeMetadata) |
+| `src/utils/preferences.js` | Preferences wrapper around `chrome.storage.local` (outputMode, includeMetadata, formatting options) |
+| `src/options/options.js` | Options page controller — auto-save, formatting previews, reset to defaults |
 | `src/utils/simple-universal-extractor.js` | Text extraction fallback (guaranteed to return something) |
 | `src/utils/site-detector.js` | URL-based site detection (X/Twitter auto-detection) |
 | `src/utils/x-extractor.js` | X/Twitter DOM parser — extracts tweets, threads, articles as structured data |
 | `src/utils/x-formatter.js` | X/Twitter markdown formatter — structured data → markdown strings |
-| `webpack.config.js` | Build config — 3 entry points → `dist/` |
+| `webpack.config.js` | Build config — 4 entry points → `dist/` |
 | `PLAN.md` | Project plan, phases, progress tracking |
 
 ## Build & Load Extension
@@ -127,9 +128,13 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Two Turndown instances** in `markdown-converter.js`: `turndownService` (full-page, aggressive content filtering) and `_fragmentService` (selective mode, only strips universally junk elements). This is intentional — user-selected content should not be filtered.
 - **Lazy-loaded images:** `_resolveImageSrc()` handles sites that put placeholder SVGs in `src` and real URLs in `data-src`, `data-lazy-src`, or `srcset`/`data-srcset`.
 - **Content filtering patterns** use word-boundary regex for short patterns like `ad` to avoid false positives (e.g., `header` contains `ad` as a substring).
-- **Preferences** stored in `chrome.storage.local`. `Preferences.get()` merges stored values with defaults (`outputMode: 'clipboard'`, `includeMetadata: true`). Shared by popup and background via webpack.
+- **Preferences** stored in `chrome.storage.local`. `Preferences.get()` merges stored values with defaults (`outputMode: 'clipboard'`, `includeMetadata: true`, plus formatting options: `headingStyle`, `bulletListMarker`, `codeBlockStyle`, `linkStyle`). Shared by popup, options page, and background via webpack. Formatting options flow: background reads prefs → passes in message options → content script calls `converter.applyFormattingOptions()` → Turndown services updated before conversion.
+- **Options page** — Dedicated settings page (`src/options/`) accessible via gear icon in popup header or browser extension settings. Auto-saves on change, shows live formatting previews, has reset-to-defaults button. Registered in manifest via `options_ui` with `open_in_tab: true`.
 - **Output dispatch** — `dispatchOutput()` in background reads preferences and routes to `copyToClipboard()` or `saveAsFile()`. All output paths (full page, selection, context menu, X presets) go through this single dispatcher.
 - **X/Twitter Extractor/Formatter separation** — `XExtractor` returns structured data objects (TweetData, ThreadData, ArticleData), `XFormatter` converts them to markdown. This makes extraction testable against mock DOM independently of formatting.
 - **X selector resilience** — `_query()` and `_queryAll()` helpers try selectors in priority order: `data-testid` (primary) → ARIA roles (fallback) → structural tags (last resort). When all selectors fail, extraction returns `null` and the content script falls back to generic Turndown conversion.
 - **X extraction methods accept URL parameter** — `extractSingleTweet(doc, url)` and `extractThread(doc, url)` take an optional URL to identify the focal tweet. This avoids needing to mock `document.location` in jsdom tests.
 - **Popup auto-detection is URL-only** — `SiteDetector.detect()` checks hostname, called directly in popup (no background round-trip). All three X buttons always show; wrong content type gives a clear error message rather than pre-detecting at popup-open time.
+- **DOM-direct conversion path** — `convertFromDOM(element)` in `markdown-converter.js` accepts a live DOM Element, finds content via the same selector strategy as `extractMainContent`, and passes the DOM node directly to Turndown (which clones it internally). This avoids the serialize→reparse round-trip of the string-based `convertToMarkdown(html)` path. Content script uses `convertFromDOM(document.body)` as the primary path, falling back to the string path if it returns insufficient output.
+- **Size guards** — Content script skips full Turndown conversion for pages with >50K elements (uses SimpleUniversalExtractor directly). `convertToMarkdown` truncates HTML strings over 5MB to prevent browser hangs.
+- **Progress feedback** — Popup shows escalating progress messages ("Extracting content..." → "Processing page content..." → "Large page — still working...") via timed updates during long conversions.

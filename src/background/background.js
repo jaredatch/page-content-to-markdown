@@ -369,7 +369,13 @@ class BackgroundScript {
       const response = await chrome.tabs.sendMessage(tabs[0].id, {
         action: 'extractXContent',
         contentType,
-        options: { includeMetadata: prefs.includeMetadata }
+        options: {
+          includeMetadata: prefs.includeMetadata,
+          headingStyle: prefs.headingStyle,
+          bulletListMarker: prefs.bulletListMarker,
+          codeBlockStyle: prefs.codeBlockStyle,
+          linkStyle: prefs.linkStyle
+        }
       });
 
       if (!response || !response.success) {
@@ -416,7 +422,13 @@ class BackgroundScript {
 
       const response = await chrome.tabs.sendMessage(activeTab.id, {
         action: 'extractContent',
-        options: { includeMetadata: prefs.includeMetadata }
+        options: {
+          includeMetadata: prefs.includeMetadata,
+          headingStyle: prefs.headingStyle,
+          bulletListMarker: prefs.bulletListMarker,
+          codeBlockStyle: prefs.codeBlockStyle,
+          linkStyle: prefs.linkStyle
+        }
       });
 
       console.log('📨 [background] Received response from content script:', response);

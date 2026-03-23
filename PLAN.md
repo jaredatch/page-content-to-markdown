@@ -128,13 +128,13 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 > Final cleanup and preparation for distribution.
 
 - [ ] **5.1** Comprehensive cross-browser testing (Firefox + Chrome)
-- [ ] **5.2** Performance optimization for large pages
-- [ ] **5.3** Settings/options page (default behaviors, output preferences)
+- [x] **5.2** Performance optimization for large pages
+- [x] **5.3** Settings/options page (default behaviors, output preferences)
 - [ ] **5.4** Extension store assets (screenshots, description, promo images)
 - [ ] **5.5** Prepare for Firefox Add-ons submission
 - [ ] **5.6** Prepare for Chrome Web Store submission
 - [ ] **5.7** Final test pass on all features
-- [ ] **5.8** Clean up README for public release
+- [x] **5.8** Clean up README for public release
 
 ---
 
@@ -147,6 +147,8 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 | 2026-03-20 | Phase 2 | 2.1–2.7 | Selective conversion complete. ElementPicker with shadow DOM UI, hover highlights, click-to-select with numbered badges, floating toolbar. Two context menu items (text selection + element selection with pre-select). Keyboard shortcut (Cmd+Shift+M). Separate Turndown instance for fragments (no content filtering on user selections). Fixed lazy-loaded image resolution (data-src/srcset fallback). Fixed false-positive pattern matching ("ad" in "header"). 123 tests passing. |
 | 2026-03-20 | Phase 3 | 3.1–3.5 | Output options complete. Preferences module (chrome.storage.local). Popup UI: metadata checkbox, output mode segmented toggle (Copy/Save), dynamic button text. Background: dispatchOutput() routes to clipboard or file, generateFilename() with sanitization/truncation, clipboard fallback via content script. Content script: conditional metadata header, writeToClipboard handler, saveAsFile handler (Blob URL + `<a>` click). Firefox data URI blocked in chrome.downloads — switched to Blob approach. 156 tests passing. |
 | 2026-03-23 | Phase 4 | 4.1–4.6 | X/Twitter presets complete. Extractor/Formatter separation: XExtractor (DOM parsing with tiered selectors) + XFormatter (structured markdown output). SiteDetector for URL-based auto-detection. Popup shows X preset buttons (Copy/Save Tweet, Thread, Article) when on x.com/twitter.com. Content types: single tweet, thread, article. Structured format with author heading, timestamp, media, engagement stats. Falls back to generic Turndown on failure. Tweet and thread presets tested and working well. Article preset functional but needs formatting polish (deferred — requires Chrome extension DOM inspection). 237 tests passing (10 suites). |
+| 2026-03-23 | Phase 5 | 5.2 | Performance optimization complete. DOM-direct conversion path (convertFromDOM) bypasses serialize→reparse round-trip by passing live DOM nodes to Turndown. Optimized removeNonContent filter (single combined regex vs array iteration). Optimized findLargestTextBlock (top-level + second-level selectors only). Consolidated cleanupMarkdown regex chain. Size guards: 50K element limit in content script, 5MB HTML truncation in converter. Escalating progress messages in popup for large pages. 245 tests passing (10 suites). |
+| 2026-03-23 | Phase 5 | 5.3 | Settings/options page complete. Dedicated options page (options.html) with auto-save. Preferences expanded with 4 formatting options: heading style (atx/setext), bullet list marker (-/*), code block style (fenced/indented), link style (inlined/referenced). Options flow through background → content script → MarkdownConverter.applyFormattingOptions(). Popup header has gear icon to open options page. manifest.json has options_ui. cleanupMarkdown respects configured bullet marker and preserves indented code blocks. 255 tests passing (10 suites). |
 
 ---
 

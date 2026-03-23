@@ -30,10 +30,7 @@ describe('Preferences', () => {
 
       const prefs = await Preferences.get();
 
-      expect(prefs).toEqual({
-        outputMode: 'clipboard',
-        includeMetadata: true
-      });
+      expect(prefs).toEqual(Preferences.DEFAULTS);
     });
 
     test('should merge stored values with defaults', async () => {
@@ -41,24 +38,27 @@ describe('Preferences', () => {
 
       const prefs = await Preferences.get();
 
-      expect(prefs).toEqual({
-        outputMode: 'file',
-        includeMetadata: true
-      });
+      expect(prefs.outputMode).toBe('file');
+      expect(prefs.includeMetadata).toBe(true);
+      // Formatting defaults should still be present
+      expect(prefs.headingStyle).toBe('atx');
+      expect(prefs.bulletListMarker).toBe('-');
     });
 
     test('should override all defaults when all stored', async () => {
-      chrome.storage.local.get.mockResolvedValue({
+      const overrides = {
         outputMode: 'file',
-        includeMetadata: false
-      });
+        includeMetadata: false,
+        headingStyle: 'setext',
+        bulletListMarker: '*',
+        codeBlockStyle: 'indented',
+        linkStyle: 'referenced'
+      };
+      chrome.storage.local.get.mockResolvedValue(overrides);
 
       const prefs = await Preferences.get();
 
-      expect(prefs).toEqual({
-        outputMode: 'file',
-        includeMetadata: false
-      });
+      expect(prefs).toEqual(overrides);
     });
 
     test('should return defaults on storage error', async () => {
@@ -66,10 +66,7 @@ describe('Preferences', () => {
 
       const prefs = await Preferences.get();
 
-      expect(prefs).toEqual({
-        outputMode: 'clipboard',
-        includeMetadata: true
-      });
+      expect(prefs).toEqual(Preferences.DEFAULTS);
     });
   });
 
@@ -87,6 +84,24 @@ describe('Preferences', () => {
       await Preferences.set({ outputMode: 'file' });
 
       expect(chrome.storage.local.set).toHaveBeenCalled();
+    });
+  });
+
+  describe('formatting defaults', () => {
+    test('should have headingStyle default to atx', () => {
+      expect(Preferences.DEFAULTS.headingStyle).toBe('atx');
+    });
+
+    test('should have bulletListMarker default to -', () => {
+      expect(Preferences.DEFAULTS.bulletListMarker).toBe('-');
+    });
+
+    test('should have codeBlockStyle default to fenced', () => {
+      expect(Preferences.DEFAULTS.codeBlockStyle).toBe('fenced');
+    });
+
+    test('should have linkStyle default to inlined', () => {
+      expect(Preferences.DEFAULTS.linkStyle).toBe('inlined');
     });
   });
 });

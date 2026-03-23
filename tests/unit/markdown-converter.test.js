@@ -255,15 +255,165 @@ describe('MarkdownConverter', () => {
     test('should remove excessive whitespace', () => {
       const markdown = '# Title\n\n\n\n\nParagraph\n\n\n';
       const result = converter.cleanupMarkdown(markdown);
-      
+
       expect(result).toBe('# Title\n\nParagraph');
     });
 
     test('should remove empty lines at start and end', () => {
       const markdown = '\n\n# Title\nParagraph\n\n\n';
       const result = converter.cleanupMarkdown(markdown);
-      
+
       expect(result).toBe('# Title\nParagraph');
+    });
+  });
+
+  describe('convertFromDOM', () => {
+    test('should convert a DOM element with article content to markdown', () => {
+      const { JSDOM } = require('jsdom');
+      const dom = new JSDOM(`<html><body>
+        <article>
+          <h1>Test Article</h1>
+          <p>This is a paragraph with <strong>bold</strong> and <em>italic</em> text that is long enough to pass content checks.</p>
+        </article>
+      </body></html>`);
+      const body = dom.window.document.body;
+
+      const result = converter.convertFromDOM(body);
+
+      expect(result).toContain('Test Article');
+      expect(result).toContain('**bold**');
+      expect(result).toContain('*italic*');
+      expect(result).toBeValidMarkdown();
+    });
+
+    test('should return empty string for null input', () => {
+      expect(converter.convertFromDOM(null)).toBe('');
+      expect(converter.convertFromDOM(undefined)).toBe('');
+    });
+
+    test('should return empty string for non-element input', () => {
+      expect(converter.convertFromDOM('not an element')).toBe('');
+      expect(converter.convertFromDOM(42)).toBe('');
+    });
+
+    test('should handle body element as input when no semantic container exists', () => {
+      const { JSDOM } = require('jsdom');
+      const dom = new JSDOM(`<html><body>
+        <div>
+          <p>Just some loose content that is long enough to produce a reasonable markdown output for testing.</p>
+          <p>Another paragraph with some more text to make this substantial enough for the converter.</p>
+        </div>
+      </body></html>`);
+      const body = dom.window.document.body;
+
+      const result = converter.convertFromDOM(body);
+
+      expect(result).toContain('loose content');
+    });
+
+    test('should produce equivalent output to convertToMarkdown for the same content', () => {
+      const html = `<html><body>
+        <article>
+          <h2>Section Title</h2>
+          <p>A paragraph with a <a href="https://example.com">link</a> and enough text to make it substantial for testing.</p>
+          <ul><li>Item 1</li><li>Item 2</li></ul>
+        </article>
+      </body></html>`;
+
+      const { JSDOM } = require('jsdom');
+      const dom = new JSDOM(html);
+
+      const stringResult = converter.convertToMarkdown(html);
+      const domResult = converter.convertFromDOM(dom.window.document.body);
+
+      // Both should contain the same key content
+      expect(stringResult).toContain('Section Title');
+      expect(domResult).toContain('Section Title');
+      expect(stringResult).toContain('[link](https://example.com)');
+      expect(domResult).toContain('[link](https://example.com)');
+    });
+  });
+
+  describe('applyFormattingOptions', () => {
+    test('should change heading style to setext', () => {
+      converter.applyFormattingOptions({ headingStyle: 'setext' });
+      const html = '<article><h2>My Heading</h2><p>Content that is long enough for the content check threshold.</p></article>';
+      const result = converter.convertToMarkdown(html);
+
+      // Setext h2 uses dashes underneath
+      expect(result).toContain('My Heading');
+      expect(result).toContain('---');
+      expect(result).not.toMatch(/^## /m);
+    });
+
+    test('should change bullet list marker to asterisk', () => {
+      converter.applyFormattingOptions({ bulletListMarker: '*' });
+      const html = '<article><ul><li>Alpha</li><li>Beta</li></ul><p>Extra content to meet the content threshold for testing.</p></article>';
+      const result = converter.convertToMarkdown(html);
+
+      expect(result).toMatch(/^\* +Alpha/m);
+      expect(result).toMatch(/^\* +Beta/m);
+    });
+
+    test('should change code block style to indented', () => {
+      converter.applyFormattingOptions({ codeBlockStyle: 'indented' });
+      const html = '<article><pre><code>const x = 1;</code></pre><p>Enough paragraph content to pass the threshold check.</p></article>';
+      const result = converter.convertToMarkdown(html);
+
+      expect(result).toContain('    const x = 1;');
+      expect(result).not.toContain('```');
+    });
+
+    test('should change link style to referenced', () => {
+      converter.applyFormattingOptions({ linkStyle: 'referenced' });
+      const html = '<article><p>Visit <a href="https://example.com">Example</a> for more details and content.</p></article>';
+      const result = converter.convertToMarkdown(html);
+
+      expect(result).toContain('[Example]');
+      expect(result).toContain('https://example.com');
+      // Should NOT be inlined
+      expect(result).not.toContain('[Example](https://example.com)');
+    });
+
+    test('should apply options to fragment service too', () => {
+      // Ensure fragment service is initialized first
+      converter.convertHtmlFragment('<p>init</p>');
+
+      converter.applyFormattingOptions({ bulletListMarker: '*' });
+      const result = converter.convertHtmlFragment('<ul><li>One</li><li>Two</li></ul>');
+
+      expect(result).toMatch(/^\* +One/m);
+    });
+
+    test('should handle null options gracefully', () => {
+      expect(() => converter.applyFormattingOptions(null)).not.toThrow();
+      expect(() => converter.applyFormattingOptions(undefined)).not.toThrow();
+    });
+  });
+
+  describe('size guard', () => {
+    test('convertToMarkdown should handle large HTML without throwing', () => {
+      // Create a large HTML string (~1MB, below the 5MB guard)
+      const bigContent = '<p>' + 'x'.repeat(100) + '</p>\n';
+      const html = '<article>' + bigContent.repeat(10000) + '</article>';
+
+      expect(() => converter.convertToMarkdown(html)).not.toThrow();
+    });
+
+    test('convertToMarkdown should truncate HTML over 5MB', () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      // Create HTML just over 5MB
+      const bigContent = 'x'.repeat(6 * 1024 * 1024);
+      const html = '<article><p>' + bigContent + '</p></article>';
+
+      converter.convertToMarkdown(html);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('HTML too large')
+      );
+
+      warnSpy.mockRestore();
     });
   });
 }); 

@@ -30,23 +30,65 @@ class ContentScript {
     const metadata = this.getPageMetadata();
     const includeMetadata = options.includeMetadata !== false;
 
+    // Apply formatting preferences if provided
+    this._applyFormattingOptions(options);
+
+    // Size guard: skip full conversion for extremely large pages
+    const MAX_ELEMENTS = 50000;
+    const elementCount = document.body ? document.body.querySelectorAll('*').length : 0;
+    if (elementCount > MAX_ELEMENTS) {
+      console.warn(`⚠️ [content-script] Page has ${elementCount} elements (>${MAX_ELEMENTS}), using text extraction`);
+      try {
+        const extractionResult = await this.fallbackExtractor.extractContent();
+        const markdown = includeMetadata
+          ? this.addMetadataHeader(extractionResult.markdown, metadata)
+          : extractionResult.markdown;
+        return {
+          success: true,
+          markdown,
+          metadata,
+          extractionInfo: {
+            method: extractionResult.method,
+            note: `Page too large (${elementCount} elements) — used text extraction`
+          }
+        };
+      } catch (e) {
+        // Continue to normal path if fallback fails
+      }
+    }
+
     try {
       console.log('🔄 [content-script] Starting page conversion (Turndown primary)');
 
-      // Primary path: pass full page HTML through MarkdownConverter
-      const html = document.documentElement.outerHTML;
-      const markdown = this.converter.convertToMarkdown(html);
+      // Primary path: pass live DOM directly to MarkdownConverter (no serialization)
+      let markdown = '';
+      let method = 'turndown';
+
+      if (document.body && typeof this.converter.convertFromDOM === 'function') {
+        markdown = this.converter.convertFromDOM(document.body);
+        method = 'turndown-dom';
+      }
+
+      // Fallback to string path if DOM-direct returned empty
+      if (!markdown || markdown.trim().length <= 50) {
+        console.log('⚠️ [content-script] DOM-direct path returned insufficient output, trying string path');
+        const html = document.documentElement.outerHTML;
+        markdown = this.converter.convertToMarkdown(html);
+        method = 'turndown';
+      }
 
       if (markdown && markdown.trim().length > 50) {
-        console.log('✅ [content-script] Turndown conversion succeeded');
+        console.log(`✅ [content-script] Turndown conversion succeeded (${method})`);
         const result = includeMetadata ? this.addMetadataHeader(markdown, metadata) : markdown;
         return {
           success: true,
           markdown: result,
           metadata,
           extractionInfo: {
-            method: 'turndown',
-            note: 'Primary HTML-to-Markdown conversion via Turndown'
+            method,
+            note: method === 'turndown-dom'
+              ? 'DOM-direct HTML-to-Markdown conversion via Turndown'
+              : 'Primary HTML-to-Markdown conversion via Turndown'
           }
         };
       }
@@ -88,6 +130,21 @@ class ContentScript {
         note: 'Emergency fallback — both Turndown and text extraction failed'
       }
     };
+  }
+
+  /**
+   * Apply formatting preferences to the converter if present in options.
+   */
+  _applyFormattingOptions(options) {
+    if (!options) return;
+    const formattingKeys = ['headingStyle', 'bulletListMarker', 'codeBlockStyle', 'linkStyle'];
+    const formatting = {};
+    for (const key of formattingKeys) {
+      if (options[key] !== undefined) formatting[key] = options[key];
+    }
+    if (Object.keys(formatting).length > 0) {
+      this.converter.applyFormattingOptions(formatting);
+    }
   }
 
   /**
@@ -216,6 +273,9 @@ class ContentScript {
   async extractXContent(contentType, options = {}) {
     const metadata = this.getPageMetadata();
     const includeMetadata = options.includeMetadata !== false;
+
+    // Apply formatting preferences if provided
+    this._applyFormattingOptions(options);
 
     try {
       console.log(`🐦 [content-script] Starting X extraction: ${contentType}`);

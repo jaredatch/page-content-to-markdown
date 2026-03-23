@@ -41,6 +41,10 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "commands": {
     "toggle-selection-mode": {
       "suggested_key": {

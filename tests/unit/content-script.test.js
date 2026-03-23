@@ -1,7 +1,8 @@
 // Mock MarkdownConverter before requiring content-script
 jest.mock('../../src/utils/markdown-converter', () => {
   return jest.fn().mockImplementation(() => ({
-    convertToMarkdown: jest.fn().mockReturnValue('')
+    convertToMarkdown: jest.fn().mockReturnValue(''),
+    convertFromDOM: jest.fn().mockReturnValue('')
   }));
 });
 
@@ -52,6 +53,7 @@ let ContentScript;
 
 describe('ContentScript', () => {
   let mockConvertToMarkdown;
+  let mockConvertFromDOM;
   let mockExtractContent;
 
   beforeEach(() => {
@@ -66,9 +68,11 @@ describe('ContentScript', () => {
 
     // Set up mock return values
     mockConvertToMarkdown = jest.fn().mockReturnValue('');
+    mockConvertFromDOM = jest.fn().mockReturnValue('');
     const mockConvertHtmlFragment = jest.fn().mockReturnValue('## Fragment\n\nConverted fragment text.');
     MarkdownConverter.mockImplementation(() => ({
       convertToMarkdown: mockConvertToMarkdown,
+      convertFromDOM: mockConvertFromDOM,
       convertHtmlFragment: mockConvertHtmlFragment
     }));
 
@@ -100,7 +104,21 @@ describe('ContentScript', () => {
   });
 
   describe('convertPageToMarkdown', () => {
-    test('should use Turndown as primary converter when it returns substantial content', async () => {
+    test('should use DOM-direct path as primary converter when it returns substantial content', async () => {
+      mockConvertFromDOM.mockReturnValue('## Test Page\n\nThis is test content with enough text to pass the threshold.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown();
+
+      expect(result.success).toBe(true);
+      expect(result.extractionInfo.method).toBe('turndown-dom');
+      expect(result.markdown).toContain('Test Page');
+      expect(result.metadata).toBeDefined();
+      expect(result.metadata.title).toBe('Test Page');
+    });
+
+    test('should fall back to string path when DOM-direct returns short content', async () => {
+      mockConvertFromDOM.mockReturnValue('short');
       mockConvertToMarkdown.mockReturnValue('## Test Page\n\nThis is test content with enough text to pass the threshold.');
 
       const instance = new ContentScript();
@@ -108,12 +126,11 @@ describe('ContentScript', () => {
 
       expect(result.success).toBe(true);
       expect(result.extractionInfo.method).toBe('turndown');
-      expect(result.markdown).toContain('Test Page');
-      expect(result.metadata).toBeDefined();
-      expect(result.metadata.title).toBe('Test Page');
+      expect(mockConvertToMarkdown).toHaveBeenCalled();
     });
 
-    test('should fall back to SimpleUniversalExtractor when Turndown returns short content', async () => {
+    test('should fall back to SimpleUniversalExtractor when both Turndown paths return short content', async () => {
+      mockConvertFromDOM.mockReturnValue('short');
       mockConvertToMarkdown.mockReturnValue('short');
 
       const instance = new ContentScript();
@@ -125,7 +142,7 @@ describe('ContentScript', () => {
     });
 
     test('should fall back to SimpleUniversalExtractor when Turndown throws', async () => {
-      mockConvertToMarkdown.mockImplementation(() => {
+      mockConvertFromDOM.mockImplementation(() => {
         throw new Error('Turndown conversion failed');
       });
 
@@ -138,8 +155,8 @@ describe('ContentScript', () => {
     });
 
     test('should return emergency fallback when both converters fail', async () => {
-      mockConvertToMarkdown.mockImplementation(() => {
-        throw new Error('Turndown failed');
+      mockConvertFromDOM.mockImplementation(() => {
+        throw new Error('DOM failed');
       });
       mockExtractContent.mockRejectedValue(new Error('Extractor failed'));
 
@@ -152,7 +169,7 @@ describe('ContentScript', () => {
     });
 
     test('should include metadata in response', async () => {
-      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+      mockConvertFromDOM.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
 
       const instance = new ContentScript();
       const result = await instance.convertPageToMarkdown();
@@ -166,7 +183,7 @@ describe('ContentScript', () => {
     });
 
     test('should add metadata header when Turndown succeeds', async () => {
-      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+      mockConvertFromDOM.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
 
       const instance = new ContentScript();
       const result = await instance.convertPageToMarkdown();
@@ -179,7 +196,7 @@ describe('ContentScript', () => {
 
   describe('message handling', () => {
     test('should respond to extractContent message', async () => {
-      mockConvertToMarkdown.mockReturnValue('## Test\n\nEnough content here to pass the fifty character threshold for sure.');
+      mockConvertFromDOM.mockReturnValue('## Test\n\nEnough content here to pass the fifty character threshold for sure.');
 
       const sendResponse = jest.fn();
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
@@ -332,7 +349,7 @@ describe('ContentScript', () => {
 
   describe('metadata toggle', () => {
     test('convertPageToMarkdown should skip metadata header when includeMetadata is false', async () => {
-      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+      mockConvertFromDOM.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
 
       const instance = new ContentScript();
       const result = await instance.convertPageToMarkdown({ includeMetadata: false });
@@ -343,7 +360,7 @@ describe('ContentScript', () => {
     });
 
     test('convertPageToMarkdown should include metadata header by default', async () => {
-      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+      mockConvertFromDOM.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
 
       const instance = new ContentScript();
       const result = await instance.convertPageToMarkdown();
@@ -399,7 +416,7 @@ describe('ContentScript', () => {
     });
 
     test('extractContent message should pass options through', async () => {
-      mockConvertToMarkdown.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+      mockConvertFromDOM.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
 
       const sendResponse = jest.fn();
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
@@ -602,7 +619,7 @@ describe('ContentScript', () => {
         extractArticle: jest.fn()
       }));
 
-      mockConvertToMarkdown.mockReturnValue('# Generic Fallback\n\nThis is generic turndown content for testing purposes.');
+      mockConvertFromDOM.mockReturnValue('# Generic Fallback\n\nThis is generic turndown content for testing purposes.');
 
       const instance = new ContentScript();
       const result = await instance.extractXContent('single-tweet', { includeMetadata: false });

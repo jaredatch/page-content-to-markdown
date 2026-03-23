@@ -20,7 +20,8 @@ class PopupController {
       progressText: document.querySelector('.progress-text'),
       metadataToggle: document.getElementById('metadataToggle'),
       outputToggle: document.getElementById('outputToggle'),
-      xPresets: document.getElementById('xPresets')
+      xPresets: document.getElementById('xPresets'),
+      settingsBtn: document.getElementById('settingsBtn')
     };
 
     this.currentTab = null;
@@ -57,6 +58,13 @@ class PopupController {
       console.log('🖱️ [popup] Cancel select button clicked');
       this.handleCancelSelectClick();
     });
+
+    // Settings button
+    if (this.elements.settingsBtn) {
+      this.elements.settingsBtn.addEventListener('click', () => {
+        chrome.runtime.openOptionsPage();
+      });
+    }
 
     // Handle keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -169,11 +177,14 @@ class PopupController {
       this.elements.selectBtn.disabled = true;
       this.elements.xPresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = true);
 
+      const progressTimers = this._startProgressTimers();
+
       const response = await this.sendMessageToBackground({
         action: 'extractXContent',
         contentType
       });
 
+      this._clearProgressTimers(progressTimers);
       this.hideProgress();
 
       if (response && response.success) {
@@ -301,11 +312,15 @@ class PopupController {
       this.showProgress('Extracting content...');
       this.disableExtraction();
 
+      // Escalating progress messages for large pages
+      const progressTimers = this._startProgressTimers();
+
       // Send message to background script to extract and copy content
       const response = await this.sendMessageToBackground({
         action: 'extractAndCopy'
       });
 
+      this._clearProgressTimers(progressTimers);
       this.hideProgress();
 
       if (response.success) {
@@ -384,6 +399,35 @@ class PopupController {
         }
       });
     });
+  }
+
+  /**
+   * Start escalating progress message timers for long-running conversions.
+   * Returns an array of timer IDs to be cleared on completion.
+   */
+  _startProgressTimers() {
+    return [
+      setTimeout(() => this._updateProgressText('Processing page content...'), 2000),
+      setTimeout(() => this._updateProgressText('Converting to markdown...'), 5000),
+      setTimeout(() => this._updateProgressText('Large page — still working...'), 10000),
+      setTimeout(() => this._updateProgressText('Very large page — almost done...'), 20000),
+    ];
+  }
+
+  /**
+   * Clear all progress timers.
+   */
+  _clearProgressTimers(timers) {
+    if (timers) timers.forEach(t => clearTimeout(t));
+  }
+
+  /**
+   * Update only the progress text (without showing/hiding the container).
+   */
+  _updateProgressText(text) {
+    if (this.elements.progressText) {
+      this.elements.progressText.textContent = text;
+    }
   }
 
   /**

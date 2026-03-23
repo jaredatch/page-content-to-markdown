@@ -82,10 +82,12 @@ describe('BackgroundScript', () => {
         currentWindow: true
       });
 
-      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
-        action: 'extractContent',
-        options: { includeMetadata: true }
-      });
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123,
+        expect.objectContaining({
+          action: 'extractContent',
+          options: expect.objectContaining({ includeMetadata: true })
+        })
+      );
 
       expect(result.success).toBe(true);
       expect(result.markdown).toContain('# Test Content');
@@ -195,10 +197,12 @@ describe('BackgroundScript', () => {
       actionClickHandler({ id: 123 });
       await flush();
 
-      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
-        action: 'extractContent',
-        options: { includeMetadata: true }
-      });
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123,
+        expect.objectContaining({
+          action: 'extractContent',
+          options: expect.objectContaining({ includeMetadata: true })
+        })
+      );
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Test Content');
     });
 
@@ -576,10 +580,12 @@ describe('BackgroundScript', () => {
 
       await BackgroundScript.extractContentFromActiveTab();
 
-      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
-        action: 'extractContent',
-        options: { includeMetadata: false }
-      });
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123,
+        expect.objectContaining({
+          action: 'extractContent',
+          options: expect.objectContaining({ includeMetadata: false })
+        })
+      );
     });
   });
 
