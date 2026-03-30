@@ -211,7 +211,7 @@ describe('ContentScript', () => {
       expect(returnValue).toBe(true);
 
       // Wait for the async operation
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await flushPromises();
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -299,7 +299,7 @@ describe('ContentScript', () => {
 
       expect(returnValue).toBe(true); // async
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await flushPromises();
 
       // Should respond (even if no selection exists)
       expect(sendResponse).toHaveBeenCalled();
@@ -427,7 +427,7 @@ describe('ContentScript', () => {
         sendResponse
       );
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await flushPromises();
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({ success: true })
@@ -453,7 +453,7 @@ describe('ContentScript', () => {
 
       expect(returnValue).toBe(true);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await flushPromises();
 
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Hello markdown');
       expect(sendResponse).toHaveBeenCalledWith({ success: true });
@@ -471,7 +471,7 @@ describe('ContentScript', () => {
         sendResponse
       );
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await flushPromises();
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({ success: false })

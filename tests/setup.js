@@ -1,13 +1,15 @@
 // Mock chrome API for testing
 global.chrome = {
   runtime: {
-    sendMessage: jest.fn(),
+    sendMessage: jest.fn((msg, callback) => { if (callback) callback({}); }),
     onMessage: {
       addListener: jest.fn()
     },
     onInstalled: {
       addListener: jest.fn()
-    }
+    },
+    openOptionsPage: jest.fn(),
+    lastError: null
   },
   tabs: {
     query: jest.fn(),
@@ -62,6 +64,9 @@ Object.assign(navigator, {
 const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
+
+// Helper to flush pending promises (replaces fragile setTimeout-based flushing)
+global.flushPromises = () => new Promise(resolve => process.nextTick(resolve));
 
 // Add custom matchers if needed
 expect.extend({

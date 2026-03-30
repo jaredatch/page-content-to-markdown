@@ -180,7 +180,7 @@ describe('BackgroundScript', () => {
   describe('action click handler', () => {
     // Helper: the onClicked callback doesn't return a promise,
     // so we need to flush microtasks after calling it.
-    const flush = () => new Promise(resolve => setTimeout(resolve, 10));
+    const flush = () => flushPromises();
 
     test('should extract and copy content on action click', async () => {
       const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
@@ -248,7 +248,7 @@ describe('BackgroundScript', () => {
   });
 
   describe('message handler', () => {
-    const flush = () => new Promise(resolve => setTimeout(resolve, 10));
+    const flush = () => flushPromises();
 
     test('should handle extractAndCopy message', async () => {
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
@@ -414,7 +414,7 @@ describe('BackgroundScript', () => {
   });
 
   describe('commands', () => {
-    const flush = () => new Promise(resolve => setTimeout(resolve, 10));
+    const flush = () => flushPromises();
 
     test('should set up command listener', () => {
       expect(chrome.commands.onCommand.addListener).toHaveBeenCalledWith(
@@ -644,7 +644,7 @@ describe('BackgroundScript', () => {
       expect(result).toBe(true); // async response
 
       // Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await flushPromises();
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
         1,
@@ -670,7 +670,7 @@ describe('BackgroundScript', () => {
         sendResponse
       );
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await flushPromises();
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({ success: false })
@@ -697,7 +697,7 @@ describe('BackgroundScript', () => {
         sendResponse
       );
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await flushPromises();
 
       // Clipboard should have been called with the markdown
       expect(global.navigator.clipboard.writeText).toHaveBeenCalled();
