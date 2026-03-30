@@ -139,12 +139,12 @@ popup.js  →  background.js  →  content-script.js  →  MarkdownConverter (Tu
 ### Phase 6: Testing — Comprehensive Cross-Browser Test Suite
 > Build a reliable, multi-layer test suite covering unit, integration, and end-to-end testing across both Firefox and Chrome.
 
-#### Current Testing State (as of 2026-03-30, post-6.1)
+#### Current Testing State (as of 2026-03-30, post-6.2)
 
 | Layer | Status | Details |
 |-------|--------|---------|
 | **Unit tests** | ✅ SOLID | 12 suites, 349 tests. Coverage: 84.56% stmts, 86.34% lines. All source files tested including popup.js (60 tests, 89.62% stmts) and options.js (34 tests, 96.87% stmts). Fragile setTimeout flushing replaced with `flushPromises()`. Only known gap: element-picker.js at 67.25% lines (jsdom limitation). |
-| **Integration tests** | ❌ DOES NOT EXIST | No tests verify message flows between components (popup → background → content script → response). Each component tested in isolation only. |
+| **Integration tests** | ✅ SOLID | 6 suites, 30 tests. Real Background + Content Script wired via MessageBus helper. Covers: full-page conversion, selection lifecycle, X/Twitter extraction, context menus, preferences flow, error propagation. `npm run test:integration`. |
 | **E2E tests (Chrome)** | ⚠️ EXISTS — essentially scaffolding | Puppeteer setup exists but tests don't exercise the real extension. Content extraction test falls back to `page.content()` instead of using content script. Uses data: URLs. Limited popup assertions. |
 | **E2E tests (Firefox)** | ❌ DOES NOT EXIST | No Firefox e2e testing at all. Firefox is the primary target browser. |
 | **Cross-browser framework** | ❌ DOES NOT EXIST | No Selenium, no shared test runner for both browsers. |
@@ -223,34 +223,33 @@ tests/
 #### Phase 6.2: Integration Tests
 > Test how components work together via message passing, without a real browser.
 
-**What we have:** Nothing. Each component is tested in isolation with mocked boundaries.
+**What we have:** 6 suites, 30 tests. Real Background + Content Script wired via MessageBus helper. All message flows tested end-to-end through the mock Chrome API layer.
 
-**What we need:** Tests that wire multiple real components together and verify message flows end-to-end through the mock Chrome API layer.
-
-- [ ] **6.2.1** Create integration test infrastructure:
+- [x] **6.2.1** Create integration test infrastructure:
   - New directory: `tests/integration/`
   - Shared helper: `message-bus.js` — simulates Chrome message passing between components (captures `onMessage` listeners, routes `sendMessage` calls to the correct listener, supports `sendResponse` callbacks)
   - Shared helper: `chrome-storage-mock.js` — in-memory `chrome.storage.local` that persists across components within a test (current mock resets per-component)
-  - Separate Jest config or test match pattern: `tests/integration/**/*.test.js`
-- [ ] **6.2.2** Full-page conversion flow:
+  - Shared helper: `integration-setup.js` — harness factory that loads both components wired together
+  - Separate Jest config: `jest.integration.config.js`
+- [x] **6.2.2** Full-page conversion flow (6 tests):
   - Popup sends `"extractAndCopy"` → Background reads preferences → sends `"extractContent"` to content script → content script returns markdown → Background copies to clipboard → responds to popup with success
   - Verify: correct options passed at each hop, markdown content arrives at clipboard, popup gets success response
   - Variant: output mode = file → verify `"saveAsFile"` message sent instead of clipboard
   - Variant: clipboard fails → verify fallback to content script `"writeToClipboard"`
-- [ ] **6.2.3** Selection mode lifecycle:
+- [x] **6.2.3** Selection mode lifecycle (7 tests):
   - Popup sends `"startSelectionMode"` → Background tracks state → content script activates picker
   - User confirms → content script sends `"selectionComplete"` → Background dispatches output → notification shown
   - Verify: per-tab state tracked correctly, cleanup on tab close, cancel restores state
-- [ ] **6.2.4** X/Twitter extraction flow:
+- [x] **6.2.4** X/Twitter extraction flow (5 tests):
   - Popup sends `"extractXContent"` with contentType → Background → content script creates XExtractor + XFormatter → returns markdown
   - Verify: correct contentType forwarded, preferences applied, fallback to generic on XExtractor failure
-- [ ] **6.2.5** Context menu flows:
+- [x] **6.2.5** Context menu flows (3 tests):
   - Text selected: context menu → `"convertTextSelection"` → content script converts selection
   - No text: context menu → `"startSelectionWithElement"` → content script activates picker with pre-selected element
-- [ ] **6.2.6** Preferences flow:
+- [x] **6.2.6** Preferences flow (4 tests):
   - Set formatting preferences → trigger conversion → verify `applyFormattingOptions()` called with correct values on MarkdownConverter
   - Change output mode → trigger conversion → verify output routed to correct destination
-- [ ] **6.2.7** Error propagation:
+- [x] **6.2.7** Error propagation (5 tests):
   - Content script throws → Background catches → Popup receives error response
   - Background can't reach content script → Popup gets meaningful error
   - Verify no unhandled promise rejections in any error path
@@ -375,6 +374,7 @@ tests/
 | 2026-03-23 | Phase 5 | 5.3 | Settings/options page complete. Dedicated options page (options.html) with auto-save. Preferences expanded with 4 formatting options: heading style (atx/setext), bullet list marker (-/*), code block style (fenced/indented), link style (inlined/referenced). Options flow through background → content script → MarkdownConverter.applyFormattingOptions(). Popup header has gear icon to open options page. manifest.json has options_ui. cleanupMarkdown respects configured bullet marker and preserves indented code blocks. 255 tests passing (10 suites). |
 | 2026-03-30 | Phase 6 | Planning | Testing improvement plan created. Audited existing test infrastructure: 10 unit test suites (255 tests), scaffolding-only Puppeteer e2e tests, no integration tests, no Firefox e2e, no cross-browser framework. Planned 5 sub-phases: unit audit & gap fill (6.1), integration tests (6.2), Selenium Chrome e2e (6.3), Firefox e2e & cross-browser (6.4), CI pipeline (6.5). Chose Selenium WebDriver as single cross-browser e2e framework (replaces Puppeteer). |
 | 2026-03-30 | Phase 6 | 6.1.1–6.1.5 | Unit test audit & gap fill complete. Replaced fragile setTimeout-based async flushing with `flushPromises()` helper in background.test.js and content-script.test.js. Added Chrome API mocks (openOptionsPage, lastError, sendMessage callback support). Added 60 unit tests for popup.js (PopupController) and 34 for options.js (OptionsController) — both previously at 0% coverage. Added `npm run test:coverage` script. Coverage baseline: 84.56% stmts, 86.34% lines. 349 tests passing (12 suites). |
+| 2026-03-30 | Phase 6 | 6.2.1–6.2.7 | Integration tests complete. Created MessageBus helper that wires real Background + Content Script together by routing Chrome messaging APIs between components. ChromeStorageMock provides persistent in-memory storage. 6 suites, 30 tests covering: full-page conversion (6), selection lifecycle (7), X/Twitter extraction (5), context menu flows (3), preferences flow (4), error propagation (5). Separate `jest.integration.config.js` and `npm run test:integration` script. |
 
 ---
 
@@ -421,8 +421,9 @@ src/
 icons/                          — Placeholder extension icons (16, 32, 48, 128px)
 tests/
   setup.js                      — Global Chrome API mocks, custom matchers
-  unit/                         — 10 test suites (255 tests) — Jest + jsdom
-  integration/                  — (Planned: Phase 6.2) Message flow tests — Jest
+  unit/                         — 12 test suites (349 tests) — Jest + jsdom
+  integration/                  — 6 test suites (30 tests) — Jest + jsdom, real components wired via MessageBus
+    helpers/                    —   message-bus.js, chrome-storage-mock.js, integration-setup.js
   e2e/                          — Puppeteer-based E2E tests (scaffolding, to be replaced)
   e2e-selenium/                 — (Planned: Phase 6.3–6.4) Selenium cross-browser E2E
     helpers/                    —   Driver factory, extension page resolver, fixture server

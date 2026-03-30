@@ -43,7 +43,8 @@ Firefox-first, with Chrome support.
 ```bash
 npm run build        # Production build → dist/
 npm run build:dev    # Dev build with watch mode
-npm run test         # Run unit tests (255 tests across 10 suites)
+npm run test         # Run unit tests (349 tests across 12 suites)
+npm run test:integration  # Run integration tests (30 tests across 6 suites)
 npm run test:watch   # Unit tests in watch mode
 npm run test:e2e     # End-to-end tests (requires Puppeteer)
 npm run lint         # ESLint

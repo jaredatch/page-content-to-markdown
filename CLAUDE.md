@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 6.1 complete. Phase 6.2–6.5 (Testing) planned — integration tests, Selenium e2e for Chrome + Firefox, CI pipeline. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. 349 unit tests passing (12 suites), 84.56% statement coverage.
+**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 6.1–6.2 complete. Phase 6.3–6.5 (Testing) planned — Selenium e2e for Chrome + Firefox, CI pipeline. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. 349 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage.
 
 ## Quick Reference
 
@@ -98,8 +98,8 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 ## Testing
 
 - **Unit tests:** Jest + jsdom. Located in `tests/unit/`. 12 suites, 349 tests. Mock Chrome APIs via `tests/setup.js`. Coverage: 84.56% stmts (`npm run test:coverage`).
+- **Integration tests:** Jest + jsdom. Located in `tests/integration/`. 6 suites, 30 tests. Real Background + Content Script wired together via MessageBus helper that simulates Chrome message passing. Run with `npm run test:integration`.
 - **E2E tests:** Jest + Puppeteer. Located in `tests/e2e/`. Currently scaffolding only — being replaced by Selenium (see Phase 6 in PLAN.md).
-- **Integration tests:** Planned (Phase 6.2) — will test message flows between components.
 - **Cross-browser e2e:** Planned (Phase 6.3–6.4) — Selenium WebDriver for Chrome + Firefox.
 - **Custom matcher:** `toBeValidMarkdown` — checks that output contains markdown-like content.
 - **jsdom limitation:** `getBoundingClientRect()` returns 0x0 in jsdom, so ElementPicker tests that depend on element sizing mock `_resolveTarget` directly.
