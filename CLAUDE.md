@@ -79,7 +79,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `src/utils/x-extractor.js` | X/Twitter DOM parser — extracts tweets, threads, articles as structured data |
 | `src/utils/x-formatter.js` | X/Twitter markdown formatter — structured data → markdown strings |
 | `webpack.config.js` | Build config — 4 entry points → `dist/` |
-| `PLAN.md` | Project plan, phases, progress tracking |
+| `PLAN.md` | Project plan, phases, progress tracking (local only, not in repo) |
 
 ## Build & Load Extension
 
@@ -101,7 +101,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 
 - **Unit tests:** Jest + jsdom. Located in `tests/unit/`. 12 suites, 349 tests. Mock Chrome APIs via `tests/setup.js`. Coverage: 84.56% stmts (`npm run test:coverage`).
 - **Integration tests:** Jest + jsdom. Located in `tests/integration/`. 6 suites, 30 tests. Real Background + Content Script wired together via MessageBus helper that simulates Chrome message passing. Run with `npm run test:integration`.
-- **E2E tests:** Jest + Puppeteer. Located in `tests/e2e/`. Currently scaffolding only — being replaced by Selenium (see Phase 6 in PLAN.md).
+- **E2E tests:** Jest + Puppeteer. Located in `tests/e2e/`. Currently scaffolding only — being replaced by Selenium.
 - **Cross-browser e2e:** Planned (Phase 6.3–6.4) — Selenium WebDriver for Chrome + Firefox.
 - **Custom matcher:** `toBeValidMarkdown` — checks that output contains markdown-like content.
 - **jsdom limitation:** `getBoundingClientRect()` returns 0x0 in jsdom, so ElementPicker tests that depend on element sizing mock `_resolveTarget` directly.
@@ -125,8 +125,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 
 ## Important Context
 
-- See `PLAN.md` for the full project plan, known issues, and progress tracking.
-- See `ABOUT.md` for the original project vision and goals.
+- `PLAN.md` (local only, gitignored) has the full project plan, known issues, and progress tracking.
 - Firefox is the primary target. Chrome support is desired but secondary.
 - Turndown `require()` needs `TurndownImport.default || TurndownImport` due to webpack ES module interop with Turndown's browser bundle.
 - `jsdom` is marked as a webpack external — it's only used in the Node.js branch of `markdown-converter.js` for testing, never in the browser.

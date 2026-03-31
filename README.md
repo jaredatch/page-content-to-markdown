@@ -64,7 +64,7 @@ Popup (UI) → Background (service worker) → Content Script → MarkdownConver
 - **DOM-direct conversion**: passes live DOM nodes to Turndown, avoiding serialize/reparse overhead
 - **Shadow DOM isolation**: the element picker UI is injected via shadow DOM to avoid CSS conflicts
 
-See [CLAUDE.md](CLAUDE.md) for detailed architecture docs and [PLAN.md](PLAN.md) for project status and roadmap.
+See [CLAUDE.md](CLAUDE.md) for detailed architecture docs.
 
 ### Dependencies
 
