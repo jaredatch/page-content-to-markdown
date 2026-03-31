@@ -621,8 +621,8 @@ describe('BackgroundScript', () => {
     });
   });
 
-  describe('X content extraction', () => {
-    test('should route extractXContent message to content script', async () => {
+  describe('site content extraction', () => {
+    test('should route extractSiteContent message to content script', async () => {
       const mockTab = { id: 1, url: 'https://x.com/user/status/123' };
       chrome.tabs.query.mockResolvedValue([mockTab]);
       chrome.tabs.sendMessage.mockResolvedValue({
@@ -636,7 +636,7 @@ describe('BackgroundScript', () => {
       const sendResponse = jest.fn();
 
       const result = messageHandler(
-        { action: 'extractXContent', contentType: 'single-tweet' },
+        { action: 'extractSiteContent', siteId: 'x', contentType: 'single-tweet' },
         {},
         sendResponse
       );
@@ -649,7 +649,8 @@ describe('BackgroundScript', () => {
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
         1,
         expect.objectContaining({
-          action: 'extractXContent',
+          action: 'extractSiteContent',
+          siteId: 'x',
           contentType: 'single-tweet'
         })
       );
@@ -658,14 +659,14 @@ describe('BackgroundScript', () => {
       );
     });
 
-    test('should handle X extraction failure', async () => {
+    test('should handle site extraction failure', async () => {
       chrome.tabs.query.mockResolvedValue([]);
 
       const messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0][0];
       const sendResponse = jest.fn();
 
       messageHandler(
-        { action: 'extractXContent', contentType: 'single-tweet' },
+        { action: 'extractSiteContent', siteId: 'x', contentType: 'single-tweet' },
         {},
         sendResponse
       );
@@ -677,7 +678,7 @@ describe('BackgroundScript', () => {
       );
     });
 
-    test('should dispatch X content through output pipeline', async () => {
+    test('should dispatch site content through output pipeline', async () => {
       const mockTab = { id: 1, url: 'https://x.com/user/status/123' };
       chrome.tabs.query.mockResolvedValue([mockTab]);
       chrome.storage.local.get.mockResolvedValue({ outputMode: 'clipboard' });
@@ -692,7 +693,7 @@ describe('BackgroundScript', () => {
       const sendResponse = jest.fn();
 
       messageHandler(
-        { action: 'extractXContent', contentType: 'thread' },
+        { action: 'extractSiteContent', siteId: 'x', contentType: 'thread' },
         {},
         sendResponse
       );

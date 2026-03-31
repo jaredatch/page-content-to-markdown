@@ -47,8 +47,8 @@ class BackgroundScript {
         return true;
       }
 
-      if (request.action === 'extractXContent') {
-        this.handleExtractXContent(request.contentType, sendResponse);
+      if (request.action === 'extractSiteContent') {
+        this.handleExtractSiteContent(request.siteId, request.contentType, sendResponse);
         return true;
       }
 
@@ -352,11 +352,11 @@ class BackgroundScript {
   }
 
   /**
-   * Handle X/Twitter-specific content extraction
+   * Handle site-specific content extraction
    */
-  async handleExtractXContent(contentType, sendResponse) {
+  async handleExtractSiteContent(siteId, contentType, sendResponse) {
     try {
-      console.log(`🐦 [background] Extracting X content: ${contentType}`);
+      console.log(`🔧 [background] Extracting site content: ${siteId}/${contentType}`);
 
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
@@ -367,7 +367,8 @@ class BackgroundScript {
       const prefs = await Preferences.get();
 
       const response = await chrome.tabs.sendMessage(tabs[0].id, {
-        action: 'extractXContent',
+        action: 'extractSiteContent',
+        siteId,
         contentType,
         options: {
           includeMetadata: prefs.includeMetadata,
@@ -379,16 +380,16 @@ class BackgroundScript {
       });
 
       if (!response || !response.success) {
-        sendResponse(response || { success: false, error: 'X extraction failed' });
+        sendResponse(response || { success: false, error: 'Site extraction failed' });
         return;
       }
 
       const result = await this.dispatchOutput(response.markdown, response.metadata);
       const verb = result.method === 'file' ? 'saved' : 'copied';
-      this.showNotification('Success', `X ${contentType} ${verb} as markdown`, 'success');
+      this.showNotification('Success', `${contentType} ${verb} as markdown`, 'success');
       sendResponse(result);
     } catch (error) {
-      console.error('🚨 [background] Error extracting X content:', error);
+      console.error(`🚨 [background] Error extracting site content (${siteId}/${contentType}):`, error);
       sendResponse({ success: false, error: error.message });
     }
   }

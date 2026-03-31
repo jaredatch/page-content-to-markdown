@@ -6,6 +6,22 @@
  */
 class XFormatter {
   /**
+   * Unified format dispatch — called by the site registry system.
+   * @param {string} contentType - 'single-tweet', 'thread', or 'article'
+   * @param {object} data - Structured data from XExtractor
+   * @param {object} [converter] - Optional MarkdownConverter instance
+   * @returns {string} Markdown string
+   */
+  format(contentType, data, converter) {
+    switch (contentType) {
+      case 'single-tweet': return this.formatTweet(data);
+      case 'thread': return this.formatThread(data);
+      case 'article': return this.formatArticle(data, converter);
+      default: return '';
+    }
+  }
+
+  /**
    * Format a single tweet as markdown.
    * @param {TweetData} tweet
    * @returns {string}

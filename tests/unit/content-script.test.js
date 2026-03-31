@@ -28,27 +28,23 @@ jest.mock('../../src/content/element-picker', () => {
   }));
 });
 
-jest.mock('../../src/utils/x-extractor', () => {
-  return jest.fn().mockImplementation(() => ({
-    extractSingleTweet: jest.fn().mockReturnValue(null),
-    extractThread: jest.fn().mockReturnValue(null),
-    extractArticle: jest.fn().mockReturnValue(null),
-    detectContentType: jest.fn().mockReturnValue('unknown')
-  }));
-});
+const mockExtract = jest.fn().mockReturnValue(null);
+const mockFormat = jest.fn().mockReturnValue('');
+const MockExtractor = jest.fn().mockImplementation(() => ({ extract: mockExtract }));
+const MockFormatter = jest.fn().mockImplementation(() => ({ format: mockFormat }));
 
-jest.mock('../../src/utils/x-formatter', () => {
-  return jest.fn().mockImplementation(() => ({
-    formatTweet: jest.fn().mockReturnValue('## @user (User)\n\nTweet text\n\n---'),
-    formatThread: jest.fn().mockReturnValue('## @user (User)\n\nThread text\n\n---'),
-    formatArticle: jest.fn().mockReturnValue('# Article Title\n\nArticle body')
-  }));
-});
+jest.mock('../../src/utils/site-registry', () => ({
+  getById: jest.fn().mockReturnValue({
+    id: 'x',
+    name: 'X / Twitter',
+    Extractor: MockExtractor,
+    Formatter: MockFormatter
+  })
+}));
 
 let MarkdownConverter;
 let SimpleUniversalExtractor;
-let XExtractor;
-let XFormatter;
+let SiteRegistry;
 let ContentScript;
 
 describe('ContentScript', () => {
@@ -63,8 +59,7 @@ describe('ContentScript', () => {
     // Re-require mocked modules after resetModules
     MarkdownConverter = require('../../src/utils/markdown-converter');
     SimpleUniversalExtractor = require('../../src/utils/simple-universal-extractor');
-    XExtractor = require('../../src/utils/x-extractor');
-    XFormatter = require('../../src/utils/x-formatter');
+    SiteRegistry = require('../../src/utils/site-registry');
 
     // Set up mock return values
     mockConvertToMarkdown = jest.fn().mockReturnValue('');
@@ -534,131 +529,92 @@ describe('ContentScript', () => {
     });
   });
 
-  describe('X/Twitter extraction', () => {
-    test('extractXContent calls XExtractor and XFormatter for single tweet', async () => {
+  describe('site-specific extraction', () => {
+    test('extractSiteContent calls site extractor and formatter for single tweet', async () => {
       const mockTweetData = {
         author: { handle: 'testuser', displayName: 'Test User' },
         text: 'Hello world!'
       };
-      const mockExtractSingleTweet = jest.fn().mockReturnValue(mockTweetData);
-      const mockFormatTweet = jest.fn().mockReturnValue('## @testuser (Test User)\n\nHello world!\n\n---');
-
-      XExtractor.mockImplementation(() => ({
-        extractSingleTweet: mockExtractSingleTweet,
-        extractThread: jest.fn(),
-        extractArticle: jest.fn()
-      }));
-      XFormatter.mockImplementation(() => ({
-        formatTweet: mockFormatTweet,
-        formatThread: jest.fn(),
-        formatArticle: jest.fn()
-      }));
+      mockExtract.mockReturnValue(mockTweetData);
+      mockFormat.mockReturnValue('## @testuser (Test User)\n\nHello world!\n\n---');
 
       const instance = new ContentScript();
-      const result = await instance.extractXContent('single-tweet', { includeMetadata: false });
+      const result = await instance.extractSiteContent('x', 'single-tweet', { includeMetadata: false });
 
       expect(result.success).toBe(true);
       expect(result.extractionInfo.method).toBe('x-single-tweet');
       expect(result.markdown).toContain('@testuser');
-      expect(mockExtractSingleTweet).toHaveBeenCalled();
-      expect(mockFormatTweet).toHaveBeenCalledWith(mockTweetData);
+      expect(mockExtract).toHaveBeenCalledWith('single-tweet', expect.anything(), expect.any(String));
+      expect(mockFormat).toHaveBeenCalledWith('single-tweet', mockTweetData, expect.anything());
     });
 
-    test('extractXContent calls XExtractor and XFormatter for thread', async () => {
+    test('extractSiteContent calls site extractor and formatter for thread', async () => {
       const mockThreadData = {
         mainTweet: { author: { handle: 'user', displayName: 'User' }, text: 'Thread' },
         replies: []
       };
-      XExtractor.mockImplementation(() => ({
-        extractSingleTweet: jest.fn(),
-        extractThread: jest.fn().mockReturnValue(mockThreadData),
-        extractArticle: jest.fn()
-      }));
-      XFormatter.mockImplementation(() => ({
-        formatTweet: jest.fn(),
-        formatThread: jest.fn().mockReturnValue('## @user\n\nThread\n\n---'),
-        formatArticle: jest.fn()
-      }));
+      mockExtract.mockReturnValue(mockThreadData);
+      mockFormat.mockReturnValue('## @user\n\nThread\n\n---');
 
       const instance = new ContentScript();
-      const result = await instance.extractXContent('thread', { includeMetadata: false });
+      const result = await instance.extractSiteContent('x', 'thread', { includeMetadata: false });
 
       expect(result.success).toBe(true);
       expect(result.extractionInfo.method).toBe('x-thread');
     });
 
-    test('extractXContent calls XExtractor and XFormatter for article', async () => {
+    test('extractSiteContent calls site extractor and formatter for article', async () => {
       const mockArticleData = {
         author: { handle: 'writer', displayName: 'Writer' },
         title: 'My Article',
         bodyHtml: '<p>Content</p>',
         publishedDate: null
       };
-      XExtractor.mockImplementation(() => ({
-        extractSingleTweet: jest.fn(),
-        extractThread: jest.fn(),
-        extractArticle: jest.fn().mockReturnValue(mockArticleData)
-      }));
-      XFormatter.mockImplementation(() => ({
-        formatTweet: jest.fn(),
-        formatThread: jest.fn(),
-        formatArticle: jest.fn().mockReturnValue('# My Article\n\nContent')
-      }));
+      mockExtract.mockReturnValue(mockArticleData);
+      mockFormat.mockReturnValue('# My Article\n\nContent');
 
       const instance = new ContentScript();
-      const result = await instance.extractXContent('article', { includeMetadata: false });
+      const result = await instance.extractSiteContent('x', 'article', { includeMetadata: false });
 
       expect(result.success).toBe(true);
       expect(result.extractionInfo.method).toBe('x-article');
     });
 
-    test('extractXContent falls back to generic conversion on failure', async () => {
-      XExtractor.mockImplementation(() => ({
-        extractSingleTweet: jest.fn().mockReturnValue(null),
-        extractThread: jest.fn(),
-        extractArticle: jest.fn()
-      }));
+    test('extractSiteContent falls back to generic conversion on failure', async () => {
+      mockExtract.mockReturnValue(null);
 
       mockConvertFromDOM.mockReturnValue('# Generic Fallback\n\nThis is generic turndown content for testing purposes.');
 
       const instance = new ContentScript();
-      const result = await instance.extractXContent('single-tweet', { includeMetadata: false });
+      const result = await instance.extractSiteContent('x', 'single-tweet', { includeMetadata: false });
 
       // Should have fallen back to generic conversion
       expect(result.success).toBe(true);
       expect(result.extractionInfo.method).not.toBe('x-single-tweet');
     });
 
-    test('extractXContent respects includeMetadata option', async () => {
+    test('extractSiteContent respects includeMetadata option', async () => {
       const mockTweetData = {
         author: { handle: 'user', displayName: 'User' },
         text: 'Tweet'
       };
-      XExtractor.mockImplementation(() => ({
-        extractSingleTweet: jest.fn().mockReturnValue(mockTweetData),
-        extractThread: jest.fn(),
-        extractArticle: jest.fn()
-      }));
-      XFormatter.mockImplementation(() => ({
-        formatTweet: jest.fn().mockReturnValue('## @user\n\nTweet\n\n---'),
-        formatThread: jest.fn(),
-        formatArticle: jest.fn()
-      }));
+      mockExtract.mockReturnValue(mockTweetData);
+      mockFormat.mockReturnValue('## @user\n\nTweet\n\n---');
 
       const instance = new ContentScript();
-      const result = await instance.extractXContent('single-tweet', { includeMetadata: true });
+      const result = await instance.extractSiteContent('x', 'single-tweet', { includeMetadata: true });
 
       expect(result.success).toBe(true);
       expect(result.markdown).toContain('**Source:**');
     });
 
-    test('message handler routes extractXContent action', async () => {
+    test('message handler routes extractSiteContent action', async () => {
       const instance = new ContentScript();
       const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
 
       const sendResponse = jest.fn();
       const returned = listener(
-        { action: 'extractXContent', contentType: 'single-tweet', options: {} },
+        { action: 'extractSiteContent', siteId: 'x', contentType: 'single-tweet', options: {} },
         {},
         sendResponse
       );

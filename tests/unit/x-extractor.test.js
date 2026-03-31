@@ -1,6 +1,6 @@
 'use strict';
 
-const XExtractor = require('../../src/utils/x-extractor');
+const XExtractor = require('../../src/sites/x/x-extractor');
 
 // ── HTML Fixtures ──
 
@@ -472,6 +472,37 @@ describe('XExtractor', () => {
       const tweet = extractor.extractSingleTweet(document);
       expect(tweet.media).toHaveLength(1);
       expect(tweet.media[0].url).toContain('content.jpg');
+    });
+  });
+
+  describe('extract() dispatch method', () => {
+    test('dispatches single-tweet to extractSingleTweet', () => {
+      createDoc(SINGLE_TWEET_HTML);
+      const result = extractor.extract('single-tweet', document, 'https://x.com/elonmusk/status/123456');
+      expect(result).not.toBeNull();
+      expect(result.author.handle).toBe('elonmusk');
+      expect(result.text).toBe('The quick brown fox jumps over the lazy dog.');
+    });
+
+    test('dispatches thread to extractThread', () => {
+      createDoc(THREAD_HTML);
+      const result = extractor.extract('thread', document, 'https://x.com/janedev/status/100');
+      expect(result).not.toBeNull();
+      expect(result.mainTweet.author.handle).toBe('janedev');
+      expect(result.replies).toHaveLength(2);
+    });
+
+    test('dispatches article to extractArticle', () => {
+      document.documentElement.innerHTML = ARTICLE_HTML;
+      const result = extractor.extract('article', document);
+      expect(result).not.toBeNull();
+      expect(result.title).toBe('My Deep Dive Article');
+    });
+
+    test('returns null for unknown content type', () => {
+      createDoc(SINGLE_TWEET_HTML);
+      const result = extractor.extract('unknown-type', document);
+      expect(result).toBeNull();
     });
   });
 });

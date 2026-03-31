@@ -6,12 +6,12 @@ jest.mock('../../src/utils/preferences', () => ({
   set: jest.fn().mockResolvedValue()
 }));
 
-jest.mock('../../src/utils/site-detector', () => ({
-  detect: jest.fn().mockReturnValue({ site: 'generic' })
+jest.mock('../../src/utils/site-registry', () => ({
+  detect: jest.fn().mockReturnValue(null)
 }));
 
 // Re-acquired in beforeEach after jest.resetModules()
-let Preferences, SiteDetector;
+let Preferences, SiteRegistry;
 
 // Minimal popup DOM matching src/popup/popup.html structure
 const POPUP_HTML = `
@@ -31,14 +31,7 @@ const POPUP_HTML = `
           <button class="toggle-btn" data-mode="file">Save</button>
         </div>
       </div>
-      <div id="xPresets" class="x-presets hidden">
-        <div class="section-label">X / Twitter</div>
-        <div class="preset-actions">
-          <button class="btn btn-preset" data-x-type="single-tweet"><span class="btn-text">Copy Tweet</span></button>
-          <button class="btn btn-preset" data-x-type="thread"><span class="btn-text">Copy Thread</span></button>
-          <button class="btn btn-preset" data-x-type="article"><span class="btn-text">Copy Article</span></button>
-        </div>
-      </div>
+      <div id="sitePresets" class="site-presets hidden"></div>
       <div class="actions">
         <button id="extractBtn" class="btn btn-primary">
           <span class="btn-text">Copy Page as Markdown</span>
@@ -95,7 +88,7 @@ describe('PopupController', () => {
 
     // Re-acquire mock references after resetModules
     Preferences = require('../../src/utils/preferences');
-    SiteDetector = require('../../src/utils/site-detector');
+    SiteRegistry = require('../../src/utils/site-registry');
 
     // Reset chrome mocks
     chrome.tabs.query.mockReset();
@@ -106,7 +99,7 @@ describe('PopupController', () => {
     // Set up module mock defaults
     Preferences.get.mockResolvedValue({ outputMode: 'clipboard', includeMetadata: true });
     Preferences.set.mockResolvedValue();
-    SiteDetector.detect.mockReturnValue({ site: 'generic' });
+    SiteRegistry.detect.mockReturnValue(null);
 
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -135,7 +128,7 @@ describe('PopupController', () => {
       expect(popup.elements.progressText).toBeTruthy();
       expect(popup.elements.metadataToggle).toBeTruthy();
       expect(popup.elements.outputToggle).toBeTruthy();
-      expect(popup.elements.xPresets).toBeTruthy();
+      expect(popup.elements.sitePresets).toBeTruthy();
       expect(popup.elements.settingsBtn).toBeTruthy();
     });
 
@@ -427,18 +420,33 @@ describe('PopupController', () => {
   // detectSitePresets
   // -------------------------------------------------------
   describe('detectSitePresets', () => {
-    test('shows X presets when on x.com', async () => {
-      SiteDetector.detect.mockReturnValue({ site: 'x' });
+    test('shows site presets when on x.com', async () => {
+      SiteRegistry.detect.mockReturnValue({
+        id: 'x',
+        name: 'X / Twitter',
+        contentTypes: [
+          { id: 'single-tweet', label: 'Tweet', icon: '<svg></svg>' },
+          { id: 'thread', label: 'Thread', icon: '<svg></svg>' },
+          { id: 'article', label: 'Article', icon: '<svg></svg>' }
+        ],
+        Extractor: jest.fn(),
+        Formatter: jest.fn()
+      });
       const popup = await createPopup({ tabUrl: 'https://x.com/user/status/123' });
 
-      expect(popup.elements.xPresets.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.sitePresets.classList.contains('hidden')).toBe(false);
+      // Buttons should have been dynamically generated
+      const buttons = popup.elements.sitePresets.querySelectorAll('[data-site-id]');
+      expect(buttons.length).toBe(3);
+      expect(buttons[0].dataset.siteId).toBe('x');
+      expect(buttons[0].dataset.contentType).toBe('single-tweet');
     });
 
-    test('does not show X presets for non-X site', async () => {
-      SiteDetector.detect.mockReturnValue({ site: 'generic' });
+    test('does not show site presets for non-matching site', async () => {
+      SiteRegistry.detect.mockReturnValue(null);
       const popup = await createPopup({ tabUrl: 'https://example.com' });
 
-      expect(popup.elements.xPresets.classList.contains('hidden')).toBe(true);
+      expect(popup.elements.sitePresets.classList.contains('hidden')).toBe(true);
     });
 
     test('does nothing when currentTab is null', async () => {
@@ -450,26 +458,26 @@ describe('PopupController', () => {
       const popup = new PopupController();
       await flushPromises();
 
-      // xPresets should remain hidden (no crash)
-      expect(popup.elements.xPresets.classList.contains('hidden')).toBe(true);
+      // sitePresets should remain hidden (no crash)
+      expect(popup.elements.sitePresets.classList.contains('hidden')).toBe(true);
     });
   });
 
   // -------------------------------------------------------
-  // handleXExtract
+  // handleSiteExtract
   // -------------------------------------------------------
-  describe('handleXExtract', () => {
-    test('sends extractXContent with correct contentType', async () => {
+  describe('handleSiteExtract', () => {
+    test('sends extractSiteContent with correct siteId and contentType', async () => {
       const popup = await createPopup();
 
       chrome.runtime.sendMessage.mockClear();
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
         if (callback) callback({ success: true, message: 'Done' });
       });
-      await popup.handleXExtract('single-tweet');
+      await popup.handleSiteExtract('x', 'single-tweet');
 
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'extractXContent', contentType: 'single-tweet' },
+        { action: 'extractSiteContent', siteId: 'x', contentType: 'single-tweet' },
         expect.any(Function)
       );
     });
@@ -481,7 +489,7 @@ describe('PopupController', () => {
         if (callback) callback({ success: true, message: 'Tweet copied!' });
       });
       jest.useFakeTimers();
-      await popup.handleXExtract('single-tweet');
+      await popup.handleSiteExtract('x', 'single-tweet');
 
       expect(popup.elements.statusMessage.textContent).toBe('Tweet copied!');
       jest.advanceTimersByTime(1500);
@@ -494,7 +502,7 @@ describe('PopupController', () => {
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
         if (callback) callback({ success: false, error: 'Not a tweet page' });
       });
-      await popup.handleXExtract('single-tweet');
+      await popup.handleSiteExtract('x', 'single-tweet');
 
       expect(popup.elements.statusMessage.textContent).toBe('Not a tweet page');
       expect(popup.elements.extractBtn.disabled).toBe(false);
@@ -508,7 +516,7 @@ describe('PopupController', () => {
         if (callback) callback(undefined);
         chrome.runtime.lastError = null;
       });
-      await popup.handleXExtract('thread');
+      await popup.handleSiteExtract('x', 'thread');
 
       expect(popup.elements.statusMessage.textContent).toBe('Unexpected error occurred');
       expect(popup.elements.extractBtn.disabled).toBe(false);
@@ -535,13 +543,24 @@ describe('PopupController', () => {
       expect(btnText.textContent).toBe('Save Page as Markdown');
     });
 
-    test('updates X preset button text for file mode', async () => {
-      const popup = await createPopup();
+    test('updates site preset button text for file mode', async () => {
+      SiteRegistry.detect.mockReturnValue({
+        id: 'x',
+        name: 'X / Twitter',
+        contentTypes: [
+          { id: 'single-tweet', label: 'Tweet', icon: '<svg></svg>' },
+          { id: 'thread', label: 'Thread', icon: '<svg></svg>' },
+          { id: 'article', label: 'Article', icon: '<svg></svg>' }
+        ],
+        Extractor: jest.fn(),
+        Formatter: jest.fn()
+      });
+      const popup = await createPopup({ tabUrl: 'https://x.com/user/status/123' });
       popup.updateButtonText('file');
 
-      const tweetBtn = popup.elements.xPresets.querySelector('[data-x-type="single-tweet"] .btn-text');
-      const threadBtn = popup.elements.xPresets.querySelector('[data-x-type="thread"] .btn-text');
-      const articleBtn = popup.elements.xPresets.querySelector('[data-x-type="article"] .btn-text');
+      const tweetBtn = popup.elements.sitePresets.querySelector('[data-content-type="single-tweet"] .btn-text');
+      const threadBtn = popup.elements.sitePresets.querySelector('[data-content-type="thread"] .btn-text');
+      const articleBtn = popup.elements.sitePresets.querySelector('[data-content-type="article"] .btn-text');
       expect(tweetBtn.textContent).toBe('Save Tweet');
       expect(threadBtn.textContent).toBe('Save Thread');
       expect(articleBtn.textContent).toBe('Save Article');

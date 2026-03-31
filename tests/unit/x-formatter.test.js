@@ -1,6 +1,6 @@
 'use strict';
 
-const XFormatter = require('../../src/utils/x-formatter');
+const XFormatter = require('../../src/sites/x/x-formatter');
 
 describe('XFormatter', () => {
   let formatter;
@@ -272,6 +272,42 @@ describe('XFormatter', () => {
       // Should only have one stat (likes), not retweets/replies/views
       const emojiCount = (line.match(/[❤🔁💬👁]/g) || []).length;
       expect(emojiCount).toBe(1);
+    });
+  });
+
+  describe('format() dispatch method', () => {
+    test('dispatches single-tweet to formatTweet', () => {
+      const tweet = makeTweet({ text: 'Dispatch test tweet.' });
+      const md = formatter.format('single-tweet', tweet);
+      expect(md).toContain('Dispatch test tweet.');
+      expect(md).toContain('## @testuser');
+    });
+
+    test('dispatches thread to formatThread', () => {
+      const thread = {
+        mainTweet: makeTweet({ text: 'Thread dispatch.' }),
+        replies: [makeTweet({ text: 'Reply.' })]
+      };
+      const md = formatter.format('thread', thread);
+      expect(md).toContain('Thread dispatch.');
+      expect(md).toContain('Reply.');
+    });
+
+    test('dispatches article to formatArticle', () => {
+      const article = {
+        author: { handle: 'writer', displayName: 'Writer' },
+        title: 'Dispatch Article',
+        bodyHtml: '<p>Body content.</p>',
+        publishedDate: null
+      };
+      const md = formatter.format('article', article);
+      expect(md).toContain('Dispatch Article');
+      expect(md).toContain('Body content.');
+    });
+
+    test('returns empty string for unknown content type', () => {
+      const md = formatter.format('unknown', {});
+      expect(md).toBe('');
     });
   });
 });

@@ -2,7 +2,7 @@
 // Handles user interactions in the popup interface
 
 const Preferences = require('../utils/preferences');
-const SiteDetector = require('../utils/site-detector');
+const SiteRegistry = require('../utils/site-registry');
 
 console.log('🚀 [popup] Popup script loaded');
 
@@ -20,7 +20,7 @@ class PopupController {
       progressText: document.querySelector('.progress-text'),
       metadataToggle: document.getElementById('metadataToggle'),
       outputToggle: document.getElementById('outputToggle'),
-      xPresets: document.getElementById('xPresets'),
+      sitePresets: document.getElementById('sitePresets'),
       settingsBtn: document.getElementById('settingsBtn')
     };
 
@@ -138,49 +138,73 @@ class PopupController {
   detectSitePresets() {
     if (!this.currentTab || !this.currentTab.url) return;
 
-    const detection = SiteDetector.detect(this.currentTab.url);
-    if (detection.site === 'x') {
-      this.showXPresets();
+    const site = SiteRegistry.detect(this.currentTab.url);
+    if (site) {
+      this.currentSite = site;
+      this.showSitePresets(site);
     }
   }
 
   /**
-   * Show X/Twitter preset buttons and attach handlers
+   * Show site-specific preset buttons (dynamically generated from site module metadata)
    */
-  showXPresets() {
-    if (!this.elements.xPresets) return;
+  showSitePresets(site) {
+    const container = this.elements.sitePresets;
+    if (!container) return;
 
-    this.elements.xPresets.classList.remove('hidden');
+    // Build section label
+    const label = document.createElement('div');
+    label.className = 'section-label';
+    label.textContent = site.name;
+    container.appendChild(label);
+
+    // Build button row
+    const actions = document.createElement('div');
+    actions.className = 'preset-actions';
+
+    for (const ct of site.contentTypes) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-preset';
+      btn.dataset.siteId = site.id;
+      btn.dataset.contentType = ct.id;
+      btn.innerHTML = `${ct.icon}<span class="btn-text">Copy ${ct.label}</span>`;
+      actions.appendChild(btn);
+    }
+
+    container.appendChild(actions);
+    container.classList.remove('hidden');
 
     // Event delegation for preset buttons
-    this.elements.xPresets.addEventListener('click', (e) => {
+    container.addEventListener('click', (e) => {
       const btn = e.target.closest('.btn-preset');
       if (!btn) return;
-      const contentType = btn.dataset.xType;
-      if (contentType) {
-        this.handleXExtract(contentType);
+      const siteId = btn.dataset.siteId;
+      const contentType = btn.dataset.contentType;
+      if (siteId && contentType) {
+        this.handleSiteExtract(siteId, contentType);
       }
     });
 
-    console.log('🐦 [popup] X/Twitter presets shown');
+    console.log(`🔧 [popup] ${site.name} presets shown`);
   }
 
   /**
-   * Handle X-specific extraction
+   * Handle site-specific extraction
    */
-  async handleXExtract(contentType) {
+  async handleSiteExtract(siteId, contentType) {
     try {
-      console.log(`🐦 [popup] Extracting X content: ${contentType}`);
+      console.log(`🔧 [popup] Extracting site content: ${siteId}/${contentType}`);
 
-      this.showProgress('Extracting X content...');
+      this.showProgress('Extracting content...');
       this.elements.extractBtn.disabled = true;
       this.elements.selectBtn.disabled = true;
-      this.elements.xPresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = true);
+      this.elements.sitePresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = true);
 
       const progressTimers = this._startProgressTimers();
 
       const response = await this.sendMessageToBackground({
-        action: 'extractXContent',
+        action: 'extractSiteContent',
+        siteId,
         contentType
       });
 
@@ -188,16 +212,16 @@ class PopupController {
       this.hideProgress();
 
       if (response && response.success) {
-        console.log('✅ [popup] X extraction successful');
-        this.showSuccess(response.message || 'X content processed!');
+        console.log('✅ [popup] Site extraction successful');
+        this.showSuccess(response.message || 'Content processed!');
         setTimeout(() => { window.close(); }, 1500);
       } else {
-        console.error('🚨 [popup] X extraction failed:', response && response.error);
-        this.showError((response && response.error) || 'Failed to extract X content');
+        console.error('🚨 [popup] Site extraction failed:', response && response.error);
+        this.showError((response && response.error) || 'Failed to extract content');
         this.enableExtraction();
       }
     } catch (error) {
-      console.error('🚨 [popup] Unexpected error in X extraction:', error);
+      console.error('🚨 [popup] Unexpected error in site extraction:', error);
       this.hideProgress();
       this.showError('Unexpected error occurred');
       this.enableExtraction();
@@ -215,16 +239,16 @@ class PopupController {
       btnText.textContent = 'Copy Page as Markdown';
     }
 
-    // Also update X preset button text
-    if (this.elements.xPresets) {
+    // Also update site preset button text
+    if (this.elements.sitePresets && this.currentSite) {
       const verb = mode === 'file' ? 'Save' : 'Copy';
-      this.elements.xPresets.querySelectorAll('.btn-preset').forEach(btn => {
+      this.elements.sitePresets.querySelectorAll('.btn-preset').forEach(btn => {
         const textEl = btn.querySelector('.btn-text');
         if (!textEl) return;
-        const type = btn.dataset.xType;
-        if (type === 'single-tweet') textEl.textContent = `${verb} Tweet`;
-        else if (type === 'thread') textEl.textContent = `${verb} Thread`;
-        else if (type === 'article') textEl.textContent = `${verb} Article`;
+        const ct = this.currentSite.contentTypes.find(c => c.id === btn.dataset.contentType);
+        if (ct) {
+          textEl.textContent = `${verb} ${ct.label}`;
+        }
       });
     }
   }
@@ -485,9 +509,9 @@ class PopupController {
     this.updateButtonText(mode);
     this.elements.selectBtn.disabled = false;
 
-    // Re-enable X preset buttons if present
-    if (this.elements.xPresets) {
-      this.elements.xPresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = false);
+    // Re-enable site preset buttons if present
+    if (this.elements.sitePresets) {
+      this.elements.sitePresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = false);
     }
   }
 

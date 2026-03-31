@@ -8,6 +8,22 @@
  */
 class XExtractor {
   /**
+   * Unified extraction dispatch — called by the site registry system.
+   * @param {string} contentType - 'single-tweet', 'thread', or 'article'
+   * @param {Document} doc - The document
+   * @param {string} [url] - Current page URL
+   * @returns {object|null} Structured data or null on failure
+   */
+  extract(contentType, doc, url) {
+    switch (contentType) {
+      case 'single-tweet': return this.extractSingleTweet(doc, url);
+      case 'thread': return this.extractThread(doc, url);
+      case 'article': return this.extractArticle(doc);
+      default: return null;
+    }
+  }
+
+  /**
    * Detect what type of X content is on the page.
    * @param {string} url - Current page URL
    * @param {Document} doc - The document
