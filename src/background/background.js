@@ -461,6 +461,7 @@ class BackgroundScript {
       console.log('📋 [background] Copying to clipboard...');
 
       try {
+        if (!navigator.clipboard) throw new Error('Clipboard API not available');
         await navigator.clipboard.writeText(text);
       } catch (clipboardError) {
         // Fallback: ask content script to write to clipboard (needed in Firefox service worker)
