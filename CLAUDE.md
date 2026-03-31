@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 6.1–6.2 complete. Phase 6.3–6.5 (Testing) planned — Selenium e2e for Chrome + Firefox, CI pipeline. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. 349 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage.
+**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. 349 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage. CI via GitHub Actions on every push/PR.
 
 ## Quick Reference
 
@@ -13,6 +13,8 @@ npm install          # Install dependencies (required before anything else)
 npm run build        # Production build → dist/
 npm run build:dev    # Dev build with watch mode
 npm run test         # Run unit tests
+npm run test:integration  # Run integration tests
+npm run test:all     # Unit tests (with coverage) + integration tests
 npm run test:watch   # Unit tests in watch mode
 npm run test:e2e     # End-to-end tests (requires Puppeteer)
 npm run lint         # ESLint

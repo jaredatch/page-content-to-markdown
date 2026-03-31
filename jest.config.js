@@ -26,5 +26,13 @@ module.exports = {
   verbose: true,
   transform: {
     '^.+\\.js$': 'babel-jest'
+  },
+  coverageThreshold: {
+    global: {
+      statements: 80,
+      branches: 65,
+      functions: 82,
+      lines: 82
+    }
   }
 }; 

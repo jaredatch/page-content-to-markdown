@@ -9,6 +9,7 @@
     "test:coverage": "jest --coverage",
     "test:integration": "jest --config=jest.integration.config.js",
     "test:integration:watch": "jest --config=jest.integration.config.js --watch",
+    "test:all": "jest --coverage && jest --config=jest.integration.config.js",
     "test:e2e": "jest --config=jest.e2e.config.js",
     "build": "webpack --mode=production",
     "build:dev": "webpack --mode=development --watch",
