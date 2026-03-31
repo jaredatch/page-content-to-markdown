@@ -208,6 +208,64 @@ describe('MarkdownConverter', () => {
     });
   });
 
+  describe('GFM features', () => {
+    test('should convert HTML tables to markdown tables', () => {
+      const html = `<article>
+        <p>Here is a table with enough surrounding content to pass extraction thresholds.</p>
+        <table>
+          <thead><tr><th>Name</th><th>Age</th></tr></thead>
+          <tbody>
+            <tr><td>Alice</td><td>30</td></tr>
+            <tr><td>Bob</td><td>25</td></tr>
+          </tbody>
+        </table>
+      </article>`;
+      const result = converter.convertToMarkdown(html);
+
+      expect(result).toContain('| Name | Age |');
+      expect(result).toContain('| Alice | 30 |');
+      expect(result).toContain('| Bob | 25 |');
+    });
+
+    test('should convert strikethrough to markdown', () => {
+      const html = '<article><p>This has <del>deleted</del> and <s>struck</s> text with enough content for extraction.</p></article>';
+      const result = converter.convertToMarkdown(html);
+
+      expect(result).toContain('~deleted~');
+      expect(result).toContain('~struck~');
+    });
+
+    test('should convert task lists to markdown', () => {
+      const html = `<article>
+        <p>Task list with enough content for extraction thresholds in testing.</p>
+        <ul>
+          <li><input type="checkbox" checked> Done task</li>
+          <li><input type="checkbox"> Pending task</li>
+        </ul>
+      </article>`;
+      const result = converter.convertToMarkdown(html);
+
+      expect(result).toContain('[x]');
+      expect(result).toContain('Done task');
+      expect(result).toContain('[ ]');
+      expect(result).toContain('Pending task');
+    });
+
+    test('should convert tables in HTML fragments', () => {
+      const html = '<table><thead><tr><th>Col A</th><th>Col B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>';
+      const result = converter.convertHtmlFragment(html);
+
+      expect(result).toContain('| Col A | Col B |');
+      expect(result).toContain('| 1 | 2 |');
+    });
+
+    test('should convert strikethrough in HTML fragments', () => {
+      const result = converter.convertHtmlFragment('<p>Text with <del>removed</del> words</p>');
+
+      expect(result).toContain('~removed~');
+    });
+  });
+
   describe('image handling', () => {
     test('should use src when it is a real URL', () => {
       const html = '<img src="https://example.com/photo.jpg" alt="A photo">';

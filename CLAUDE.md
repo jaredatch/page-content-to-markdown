@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. 349 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage. CI via GitHub Actions on every push/PR.
+**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), X/Twitter site-specific presets, settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 354 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage. CI via GitHub Actions on every push/PR.
 
 ## Quick Reference
 
@@ -71,7 +71,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 |------|---------|
 | `manifest.json` | Extension manifest (MV3) — permissions, commands, context menus |
 | `src/content/element-picker.js` | ElementPicker class — shadow DOM UI for selective conversion |
-| `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown — two instances: full-page (with content filtering) and fragment (minimal filtering for user selections) |
+| `src/utils/markdown-converter.js` | Turndown-based HTML→Markdown (GFM) — two instances: full-page (with content filtering) and fragment (minimal filtering for user selections) |
 | `src/utils/preferences.js` | Preferences wrapper around `chrome.storage.local` (outputMode, includeMetadata, formatting options) |
 | `src/options/options.js` | Options page controller — auto-save, formatting previews, reset to defaults |
 | `src/utils/simple-universal-extractor.js` | Text extraction fallback (guaranteed to return something) |
@@ -120,7 +120,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 
 ## Dependencies
 
-- **Runtime:** `turndown` (HTML to Markdown conversion)
+- **Runtime:** `turndown` (HTML to Markdown conversion), `turndown-plugin-gfm` (tables, strikethrough, task lists)
 - **Dev:** Webpack, Babel, Jest, Puppeteer, ESLint
 
 ## Important Context
@@ -129,7 +129,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - Firefox is the primary target. Chrome support is desired but secondary.
 - Turndown `require()` needs `TurndownImport.default || TurndownImport` due to webpack ES module interop with Turndown's browser bundle.
 - `jsdom` is marked as a webpack external — it's only used in the Node.js branch of `markdown-converter.js` for testing, never in the browser.
-- **Two Turndown instances** in `markdown-converter.js`: `turndownService` (full-page, aggressive content filtering) and `_fragmentService` (selective mode, only strips universally junk elements). This is intentional — user-selected content should not be filtered.
+- **Two Turndown instances** in `markdown-converter.js`: `turndownService` (full-page, aggressive content filtering) and `_fragmentService` (selective mode, only strips universally junk elements). Both have the GFM plugin applied (tables, strikethrough, task lists). This is intentional — user-selected content should not be filtered.
 - **Lazy-loaded images:** `_resolveImageSrc()` handles sites that put placeholder SVGs in `src` and real URLs in `data-src`, `data-lazy-src`, or `srcset`/`data-srcset`.
 - **Content filtering patterns** use word-boundary regex for short patterns like `ad` to avoid false positives (e.g., `header` contains `ad` as a substring).
 - **Preferences** stored in `chrome.storage.local`. `Preferences.get()` merges stored values with defaults (`outputMode: 'clipboard'`, `includeMetadata: true`, plus formatting options: `headingStyle`, `bulletListMarker`, `codeBlockStyle`, `linkStyle`). Shared by popup, options page, and background via webpack. Formatting options flow: background reads prefs → passes in message options → content script calls `converter.applyFormattingOptions()` → Turndown services updated before conversion.

@@ -16,7 +16,13 @@
     "lint": "eslint src/",
     "start": "npm run build:dev"
   },
-  "keywords": ["browser-extension", "markdown", "content-extraction", "ai", "universal-compatibility"],
+  "keywords": [
+    "browser-extension",
+    "markdown",
+    "content-extraction",
+    "ai",
+    "universal-compatibility"
+  ],
   "author": "Browser Extension Copy Page as Markdown Contributors",
   "license": "MIT",
   "repository": {
@@ -41,6 +47,7 @@
     "webpack-cli": "^5.1.0"
   },
   "dependencies": {
-    "turndown": "^7.1.2"
+    "turndown": "^7.1.2",
+    "turndown-plugin-gfm": "^1.0.2"
   }
-} 
+}

@@ -1,5 +1,7 @@
 const TurndownImport = require('turndown');
 const TurndownService = TurndownImport.default || TurndownImport;
+const TurndownPluginGfmImport = require('turndown-plugin-gfm');
+const turndownPluginGfm = TurndownPluginGfmImport.gfm || TurndownPluginGfmImport;
 
 class MarkdownConverter {
   constructor() {
@@ -13,6 +15,9 @@ class MarkdownConverter {
       linkStyle: 'inlined',
       linkReferenceStyle: 'full'
     });
+
+    // Enable GFM: tables, strikethrough, task lists
+    this.turndownService.use(turndownPluginGfm);
 
     // Configure rules for clean conversion
     this.setupCustomRules();
@@ -119,6 +124,9 @@ class MarkdownConverter {
           linkStyle: 'inlined',
           linkReferenceStyle: 'full'
         });
+        // Enable GFM: tables, strikethrough, task lists
+        this._fragmentService.use(turndownPluginGfm);
+
         // Strip truly unwanted elements
         this._fragmentService.remove(['script', 'style', 'iframe', 'noscript']);
 
