@@ -1,8 +1,9 @@
 'use strict';
 
 const xModule = require('../sites/x');
+const claudeModule = require('../sites/claude');
 
-const _sites = [xModule];
+const _sites = [xModule, claudeModule];
 
 /**
  * Central registry for site-specific extractors.

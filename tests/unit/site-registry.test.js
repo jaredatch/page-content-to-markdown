@@ -19,10 +19,21 @@ describe('SiteRegistry', () => {
     });
 
     test.each([
+      ['https://claude.ai/share/abc123'],
+      ['https://claude.ai/chat/abc123'],
+      ['https://www.claude.ai/share/abc123']
+    ])('returns Claude site module for: %s', (url) => {
+      const site = SiteRegistry.detect(url);
+      expect(site).not.toBeNull();
+      expect(site.id).toBe('claude');
+      expect(site.name).toBe('Claude');
+    });
+
+    test.each([
       ['https://google.com'],
       ['https://example.com'],
       ['https://notx.com/status/123'],
-      ['https://claude.ai/chat/123']
+      ['https://reddit.com/r/test']
     ])('returns null for non-registered URL: %s', (url) => {
       expect(SiteRegistry.detect(url)).toBeNull();
     });
