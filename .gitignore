@@ -52,4 +52,7 @@ temp/
 # Extension builds
 *.zip
 *.crx
-*.xpi 
+*.xpi
+
+# Internal project management
+PLAN.md 
