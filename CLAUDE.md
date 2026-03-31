@@ -4,7 +4,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
 
-**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 5.4–5.6 partially complete (store text drafted, screenshots/submission remaining), Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), site-specific presets via site extractor registry (X/Twitter first), settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 364 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage. CI via GitHub Actions on every push/PR.
+**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 5.4–5.6 partially complete (store text drafted, screenshots/submission remaining), Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), site-specific presets via site extractor registry (X/Twitter, Claude), settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 367 unit tests passing (12 suites) + 30 integration tests (6 suites), 84.56% statement coverage. CI via GitHub Actions on every push/PR.
 
 ## Quick Reference
 
@@ -34,7 +34,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Element Picker** (`src/content/element-picker.js`) — Shadow DOM overlay for hover-highlight, click-to-select, floating toolbar. Bundled with content script via webpack.
 - **Utils** (`src/utils/`) — Extraction, conversion, preferences, and site registry.
 - **Site Registry** (`src/utils/site-registry.js`) — Central registry for site-specific extractors. Handles detection, lookup, and dispatch to site modules.
-- **Site Modules** (`src/sites/`) — Per-site extraction modules. Each exports a registration object with matchers, content types, extractor, and formatter. Currently: X/Twitter (`src/sites/x/`).
+- **Site Modules** (`src/sites/`) — Per-site extraction modules. Each exports a registration object with matchers, content types, extractor, and formatter. Currently: X/Twitter (`src/sites/x/`), Claude (`src/sites/claude/`).
 
 ### Message Flow — Full Page
 1. Popup sends `"extractAndCopy"` → Background
@@ -79,6 +79,9 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `src/sites/x/index.js` | X/Twitter site module — registration object, content types, SVG icons |
 | `src/sites/x/x-extractor.js` | X/Twitter DOM parser — extracts tweets, threads, articles as structured data |
 | `src/sites/x/x-formatter.js` | X/Twitter markdown formatter — structured data → markdown strings |
+| `src/sites/claude/index.js` | Claude site module — shared conversation extraction |
+| `src/sites/claude/claude-extractor.js` | Claude DOM parser — extracts conversation turns from share pages |
+| `src/sites/claude/claude-formatter.js` | Claude markdown formatter — conversation → structured markdown |
 | `webpack.config.js` | Build config — 4 entry points → `dist/` |
 | `store/listing.md` | Store listing text for Firefox Add-ons and Chrome Web Store |
 | `store/privacy-policy.md` | Privacy policy — no data collection, local-only processing |
@@ -103,7 +106,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 
 ## Testing
 
-- **Unit tests:** Jest + jsdom. Located in `tests/unit/`. 12 suites, 364 tests. Mock Chrome APIs via `tests/setup.js`. Coverage: 84.56% stmts (`npm run test:coverage`).
+- **Unit tests:** Jest + jsdom. Located in `tests/unit/`. 12 suites, 367 tests. Mock Chrome APIs via `tests/setup.js`. Coverage: 84.56% stmts (`npm run test:coverage`).
 - **Integration tests:** Jest + jsdom. Located in `tests/integration/`. 6 suites, 30 tests. Real Background + Content Script wired together via MessageBus helper that simulates Chrome message passing. Run with `npm run test:integration`.
 - **E2E tests:** Jest + Puppeteer. Located in `tests/e2e/`. Currently scaffolding only — being replaced by Selenium.
 - **Cross-browser e2e:** Planned (Phase 6.3–6.4) — Selenium WebDriver for Chrome + Firefox.
