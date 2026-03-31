@@ -485,7 +485,7 @@ class ContentScript {
 }
 
 // Initialize content script
-const contentScript = new ContentScript();
+new ContentScript();
 
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {
