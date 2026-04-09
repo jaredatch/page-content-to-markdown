@@ -55,4 +55,5 @@ temp/
 *.xpi
 
 # Internal project management
-PLAN.md 
+PLAN.md
+DESIGN-BRIEF.md
