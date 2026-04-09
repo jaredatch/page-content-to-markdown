@@ -1,6 +1,6 @@
 # Copy Page as Markdown
 
-A browser extension that converts web page content to clean, structured markdown. Supports full-page conversion, selective element picking, and site-specific presets for X/Twitter.
+A browser extension that converts web page content to clean, structured markdown. Supports full-page conversion, selective element picking, and site-specific presets (X/Twitter, Claude).
 
 Firefox-first, with Chrome support.
 
@@ -8,7 +8,8 @@ Firefox-first, with Chrome support.
 
 - **Full page conversion** — One click to convert an entire page to well-formatted markdown
 - **Selective conversion** — Hover and click to pick specific elements, or right-click selected text
-- **X/Twitter presets** — Dedicated extraction for single tweets, threads, and articles
+- **Site-specific presets** — Dedicated extraction for X/Twitter (tweets, threads, articles) and Claude (shared conversations), with a plugin-style registry for adding more
+- **GFM output** — Tables, strikethrough, and task lists via `turndown-plugin-gfm`
 - **Output options** — Copy to clipboard or save as `.md` file
 - **Formatting preferences** — Configure heading style, bullet markers, code blocks, and link style
 - **Keyboard shortcut** — `Cmd+Shift+M` (Mac) / `Ctrl+Shift+M` to toggle element selection mode
@@ -34,7 +35,9 @@ Firefox-first, with Chrome support.
 
 **Select elements:** Click "Select Elements" → hover and click elements on the page → confirm in the floating toolbar
 
-**X/Twitter:** When on x.com or twitter.com, the popup shows preset buttons for Tweet, Thread, and Article extraction
+**Site presets:** When on a supported site, the popup shows dedicated preset buttons:
+- **X/Twitter** (x.com, twitter.com) — Tweet, Thread, Article
+- **Claude** (claude.ai) — Conversation (for shared chats)
 
 **Settings:** Click the gear icon in the popup header to configure output defaults and markdown formatting options
 
@@ -43,7 +46,7 @@ Firefox-first, with Chrome support.
 ```bash
 npm run build        # Production build → dist/
 npm run build:dev    # Dev build with watch mode
-npm run test         # Run unit tests (349 tests across 12 suites)
+npm run test         # Run unit tests (367 tests across 12 suites)
 npm run test:integration  # Run integration tests (30 tests across 6 suites)
 npm run test:all     # Unit tests (with coverage) + integration tests
 npm run test:watch   # Unit tests in watch mode
@@ -54,21 +57,22 @@ npm run lint         # ESLint
 ### Architecture
 
 ```
-Popup (UI) → Background (service worker) → Content Script → MarkdownConverter (Turndown)
+Popup (UI) → Background (service worker) → Content Script → MarkdownConverter (Turndown + GFM)
                                                            ↘ ElementPicker (selection mode)
-                                                           ↘ XExtractor + XFormatter (X/Twitter)
+                                                           ↘ SiteRegistry → site modules (X/Twitter, Claude, ...)
 ```
 
-- **Turndown** is the primary HTML-to-Markdown engine, with a fallback text extractor for edge cases
+- **Turndown + turndown-plugin-gfm** is the primary HTML-to-Markdown engine, with a fallback text extractor for edge cases
 - **Two Turndown instances**: full-page (with content filtering) and fragment (minimal filtering for user selections)
 - **DOM-direct conversion**: passes live DOM nodes to Turndown, avoiding serialize/reparse overhead
 - **Shadow DOM isolation**: the element picker UI is injected via shadow DOM to avoid CSS conflicts
+- **Site extractor registry**: plugin-style architecture — each site is a self-contained module in `src/sites/` exporting an extractor, formatter, and metadata; adding a new site requires no changes to popup, background, or content script
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture docs.
 
 ### Dependencies
 
-- **Runtime:** [Turndown](https://github.com/mixmark-io/turndown) (HTML to Markdown)
+- **Runtime:** [Turndown](https://github.com/mixmark-io/turndown) (HTML to Markdown), [turndown-plugin-gfm](https://github.com/mixmark-io/turndown-plugin-gfm) (tables, strikethrough, task lists)
 - **Dev:** Webpack, Babel, Jest, Puppeteer, ESLint
 
 ## Browser Compatibility
@@ -76,6 +80,10 @@ See [CLAUDE.md](CLAUDE.md) for detailed architecture docs.
 - Firefox (primary target) — MV3 with `background.scripts`
 - Chrome — MV3 with `service_worker`
 - Keyboard shortcut: `Cmd+Shift+M` / `Ctrl+Shift+M` (avoids Firefox's `Cmd+Shift+S` screenshot conflict)
+
+## Acknowledgments
+
+Originally forked from [elad12390/browser-extension-copy-page-as-markdown](https://github.com/elad12390/browser-extension-copy-page-as-markdown). The project has since been substantially rewritten — the fallback text extractor (`simple-universal-extractor.js`) is the main piece of the original code that remains. Thanks to Elad for the initial scaffold.
 
 ## License
 
