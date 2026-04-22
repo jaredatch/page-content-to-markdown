@@ -436,9 +436,56 @@ class ContentScript {
       }
 
       if (request.action === 'writeToClipboard') {
-        navigator.clipboard.writeText(request.text)
-          .then(() => sendResponse({ success: true }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
+        // Clipboard write has two paths:
+        //   1. navigator.clipboard.writeText — preferred, but requires document focus
+        //      (fails with NotAllowedError when popup is open and page loses focus)
+        //   2. document.execCommand('copy') via temp textarea — deprecated but works
+        //      without focus; used as fallback for the popup-open case
+        const writeViaExecCommand = (text) => {
+          const selection = document.getSelection();
+          const savedRanges = [];
+          if (selection) {
+            for (let i = 0; i < selection.rangeCount; i++) {
+              savedRanges.push(selection.getRangeAt(i).cloneRange());
+            }
+          }
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;';
+          document.body.appendChild(ta);
+          ta.select();
+          let ok = false;
+          try {
+            ok = document.execCommand('copy');
+          } catch (e) {
+            console.error('🚨 [content] execCommand threw:', e);
+          }
+          ta.remove();
+          if (selection && savedRanges.length) {
+            selection.removeAllRanges();
+            savedRanges.forEach(r => selection.addRange(r));
+          }
+          return ok;
+        };
+        const tryFallback = (primaryErr) => {
+          const ok = writeViaExecCommand(request.text);
+          if (ok) {
+            sendResponse({ success: true, method: 'execCommand' });
+          } else {
+            const primary = primaryErr
+              ? `${primaryErr.name || 'Error'}: ${primaryErr.message}`
+              : 'clipboard API unavailable';
+            sendResponse({ success: false, error: `${primary}; execCommand fallback also failed` });
+          }
+        };
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard.writeText(request.text)
+            .then(() => sendResponse({ success: true, method: 'clipboardApi' }))
+            .catch(primaryErr => tryFallback(primaryErr));
+        } else {
+          tryFallback(null);
+        }
         return true; // async response
       }
 

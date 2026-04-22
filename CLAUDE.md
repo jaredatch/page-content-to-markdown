@@ -123,7 +123,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - `Cmd+Shift+S` conflicts with Firefox screenshot tool — keyboard shortcut uses `Cmd+Shift+M` instead.
 - Context menu `info.targetElementId` is Chrome-only — content script tracks last right-clicked element via `contextmenu` event listener instead (works in both browsers).
 - Firefox blocks `data:` URIs in `chrome.downloads.download` ("Access denied") — file save uses Blob URL created in content script via `URL.createObjectURL` instead.
-- `navigator.clipboard.writeText` may fail in Firefox MV3 service workers — background script falls back to sending `writeToClipboard` message to content script.
+- Chrome MV3 service workers have no `navigator.clipboard` at all (no DOM); Firefox SWs have it but may reject. Background falls back to sending `writeToClipboard` to the content script. The content-script handler tries `navigator.clipboard.writeText` first, then falls back to `document.execCommand('copy')` via a temp textarea — needed because `writeText` rejects with `NotAllowedError: Document is not focused` whenever the popup is open (which is always the case for the main copy flow on Chrome).
 
 ## Dependencies
 

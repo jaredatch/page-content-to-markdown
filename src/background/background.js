@@ -466,17 +466,28 @@ class BackgroundScript {
         await navigator.clipboard.writeText(text);
       } catch (clipboardError) {
         // Fallback: ask content script to write to clipboard (needed in Firefox service worker)
-        console.log('📋 [background] Clipboard API failed, trying content script fallback');
+        console.log('📋 [background] SW clipboard failed, trying content script fallback. SW error:', clipboardError && clipboardError.message);
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tabs.length === 0) throw clipboardError;
+        if (tabs.length === 0) {
+          throw new Error(`SW clipboard failed (${clipboardError.message}) and no active tab for fallback`);
+        }
 
-        const response = await chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'writeToClipboard',
-          text
-        });
+        let response;
+        try {
+          response = await chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'writeToClipboard',
+            text
+          });
+        } catch (msgError) {
+          throw new Error(`SW clipboard failed (${clipboardError.message}); content-script message failed (${msgError.message}) — is the page injectable?`);
+        }
 
-        if (!response || !response.success) {
-          throw clipboardError;
+        if (!response) {
+          throw new Error(`SW clipboard failed (${clipboardError.message}); content script returned no response (page may not have content script injected)`);
+        }
+        if (!response.success) {
+          console.error('🚨 [background] Content-script fallback failed. diag=', response.diag, 'errorName=', response.errorName);
+          throw new Error(`SW: ${clipboardError.message} | CS: ${response.error}`);
         }
       }
 

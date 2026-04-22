@@ -451,7 +451,7 @@ describe('ContentScript', () => {
       await flushPromises();
 
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Hello markdown');
-      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, method: 'clipboardApi' });
     });
 
     test('should handle clipboard write failure', async () => {

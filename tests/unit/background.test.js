@@ -154,7 +154,7 @@ describe('BackgroundScript', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'Failed to copy to clipboard: Clipboard access denied'
+        error: 'Failed to copy to clipboard: SW clipboard failed (Clipboard access denied) and no active tab for fallback'
       });
     });
 
