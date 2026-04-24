@@ -1,6 +1,6 @@
 # Copy Page as Markdown
 
-A browser extension that converts web page content to clean, structured markdown. Supports full-page conversion, selective element picking, and site-specific presets (X/Twitter, Claude).
+A browser extension that converts web page content to clean, structured markdown. Supports full-page conversion, selective element picking, and site-specific presets (X/Twitter, Claude, Grok).
 
 Firefox-first, with Chrome support.
 
@@ -8,7 +8,7 @@ Firefox-first, with Chrome support.
 
 - **Full page conversion** — One click to convert an entire page to well-formatted markdown
 - **Selective conversion** — Hover and click to pick specific elements, or right-click selected text
-- **Site-specific presets** — Dedicated extraction for X/Twitter (tweets, threads, articles) and Claude (shared conversations), with a plugin-style registry for adding more
+- **Site-specific presets** — Dedicated extraction for X/Twitter (tweets, threads, articles), Claude (shared conversations), and Grok (shared conversations), with a plugin-style registry for adding more
 - **GFM output** — Tables, strikethrough, and task lists via `turndown-plugin-gfm`
 - **Output options** — Copy to clipboard or save as `.md` file
 - **Formatting preferences** — Configure heading style, bullet markers, code blocks, and link style
@@ -38,6 +38,7 @@ Firefox-first, with Chrome support.
 **Site presets:** When on a supported site, the popup shows dedicated preset buttons:
 - **X/Twitter** (x.com, twitter.com) — Tweet, Thread, Article
 - **Claude** (claude.ai) — Conversation (for shared chats)
+- **Grok** (grok.com) — Conversation (for shared chats)
 
 **Settings:** Click the gear icon in the popup header to configure output defaults and markdown formatting options
 
@@ -46,7 +47,7 @@ Firefox-first, with Chrome support.
 ```bash
 npm run build        # Production build → dist/
 npm run build:dev    # Dev build with watch mode
-npm run test         # Run unit tests (403 tests across 14 suites)
+npm run test         # Run unit tests (436 tests across 16 suites)
 npm run test:integration  # Run integration tests (30 tests across 6 suites)
 npm run test:all     # Unit tests (with coverage) + integration tests
 npm run test:watch   # Unit tests in watch mode
@@ -59,7 +60,7 @@ npm run lint         # ESLint
 ```
 Popup (UI) → Background (service worker) → Content Script → MarkdownConverter (Turndown + GFM)
                                                            ↘ ElementPicker (selection mode)
-                                                           ↘ SiteRegistry → site modules (X/Twitter, Claude, ...)
+                                                           ↘ SiteRegistry → site modules (X/Twitter, Claude, Grok, ...)
 ```
 
 - **Turndown + turndown-plugin-gfm** is the primary HTML-to-Markdown engine, with a fallback text extractor for edge cases

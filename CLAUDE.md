@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (starting with X/Twitter).
+Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (X/Twitter, Claude, Grok).
 
-**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 5.4–5.6 partially complete (store text drafted, screenshots/submission remaining), Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), site-specific presets via site extractor registry (X/Twitter, Claude), settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 403 unit tests passing (14 suites) + 30 integration tests (6 suites), 85.29% statement coverage. CI via GitHub Actions on every push/PR.
+**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 5.4–5.6 partially complete (store text drafted, screenshots/submission remaining), Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), site-specific presets via site extractor registry (X/Twitter, Claude, Grok), settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 436 unit tests passing (16 suites) + 30 integration tests (6 suites). CI via GitHub Actions on every push/PR.
 
 ## Quick Reference
 
@@ -25,7 +25,7 @@ npm run lint         # ESLint
 ```
 Popup (UI) → Background (service worker) → Content Script (page context) → Extractor/Converter
                                                                          ↘ ElementPicker (selection mode)
-                                                                         ↘ SiteRegistry → site modules (X/Twitter, etc.)
+                                                                         ↘ SiteRegistry → site modules (X/Twitter, Claude, Grok)
 ```
 
 - **Popup** (`src/popup/`) — User-facing UI. Actions: "Copy/Save Page as Markdown" and "Select Elements". Options: metadata toggle, output mode (clipboard/file). Shows selection-active state when picker is running.
@@ -34,7 +34,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Element Picker** (`src/content/element-picker.js`) — Shadow DOM overlay for hover-highlight, click-to-select, floating toolbar. Bundled with content script via webpack.
 - **Utils** (`src/utils/`) — Extraction, conversion, preferences, and site registry.
 - **Site Registry** (`src/utils/site-registry.js`) — Central registry for site-specific extractors. Handles detection, lookup, and dispatch to site modules.
-- **Site Modules** (`src/sites/`) — Per-site extraction modules. Each exports a registration object with matchers, content types, extractor, and formatter. Currently: X/Twitter (`src/sites/x/`), Claude (`src/sites/claude/`).
+- **Site Modules** (`src/sites/`) — Per-site extraction modules. Each exports a registration object with matchers, content types, extractor, and formatter. Currently: X/Twitter (`src/sites/x/`), Claude (`src/sites/claude/`), Grok (`src/sites/grok/`).
 
 ### Message Flow — Full Page
 1. Popup sends `"extractAndCopy"` → Background
@@ -82,6 +82,10 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `src/sites/claude/index.js` | Claude site module — shared conversation extraction |
 | `src/sites/claude/claude-extractor.js` | Claude DOM parser — extracts conversation turns from share pages |
 | `src/sites/claude/claude-formatter.js` | Claude markdown formatter — conversation → structured markdown |
+| `src/sites/grok/index.js` | Grok site module — shared conversation extraction |
+| `src/sites/grok/grok-extractor.js` | Grok DOM parser — extracts turns, reasoning blocks, citations, code blocks |
+| `src/sites/grok/grok-formatter.js` | Grok markdown formatter — conversation → structured markdown |
+| `docs/building-site-extractors.md` | Workflow doc for adding new site extractors via `firefox-devtools-mcp` live-DOM inspection |
 | `webpack.config.js` | Build config — 4 entry points → `dist/` |
 | `store/listing.md` | Store listing text for Firefox Add-ons and Chrome Web Store |
 | `store/privacy-policy.md` | Privacy policy — no data collection, local-only processing |
@@ -106,7 +110,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 
 ## Testing
 
-- **Unit tests:** Jest + jsdom. Located in `tests/unit/`. 14 suites, 403 tests. Mock Chrome APIs via `tests/setup.js`. Coverage: 84.56% stmts (`npm run test:coverage`).
+- **Unit tests:** Jest + jsdom. Located in `tests/unit/`. 16 suites, 436 tests. Mock Chrome APIs via `tests/setup.js`. Coverage via `npm run test:coverage`.
 - **Integration tests:** Jest + jsdom. Located in `tests/integration/`. 6 suites, 30 tests. Real Background + Content Script wired together via MessageBus helper that simulates Chrome message passing. Run with `npm run test:integration`.
 - **E2E tests:** Jest + Puppeteer. Located in `tests/e2e/`. Currently scaffolding only — being replaced by Selenium.
 - **Cross-browser e2e:** Planned (Phase 6.3–6.4) — Selenium WebDriver for Chrome + Firefox.
@@ -146,7 +150,8 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **X selector resilience** — `_query()` and `_queryAll()` helpers in `src/sites/x/x-extractor.js` try selectors in priority order: `data-testid` (primary) → ARIA roles (fallback) → structural tags (last resort). When all selectors fail, extraction returns `null` and the content script falls back to generic Turndown conversion.
 - **X extraction methods accept URL parameter** — `extractSingleTweet(doc, url)` and `extractThread(doc, url)` in `src/sites/x/x-extractor.js` take an optional URL to identify the focal tweet. This avoids needing to mock `document.location` in jsdom tests.
 - **Popup auto-detection is URL-only** — `SiteRegistry.detect(url)` checks hostname against registered site matchers, called directly in popup (no background round-trip). Preset buttons are built dynamically from the site module's `contentTypes` array. Wrong content type gives a clear error message rather than pre-detecting at popup-open time.
-- **Adding a new site extractor** requires creating a module in `src/sites/{id}/` with an `index.js` exporting the registration object, plus `Extractor` and `Formatter` classes, and adding one `require()` line to `site-registry.js` -- no changes to popup, background, or content script.
+- **Adding a new site extractor** requires creating a module in `src/sites/{id}/` with an `index.js` exporting the registration object, plus `Extractor` and `Formatter` classes, and adding one `require()` line to `site-registry.js` -- no changes to popup, background, or content script. Full workflow (including live-DOM inspection via `firefox-devtools-mcp`) is documented in `docs/building-site-extractors.md`.
+- **Grok extraction details** — Turns are matched by `[data-testid="user-message"]` / `[data-testid="assistant-message"]`. Assistant reasoning collapse lives at `.thinking-container > button` (text: "Thought for Ns"). Citation chips are `a.citation` with a U+2060 word-joiner prefix that's stripped. Multi-source popover buttons (`<button class="no-copy ...">`) are removed since they have no stable link target. Code blocks (`[data-testid="code-block"]`) are replaced with clean `<pre><code class="language-X">` before Turndown. Images with empty alt get a default `alt="Image"`. Title comes from `document.title` with the ` | Shared Grok Conversation` suffix stripped.
 - **DOM-direct conversion path** — `convertFromDOM(element)` in `markdown-converter.js` accepts a live DOM Element, finds content via the same selector strategy as `extractMainContent`, and passes the DOM node directly to Turndown (which clones it internally). This avoids the serialize→reparse round-trip of the string-based `convertToMarkdown(html)` path. Content script uses `convertFromDOM(document.body)` as the primary path, falling back to the string path if it returns insufficient output.
 - **Size guards** — Content script skips full Turndown conversion for pages with >50K elements (uses SimpleUniversalExtractor directly). `convertToMarkdown` truncates HTML strings over 5MB to prevent browser hangs.
 - **Progress feedback** — Popup shows escalating progress messages ("Extracting content..." → "Processing page content..." → "Large page — still working...") via timed updates during long conversions.

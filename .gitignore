@@ -58,3 +58,6 @@ temp/
 PLAN.md
 DESIGN-BRIEF.md
 cleanpage.md
+
+# Local sample pages for extractor development
+samples/

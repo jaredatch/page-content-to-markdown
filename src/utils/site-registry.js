@@ -2,8 +2,9 @@
 
 const xModule = require('../sites/x');
 const claudeModule = require('../sites/claude');
+const grokModule = require('../sites/grok');
 
-const _sites = [xModule, claudeModule];
+const _sites = [xModule, claudeModule, grokModule];
 
 /**
  * Central registry for site-specific extractors.
