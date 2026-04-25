@@ -33,6 +33,7 @@ npm run test:all     # Unit tests (with coverage) + integration tests
 npm run test:watch   # Unit tests in watch mode
 npm run test:e2e     # End-to-end tests (requires Puppeteer)
 npm run lint         # ESLint
+npm run status       # Side-by-side git status of public + private/ repos
 ```
 
 ## Architecture
@@ -105,7 +106,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `store/listing.md` | Store listing text for Firefox Add-ons and Chrome Web Store |
 | `store/privacy-policy.md` | Privacy policy — no data collection, local-only processing |
 | `store/chrome-privacy-justifications.md` | Chrome Web Store permission justifications for privacy practices form |
-| `PLAN.md` | Project plan, phases, progress tracking (local only, not in repo) |
+| `private/PLAN.md` | Project plan, phases, progress tracking (private repo, see "Private working directory" below) |
 
 ## Build & Load Extension
 
@@ -149,9 +150,34 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Runtime:** `turndown` (HTML to Markdown conversion), `turndown-plugin-gfm` (tables, strikethrough, task lists)
 - **Dev:** Webpack, Babel, Jest, Puppeteer, ESLint
 
+## Private working directory
+
+The `private/` directory is a **nested independent git repository** (`page-content-to-markdown-private`) that holds working notes, plans, and sample pages too large or sensitive to belong in the public repo. The public repo's `.gitignore` lists `private/` so git stops at the boundary — `private/` has its own `.git/`, its own commits, and its own remote.
+
+**What lives there:**
+- `private/PLAN.md` — full project plan, phases, progress tracking
+- `private/DESIGN-BRIEF.md` — design notes
+- `private/cleanpage.md` — working drafts
+- `private/samples/` — captured HTML/markdown samples for site module development
+
+**Setup (collaborators with access):**
+```bash
+git clone <public-repo-url> page-content-to-markdown
+cd page-content-to-markdown
+git clone <private-repo-url> private
+```
+Without private-repo access the directory is simply absent — public-repo code, tests, and build all work fine without it.
+
+**Commit hygiene (important):**
+When committing changes to the public repo, also check `private/` for uncommitted changes (`cd private && git status`). If there are any, commit and push them to the private repo separately. When the change relates to a public-repo commit, reference its hash in the private commit message so the two histories stay coherent.
+
+A helper script shows the status of both repos side-by-side — run `npm run status` before/after committing to catch drift. Exit codes: `0` both clean, `1` something uncommitted, `2` `private/` missing or not a git repo.
+
+**Never** add files inside `private/` to the public repo. Treat it as fully out-of-scope for public commits.
+
 ## Important Context
 
-- `PLAN.md` (local only, gitignored) has the full project plan, known issues, and progress tracking.
+- `private/PLAN.md` has the full project plan, known issues, and progress tracking. Read it for current state if you have private-repo access; ignore if not.
 - Firefox is the primary target. Chrome support is desired but secondary.
 - Turndown `require()` needs `TurndownImport.default || TurndownImport` due to webpack ES module interop with Turndown's browser bundle.
 - `jsdom` is marked as a webpack external — it's only used in the Node.js branch of `markdown-converter.js` for testing, never in the browser.

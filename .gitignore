@@ -54,10 +54,7 @@ temp/
 *.crx
 *.xpi
 
-# Internal project management
-PLAN.md
-DESIGN-BRIEF.md
-cleanpage.md
-
-# Local sample pages for extractor development
-samples/
+# Private working directory (separate nested repo: page-content-to-markdown-private).
+# Holds project-management notes, working drafts, and sample pages used for
+# extractor development. See CLAUDE.md → "Private working directory" for setup.
+private/

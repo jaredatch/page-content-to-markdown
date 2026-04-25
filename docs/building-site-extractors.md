@@ -128,7 +128,7 @@ No changes needed to popup, background, or content script — the registry handl
 
 ### 7. Verify against the sample
 
-If you captured a sample markdown file (e.g., `samples/grok-2026-04-14.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well.
+If you captured a sample markdown file (e.g., `private/samples/grok-2026-04-14.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well. Samples live in the private repo — see CLAUDE.md → "Private working directory".
 
 ### 8. Write tests
 
@@ -281,16 +281,17 @@ The MCP's spawned Firefox didn't start. Verify the profile path in `claude mcp l
 |----|------|-----------|---------------|
 | `x` | X / Twitter | `x.com`, `twitter.com` (+ `www.`/`mobile.` variants) | Tweet, Thread, Article |
 | `claude` | Claude | `claude.ai`, `www.claude.ai` | Conversation |
+| `grok` | Grok | `grok.com` | Conversation |
 
 ## Queued / Planned Targets
 
-- **Grok** (`grok.com`) — sample URL and markdown saved in `samples/grok-2026-04-14.{html,md}`. Next in line. Notes on DOM structure live in the memory file `project_grok_and_live_dom_eval.md`.
+_(none currently — open an issue or add to `private/PLAN.md`)_
 
 ---
 
 ## Pointers
 
-- Existing site modules: `src/sites/claude/`, `src/sites/x/`
+- Existing site modules: `src/sites/claude/`, `src/sites/x/`, `src/sites/grok/`
 - Registry: `src/utils/site-registry.js`
 - MCP project (upstream): https://github.com/mozilla/firefox-devtools-mcp
-- Samples directory: `samples/` (gitignored? check before committing large HTML)
+- Samples directory: `private/samples/` (lives in the private repo — see CLAUDE.md)
