@@ -58,3 +58,6 @@ temp/
 # Holds project-management notes, working drafts, and sample pages used for
 # extractor development. See CLAUDE.md → "Private working directory" for setup.
 private/
+
+# Local tooling state
+.superset/
