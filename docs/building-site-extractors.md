@@ -128,7 +128,7 @@ No changes needed to popup, background, or content script — the registry handl
 
 ### 7. Verify against the sample
 
-If you captured a markdown file (e.g., `private/captures/grok-2026-04-14.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well. Captures live in the private repo — see CLAUDE.md → "Private working directory".
+If you captured a markdown file (e.g., `private/captures/grok-2026-04-24-share.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well. Captures live in the private repo — see CLAUDE.md → "Private working directory" and `private/README.md` → "Captures".
 
 ### 8. Write tests
 

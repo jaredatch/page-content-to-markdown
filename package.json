@@ -29,12 +29,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/browser-extension-copy-page-as-markdown.git"
+    "url": "https://github.com/jaredatch/page-content-to-markdown.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/browser-extension-copy-page-as-markdown/issues"
+    "url": "https://github.com/jaredatch/page-content-to-markdown/issues"
   },
-  "homepage": "https://github.com/yourusername/browser-extension-copy-page-as-markdown#readme",
+  "homepage": "https://github.com/jaredatch/page-content-to-markdown#readme",
   "devDependencies": {
     "@babel/core": "^7.23.0",
     "@babel/preset-env": "^7.23.0",
