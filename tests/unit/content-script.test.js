@@ -580,15 +580,15 @@ describe('ContentScript', () => {
       expect(result.extractionInfo.method).toBe('x-article');
     });
 
-    test('extractSiteContent falls back to generic conversion on failure', async () => {
+    test('extractSiteContent falls back to general conversion on failure', async () => {
       mockExtract.mockReturnValue(null);
 
-      mockConvertFromDOM.mockReturnValue('# Generic Fallback\n\nThis is generic turndown content for testing purposes.');
+      mockConvertFromDOM.mockReturnValue('# General Fallback\n\nThis is general turndown content for testing purposes.');
 
       const instance = new ContentScript();
       const result = await instance.extractSiteContent('x', 'single-tweet', { includeMetadata: false });
 
-      // Should have fallen back to generic conversion
+      // Should have fallen back to the general conversion path
       expect(result.success).toBe(true);
       expect(result.extractionInfo.method).not.toBe('x-single-tweet');
     });

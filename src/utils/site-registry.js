@@ -7,14 +7,14 @@ const grokModule = require('../sites/grok');
 const _sites = [xModule, claudeModule, grokModule];
 
 /**
- * Central registry for site-specific extractors.
- * Adding a new site = require() its module and add it to _sites.
+ * Central registry of site modules (per-site extractors + formatters).
+ * Adding a new supported site = require() its module and add it to _sites.
  */
 class SiteRegistry {
   /**
    * Detect which site module matches a URL.
    * @param {string} url - The page URL
-   * @returns {object|null} Site module object, or null for generic/unrecognized
+   * @returns {object|null} Site module object, or null if no supported site matches (general actions only)
    */
   static detect(url) {
     try {

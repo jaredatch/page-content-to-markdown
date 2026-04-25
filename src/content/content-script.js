@@ -266,8 +266,8 @@ class ContentScript {
   }
 
   /**
-   * Extract site-specific content using the site extractor registry.
-   * Falls back to generic convertPageToMarkdown on failure.
+   * Extract content for a site action using the site module registry.
+   * Falls back to the general convertPageToMarkdown path on failure.
    */
   async extractSiteContent(siteId, contentType, options = {}) {
     const metadata = this.getPageMetadata();
@@ -304,7 +304,7 @@ class ContentScript {
         }
       };
     } catch (error) {
-      console.warn(`⚠️ [content-script] Site extraction failed for ${siteId}/${contentType}, falling back to generic:`, error.message);
+      console.warn(`⚠️ [content-script] Site action extraction failed for ${siteId}/${contentType}, falling back to general conversion:`, error.message);
       return this.convertPageToMarkdown(options);
     }
   }

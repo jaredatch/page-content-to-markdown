@@ -202,7 +202,7 @@ class MyExtractor {
 ```
 
 - **Always accept `url` as a parameter** — don't read `document.location`. This avoids mocking location in jsdom tests.
-- **Return `null` on any failure** — the content script has a generic Turndown fallback if extraction returns null. Never throw.
+- **Return `null` on any failure** — the content script falls back to the general Turndown conversion path if extraction returns null. Never throw.
 - **Return plain data objects** (no DOM nodes, no functions) — the formatter is a separate pure transform.
 
 ### Formatter contract

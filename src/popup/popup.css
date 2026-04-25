@@ -133,17 +133,17 @@ body {
   margin-bottom: 6px;
 }
 
-/* X/Twitter Presets */
-.site-presets {
+/* Site actions (per-site buttons shown when on a supported site) */
+.site-actions {
   margin-bottom: 10px;
 }
 
-.preset-actions {
+.site-action-buttons {
   display: flex;
   gap: 4px;
 }
 
-.btn-preset {
+.btn-site-action {
   flex: 1;
   padding: 7px 4px;
   background: #fff;
@@ -160,31 +160,31 @@ body {
   gap: 3px;
 }
 
-.btn-preset:hover {
+.btn-site-action:hover {
   border-color: #999;
   color: #1a1a1a;
   background: #fafafa;
 }
 
-.btn-preset:active {
+.btn-site-action:active {
   background: #f0f0f0;
 }
 
-.btn-preset:disabled {
+.btn-site-action:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.btn-preset .btn-icon {
+.btn-site-action .btn-icon {
   flex-shrink: 0;
 }
 
-.btn-preset .btn-text {
+.btn-site-action .btn-text {
   font-size: 10px;
   white-space: nowrap;
 }
 
-/* Actions */
+/* General actions (full-page, select-elements — always shown) */
 .actions {
   display: flex;
   flex-direction: column;

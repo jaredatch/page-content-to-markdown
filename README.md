@@ -1,14 +1,26 @@
 # Copy Page as Markdown
 
-A browser extension that converts web page content to clean, structured markdown. Supports full-page conversion, selective element picking, and site-specific presets (X/Twitter, Claude, Grok).
+A browser extension that converts web page content to clean, structured markdown. Supports general actions (full-page conversion, selective element picking) and site actions for supported sites (X/Twitter, Claude, Grok).
 
 Firefox-first, with Chrome support.
 
 ## Features
 
+The extension provides two kinds of actions: **general actions** that work on any page, and **site actions** that are enabled on supported sites.
+
+**General actions**
+
 - **Full page conversion** — One click to convert an entire page to well-formatted markdown
 - **Selective conversion** — Hover and click to pick specific elements, or right-click selected text
-- **Site-specific presets** — Dedicated extraction for X/Twitter (tweets, threads, articles), Claude (shared conversations), and Grok (shared conversations), with a plugin-style registry for adding more
+
+**Site actions** — dedicated extraction for supported sites, handled by self-contained site modules:
+
+- **X/Twitter** — Tweet, Thread, Article
+- **Claude** (`claude.ai`) — Conversation (shared chats)
+- **Grok** (`grok.com`) — Conversation (shared chats)
+
+**Everywhere**
+
 - **GFM output** — Tables, strikethrough, and task lists via `turndown-plugin-gfm`
 - **Output options** — Copy to clipboard or save as `.md` file
 - **Formatting preferences** — Configure heading style, bullet markers, code blocks, and link style
@@ -35,7 +47,7 @@ Firefox-first, with Chrome support.
 
 **Select elements:** Click "Select Elements" → hover and click elements on the page → confirm in the floating toolbar
 
-**Site presets:** When on a supported site, the popup shows dedicated preset buttons:
+**Site actions:** When on a supported site, the popup shows dedicated action buttons:
 - **X/Twitter** (x.com, twitter.com) — Tweet, Thread, Article
 - **Claude** (claude.ai) — Conversation (for shared chats)
 - **Grok** (grok.com) — Conversation (for shared chats)
@@ -67,7 +79,7 @@ Popup (UI) → Background (service worker) → Content Script → MarkdownConver
 - **Two Turndown instances**: full-page (with content filtering) and fragment (minimal filtering for user selections)
 - **DOM-direct conversion**: passes live DOM nodes to Turndown, avoiding serialize/reparse overhead
 - **Shadow DOM isolation**: the element picker UI is injected via shadow DOM to avoid CSS conflicts
-- **Site extractor registry**: plugin-style architecture — each site is a self-contained module in `src/sites/` exporting an extractor, formatter, and metadata; adding a new site requires no changes to popup, background, or content script
+- **Site module registry**: modular architecture — each supported site is a self-contained site module in `src/sites/` exporting an extractor, formatter, and metadata; adding a new site requires no changes to popup, background, or content script
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture docs.
 

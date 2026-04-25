@@ -18,14 +18,14 @@ Copy Page as Markdown converts web page content into clean, structured markdown 
 - Output as GitHub Flavored Markdown (GFM) -- tables, fenced code blocks, task lists, and strikethrough are all preserved
 - Copy to clipboard or save as a .md file
 - Right-click context menu to convert selected text or pick an element
-- Dedicated X/Twitter presets for extracting single tweets, threads, and articles
+- Dedicated X/Twitter site actions for extracting single tweets, threads, and articles
 - Configure heading style, bullet markers, code block format, and link style from the settings page
 - Keyboard shortcut (Ctrl+Shift+M / Cmd+Shift+M) to toggle element selection mode
 - Works on Firefox and Chrome
 
 **How it works:**
 
-Click the extension icon to open the popup. Hit "Copy Page as Markdown" for full-page conversion, or "Select Elements" to hover and pick specific parts of the page. On X/Twitter, dedicated preset buttons appear automatically.
+Click the extension icon to open the popup. Hit "Copy Page as Markdown" for full-page conversion, or "Select Elements" to hover and pick specific parts of the page. On X/Twitter, dedicated site action buttons appear automatically.
 
 The extension processes page content locally in your browser. Nothing is sent to any server.
 

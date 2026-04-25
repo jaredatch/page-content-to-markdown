@@ -305,7 +305,7 @@ class MarkdownConverter {
       '[data-content="true"]',
       '.prose',
       '.rich-text',
-      // Generic content containers
+      // General content containers
       '.container .content',
       '.main-content',
       '.primary-content',

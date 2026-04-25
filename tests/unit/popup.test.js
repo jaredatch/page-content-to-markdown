@@ -31,7 +31,7 @@ const POPUP_HTML = `
           <button class="toggle-btn" data-mode="file">Save</button>
         </div>
       </div>
-      <div id="sitePresets" class="site-presets hidden"></div>
+      <div id="siteActions" class="site-actions hidden"></div>
       <div class="actions">
         <button id="extractBtn" class="btn btn-primary">
           <span class="btn-text">Copy Page as Markdown</span>
@@ -128,7 +128,7 @@ describe('PopupController', () => {
       expect(popup.elements.progressText).toBeTruthy();
       expect(popup.elements.metadataToggle).toBeTruthy();
       expect(popup.elements.outputToggle).toBeTruthy();
-      expect(popup.elements.sitePresets).toBeTruthy();
+      expect(popup.elements.siteActions).toBeTruthy();
       expect(popup.elements.settingsBtn).toBeTruthy();
     });
 
@@ -417,10 +417,10 @@ describe('PopupController', () => {
   });
 
   // -------------------------------------------------------
-  // detectSitePresets
+  // detectSiteActions
   // -------------------------------------------------------
-  describe('detectSitePresets', () => {
-    test('shows site presets when on x.com', async () => {
+  describe('detectSiteActions', () => {
+    test('shows site actions when on x.com', async () => {
       SiteRegistry.detect.mockReturnValue({
         id: 'x',
         name: 'X / Twitter',
@@ -434,19 +434,19 @@ describe('PopupController', () => {
       });
       const popup = await createPopup({ tabUrl: 'https://x.com/user/status/123' });
 
-      expect(popup.elements.sitePresets.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.siteActions.classList.contains('hidden')).toBe(false);
       // Buttons should have been dynamically generated
-      const buttons = popup.elements.sitePresets.querySelectorAll('[data-site-id]');
+      const buttons = popup.elements.siteActions.querySelectorAll('[data-site-id]');
       expect(buttons.length).toBe(3);
       expect(buttons[0].dataset.siteId).toBe('x');
       expect(buttons[0].dataset.contentType).toBe('single-tweet');
     });
 
-    test('does not show site presets for non-matching site', async () => {
+    test('does not show site actions for non-matching site', async () => {
       SiteRegistry.detect.mockReturnValue(null);
       const popup = await createPopup({ tabUrl: 'https://example.com' });
 
-      expect(popup.elements.sitePresets.classList.contains('hidden')).toBe(true);
+      expect(popup.elements.siteActions.classList.contains('hidden')).toBe(true);
     });
 
     test('does nothing when currentTab is null', async () => {
@@ -458,8 +458,8 @@ describe('PopupController', () => {
       const popup = new PopupController();
       await flushPromises();
 
-      // sitePresets should remain hidden (no crash)
-      expect(popup.elements.sitePresets.classList.contains('hidden')).toBe(true);
+      // siteActions should remain hidden (no crash)
+      expect(popup.elements.siteActions.classList.contains('hidden')).toBe(true);
     });
   });
 
@@ -543,7 +543,7 @@ describe('PopupController', () => {
       expect(btnText.textContent).toBe('Save Page as Markdown');
     });
 
-    test('updates site preset button text for file mode', async () => {
+    test('updates site action button text for file mode', async () => {
       SiteRegistry.detect.mockReturnValue({
         id: 'x',
         name: 'X / Twitter',
@@ -558,9 +558,9 @@ describe('PopupController', () => {
       const popup = await createPopup({ tabUrl: 'https://x.com/user/status/123' });
       popup.updateButtonText('file');
 
-      const tweetBtn = popup.elements.sitePresets.querySelector('[data-content-type="single-tweet"] .btn-text');
-      const threadBtn = popup.elements.sitePresets.querySelector('[data-content-type="thread"] .btn-text');
-      const articleBtn = popup.elements.sitePresets.querySelector('[data-content-type="article"] .btn-text');
+      const tweetBtn = popup.elements.siteActions.querySelector('[data-content-type="single-tweet"] .btn-text');
+      const threadBtn = popup.elements.siteActions.querySelector('[data-content-type="thread"] .btn-text');
+      const articleBtn = popup.elements.siteActions.querySelector('[data-content-type="article"] .btn-text');
       expect(tweetBtn.textContent).toBe('Save Tweet');
       expect(threadBtn.textContent).toBe('Save Thread');
       expect(articleBtn.textContent).toBe('Save Article');

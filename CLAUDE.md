@@ -2,9 +2,24 @@
 
 ## Project Overview
 
-Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Supports full-page conversion, selective element conversion, and site-specific presets (X/Twitter, Claude, Grok).
+Browser extension (Firefox primary, Chrome secondary) that converts web page content to clean, structured markdown. Provides **general actions** (full-page conversion, selective element conversion) that work on any page, and **site actions** for supported sites (X/Twitter, Claude, Grok) powered by per-site **site modules** in `src/sites/`.
 
-**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 5.4–5.6 partially complete (store text drafted, screenshots/submission remaining), Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. Full-page conversion, selective element conversion, output options (clipboard/file), site-specific presets via site extractor registry (X/Twitter, Claude, Grok), settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 436 unit tests passing (16 suites) + 30 integration tests (6 suites). CI via GitHub Actions on every push/PR.
+## Terminology
+
+These terms are used consistently across docs, code comments, UI copy, and conversation. Stick to them.
+
+| Concept | User-facing | Code / docs |
+|---|---|---|
+| A site we specifically support (X, Claude, Grok) | "supported site" / "site support" | `site module` (the unit in `src/sites/{id}/`) |
+| What the user does (top-level operation) | `action` | — |
+| Actions that work on any page | `general actions` (Full Page, Select Elements, text-selection context menu) | — |
+| Actions enabled by a site module | `site actions` (e.g. "Copy Tweet", "Copy Conversation") | — |
+| The thing being extracted | proper noun in UI (Tweet, Thread, Conversation, Page) | `contentType` (matches `site.contentTypes`) |
+| Site module internals | — | `Extractor` class (DOM → data), `Formatter` class (data → markdown) |
+
+**Don't use:** "preset", "generic" (use "general"), "plugin", "integration", "connector", "adapter" — each has wrong connotations (third-party extensibility, network/API integration, dismissive, etc.). "Extract" is fine as the internal verb (`extractContent`, `extractSiteContent`); "save" / "copy" is the user-facing verb.
+
+**Status:** Phases 1–4 complete, Phase 5.2–5.3 complete, Phase 5.4–5.6 partially complete (store text drafted, screenshots/submission remaining), Phase 6.1–6.2, 6.5 complete. Phase 6.3–6.4 (Selenium e2e) planned. General actions (full-page conversion, selective element conversion), output options (clipboard/file), site actions via site module registry (X/Twitter, Claude, Grok), settings/options page with formatting preferences. GFM output (tables, strikethrough, task lists) via `turndown-plugin-gfm`. 436 unit tests passing (16 suites) + 30 integration tests (6 suites). CI via GitHub Actions on every push/PR.
 
 ## Quick Reference
 
@@ -57,12 +72,12 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Text selected:** "Copy selection as Markdown" → `"convertTextSelection"` → Content Script converts selection DOM fragment
 - **No text selected:** "Select element for Markdown" → `"startSelectionWithElement"` → Content Script activates picker with right-clicked element pre-selected
 
-### Message Flow — Site-Specific Preset
-1. Popup detects site via `SiteRegistry.detect(url)`, dynamically shows preset buttons with content types and SVG icons from the site module
-2. User clicks a preset button → Popup sends `"extractSiteContent"` with `siteId` and `contentType` → Background
+### Message Flow — Site Action
+1. Popup detects site via `SiteRegistry.detect(url)`, dynamically shows site action buttons with content types and SVG icons from the site module
+2. User clicks a site action button → Popup sends `"extractSiteContent"` with `siteId` and `contentType` → Background
 3. Background reads preferences, sends `"extractSiteContent"` with siteId + contentType + options → Content Script
 4. Content Script uses `SiteRegistry.getById(siteId)` to get the site module, calls `extract()` and `format()` → returns markdown
-5. On failure, Content Script falls back to generic `convertPageToMarkdown()`
+5. On failure, Content Script falls back to the general `convertPageToMarkdown()` path
 6. Background calls `dispatchOutput()` → clipboard or file → notifies popup
 
 ## Key Files
@@ -145,11 +160,11 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 - **Content filtering patterns** use word-boundary regex for short patterns like `ad` to avoid false positives (e.g., `header` contains `ad` as a substring).
 - **Preferences** stored in `chrome.storage.local`. `Preferences.get()` merges stored values with defaults (`outputMode: 'clipboard'`, `includeMetadata: true`, plus formatting options: `headingStyle`, `bulletListMarker`, `codeBlockStyle`, `linkStyle`). Shared by popup, options page, and background via webpack. Formatting options flow: background reads prefs → passes in message options → content script calls `converter.applyFormattingOptions()` → Turndown services updated before conversion.
 - **Options page** — Dedicated settings page (`src/options/`) accessible via gear icon in popup header or browser extension settings. Auto-saves on change, shows live formatting previews, has reset-to-defaults button. Registered in manifest via `options_ui` with `open_in_tab: true`.
-- **Output dispatch** — `dispatchOutput()` in background reads preferences and routes to `copyToClipboard()` or `saveAsFile()`. All output paths (full page, selection, context menu, site-specific presets) go through this single dispatcher.
+- **Output dispatch** — `dispatchOutput()` in background reads preferences and routes to `copyToClipboard()` or `saveAsFile()`. All output paths (general actions and site actions) go through this single dispatcher.
 - **Site module interface** — Each site module exports a registration object with `id`, `matchers` (hostname patterns), `contentTypes` (with labels and SVG icons), `Extractor` class, and `Formatter` class. `SiteRegistry` provides `extract(siteId, contentType, doc, url)` and `format(siteId, contentType, data)` dispatch methods. X/Twitter's `XExtractor` returns structured data objects (TweetData, ThreadData, ArticleData), `XFormatter` converts them to markdown.
-- **X selector resilience** — `_query()` and `_queryAll()` helpers in `src/sites/x/x-extractor.js` try selectors in priority order: `data-testid` (primary) → ARIA roles (fallback) → structural tags (last resort). When all selectors fail, extraction returns `null` and the content script falls back to generic Turndown conversion.
+- **X selector resilience** — `_query()` and `_queryAll()` helpers in `src/sites/x/x-extractor.js` try selectors in priority order: `data-testid` (primary) → ARIA roles (fallback) → structural tags (last resort). When all selectors fail, extraction returns `null` and the content script falls back to the general Turndown conversion path.
 - **X extraction methods accept URL parameter** — `extractSingleTweet(doc, url)` and `extractThread(doc, url)` in `src/sites/x/x-extractor.js` take an optional URL to identify the focal tweet. This avoids needing to mock `document.location` in jsdom tests.
-- **Popup auto-detection is URL-only** — `SiteRegistry.detect(url)` checks hostname against registered site matchers, called directly in popup (no background round-trip). Preset buttons are built dynamically from the site module's `contentTypes` array. Wrong content type gives a clear error message rather than pre-detecting at popup-open time.
+- **Popup auto-detection is URL-only** — `SiteRegistry.detect(url)` checks hostname against registered site matchers, called directly in popup (no background round-trip). Site action buttons are built dynamically from the site module's `contentTypes` array. Wrong content type gives a clear error message rather than pre-detecting at popup-open time.
 - **Adding a new site extractor** requires creating a module in `src/sites/{id}/` with an `index.js` exporting the registration object, plus `Extractor` and `Formatter` classes, and adding one `require()` line to `site-registry.js` -- no changes to popup, background, or content script. Full workflow (including live-DOM inspection via `firefox-devtools-mcp`) is documented in `docs/building-site-extractors.md`.
 - **Grok extraction details** — Turns are matched by `[data-testid="user-message"]` / `[data-testid="assistant-message"]`. Assistant reasoning collapse lives at `.thinking-container > button` (text: "Thought for Ns"). Citation chips are `a.citation` with a U+2060 word-joiner prefix that's stripped. Multi-source popover buttons (`<button class="no-copy ...">`) are removed since they have no stable link target. Code blocks (`[data-testid="code-block"]`) are replaced with clean `<pre><code class="language-X">` before Turndown. Images with empty alt get a default `alt="Image"`. Title comes from `document.title` with the ` | Shared Grok Conversation` suffix stripped.
 - **DOM-direct conversion path** — `convertFromDOM(element)` in `markdown-converter.js` accepts a live DOM Element, finds content via the same selector strategy as `extractMainContent`, and passes the DOM node directly to Turndown (which clones it internally). This avoids the serialize→reparse round-trip of the string-based `convertToMarkdown(html)` path. Content script uses `convertFromDOM(document.body)` as the primary path, falling back to the string path if it returns insufficient output.

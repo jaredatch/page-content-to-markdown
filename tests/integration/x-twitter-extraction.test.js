@@ -126,7 +126,7 @@ describe('X/Twitter extraction flow', () => {
     expect(contentCall[1].options.includeMetadata).toBe(false);
   });
 
-  test('extractSiteContent falls back to generic conversion on extractor failure', async () => {
+  test('extractSiteContent falls back to general conversion on extractor failure', async () => {
     // Re-mock XExtractor to return null (extraction failure)
     jest.resetModules();
     jest.mock('../../src/sites/x/x-extractor', () => {
@@ -158,7 +158,7 @@ describe('X/Twitter extraction flow', () => {
       contentType: 'single-tweet'
     });
 
-    // Should still succeed via generic fallback
+    // Should still succeed via the general fallback path
     expect(response.success).toBe(true);
     expect(navigator.clipboard.writeText).toHaveBeenCalled();
   });

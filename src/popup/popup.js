@@ -20,7 +20,7 @@ class PopupController {
       progressText: document.querySelector('.progress-text'),
       metadataToggle: document.getElementById('metadataToggle'),
       outputToggle: document.getElementById('outputToggle'),
-      sitePresets: document.getElementById('sitePresets'),
+      siteActions: document.getElementById('siteActions'),
       settingsBtn: document.getElementById('settingsBtn')
     };
 
@@ -35,7 +35,7 @@ class PopupController {
     console.log('🔧 [popup] Initializing popup controller');
     this.setupEventListeners();
     await this.checkCurrentTab();
-    this.detectSitePresets();
+    this.detectSiteActions();
     this.checkSelectionState();
     this.loadPreferences();
   }
@@ -133,23 +133,23 @@ class PopupController {
   }
 
   /**
-   * Detect site-specific presets based on current tab URL
+   * Detect site actions for the current tab and render them if a supported site matches.
    */
-  detectSitePresets() {
+  detectSiteActions() {
     if (!this.currentTab || !this.currentTab.url) return;
 
     const site = SiteRegistry.detect(this.currentTab.url);
     if (site) {
       this.currentSite = site;
-      this.showSitePresets(site);
+      this.showSiteActions(site);
     }
   }
 
   /**
-   * Show site-specific preset buttons (dynamically generated from site module metadata)
+   * Render site action buttons (dynamically generated from the site module's content types).
    */
-  showSitePresets(site) {
-    const container = this.elements.sitePresets;
+  showSiteActions(site) {
+    const container = this.elements.siteActions;
     if (!container) return;
 
     // Build section label
@@ -159,24 +159,24 @@ class PopupController {
     container.appendChild(label);
 
     // Build button row
-    const actions = document.createElement('div');
-    actions.className = 'preset-actions';
+    const row = document.createElement('div');
+    row.className = 'site-action-buttons';
 
     for (const ct of site.contentTypes) {
       const btn = document.createElement('button');
-      btn.className = 'btn btn-preset';
+      btn.className = 'btn btn-site-action';
       btn.dataset.siteId = site.id;
       btn.dataset.contentType = ct.id;
       btn.innerHTML = `${ct.icon}<span class="btn-text">Copy ${ct.label}</span>`;
-      actions.appendChild(btn);
+      row.appendChild(btn);
     }
 
-    container.appendChild(actions);
+    container.appendChild(row);
     container.classList.remove('hidden');
 
-    // Event delegation for preset buttons
+    // Event delegation for site action buttons
     container.addEventListener('click', (e) => {
-      const btn = e.target.closest('.btn-preset');
+      const btn = e.target.closest('.btn-site-action');
       if (!btn) return;
       const siteId = btn.dataset.siteId;
       const contentType = btn.dataset.contentType;
@@ -185,20 +185,20 @@ class PopupController {
       }
     });
 
-    console.log(`🔧 [popup] ${site.name} presets shown`);
+    console.log(`🔧 [popup] ${site.name} site actions shown`);
   }
 
   /**
-   * Handle site-specific extraction
+   * Handle a site action click.
    */
   async handleSiteExtract(siteId, contentType) {
     try {
-      console.log(`🔧 [popup] Extracting site content: ${siteId}/${contentType}`);
+      console.log(`🔧 [popup] Running site action: ${siteId}/${contentType}`);
 
       this.showProgress('Extracting content...');
       this.elements.extractBtn.disabled = true;
       this.elements.selectBtn.disabled = true;
-      this.elements.sitePresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = true);
+      this.elements.siteActions.querySelectorAll('.btn-site-action').forEach(b => b.disabled = true);
 
       const progressTimers = this._startProgressTimers();
 
@@ -212,16 +212,16 @@ class PopupController {
       this.hideProgress();
 
       if (response && response.success) {
-        console.log('✅ [popup] Site extraction successful');
+        console.log('✅ [popup] Site action successful');
         this.showSuccess(response.message || 'Content processed!');
         setTimeout(() => { window.close(); }, 1500);
       } else {
-        console.error('🚨 [popup] Site extraction failed:', response && response.error);
+        console.error('🚨 [popup] Site action failed:', response && response.error);
         this.showError((response && response.error) || 'Failed to extract content');
         this.enableExtraction();
       }
     } catch (error) {
-      console.error('🚨 [popup] Unexpected error in site extraction:', error);
+      console.error('🚨 [popup] Unexpected error in site action:', error);
       this.hideProgress();
       this.showError('Unexpected error occurred');
       this.enableExtraction();
@@ -239,10 +239,10 @@ class PopupController {
       btnText.textContent = 'Copy Page as Markdown';
     }
 
-    // Also update site preset button text
-    if (this.elements.sitePresets && this.currentSite) {
+    // Also update site action button text
+    if (this.elements.siteActions && this.currentSite) {
       const verb = mode === 'file' ? 'Save' : 'Copy';
-      this.elements.sitePresets.querySelectorAll('.btn-preset').forEach(btn => {
+      this.elements.siteActions.querySelectorAll('.btn-site-action').forEach(btn => {
         const textEl = btn.querySelector('.btn-text');
         if (!textEl) return;
         const ct = this.currentSite.contentTypes.find(c => c.id === btn.dataset.contentType);
@@ -509,9 +509,9 @@ class PopupController {
     this.updateButtonText(mode);
     this.elements.selectBtn.disabled = false;
 
-    // Re-enable site preset buttons if present
-    if (this.elements.sitePresets) {
-      this.elements.sitePresets.querySelectorAll('.btn-preset').forEach(b => b.disabled = false);
+    // Re-enable site action buttons if present
+    if (this.elements.siteActions) {
+      this.elements.siteActions.querySelectorAll('.btn-site-action').forEach(b => b.disabled = false);
     }
   }
 
