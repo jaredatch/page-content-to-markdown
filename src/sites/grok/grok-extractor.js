@@ -1,11 +1,13 @@
 'use strict';
 
 /**
- * Extracts structured conversation data from Grok share pages (grok.com/share/...).
+ * Extracts structured conversation data from Grok conversations.
+ * Works on both share pages (grok.com/share/...) and active chats (grok.com/c/...).
  * Returns plain data objects — formatting is handled by GrokFormatter.
  *
- * Share page DOM structure:
- *   - document.title: "{conversation title} | Shared Grok Conversation"
+ * DOM structure (same on share and active-chat pages):
+ *   - document.title: "{conversation title} | Shared Grok Conversation" (share)
+ *                  or "{conversation title} - Grok" (active chat)
  *   - Turns are matched by data-testid:
  *     - [data-testid="user-message"] — human turns (contain .response-content-markdown)
  *     - [data-testid="assistant-message"] — assistant turns
@@ -44,12 +46,14 @@ class GrokExtractor {
   }
 
   /**
-   * Extract the conversation title from document.title,
-   * stripping the " | Shared Grok Conversation" suffix.
+   * Extract the conversation title from document.title, stripping the
+   * page-context suffix Grok appends:
+   *   - share pages: " | Shared Grok Conversation"
+   *   - active chat: " - Grok" (also handles en/em-dash variants)
    */
   _extractTitle(doc) {
     const raw = (doc.title || '').trim();
-    return raw.replace(/\s*\|\s*Shared Grok Conversation\s*$/i, '').trim();
+    return raw.replace(/\s*(?:\|\s*Shared Grok Conversation|[-–—]\s*Grok)\s*$/i, '').trim();
   }
 
   /**

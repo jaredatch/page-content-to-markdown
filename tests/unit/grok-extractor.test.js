@@ -85,10 +85,35 @@ describe('GrokExtractor', () => {
       expect(extractor.extractConversation(doc)).toBeNull();
     });
 
-    test('extracts title stripping the Grok suffix', () => {
+    test('extracts title stripping the share-page Grok suffix', () => {
       const doc = makeDoc();
       const data = extractor.extractConversation(doc);
       expect(data.title).toBe('Test Chat');
+    });
+
+    test('strips the active-chat " - Grok" suffix', () => {
+      const doc = makeDoc(SHARE_PAGE_HTML, 'My Active Chat - Grok');
+      const data = extractor.extractConversation(doc);
+      expect(data.title).toBe('My Active Chat');
+    });
+
+    test('strips the active-chat suffix with en-dash and em-dash variants', () => {
+      const enDoc = makeDoc(SHARE_PAGE_HTML, 'En Dash Title – Grok');
+      const emDoc = makeDoc(SHARE_PAGE_HTML, 'Em Dash Title — Grok');
+      expect(extractor.extractConversation(enDoc).title).toBe('En Dash Title');
+      expect(extractor.extractConversation(emDoc).title).toBe('Em Dash Title');
+    });
+
+    test('does not strip "Grok" when not at end as a separator suffix', () => {
+      const doc = makeDoc(SHARE_PAGE_HTML, 'How to use Grok effectively');
+      const data = extractor.extractConversation(doc);
+      expect(data.title).toBe('How to use Grok effectively');
+    });
+
+    test('strips a single trailing " - Grok" even when title contains "Grok"', () => {
+      const doc = makeDoc(SHARE_PAGE_HTML, 'How to use Grok - Grok');
+      const data = extractor.extractConversation(doc);
+      expect(data.title).toBe('How to use Grok');
     });
 
     test('handles title without the expected suffix', () => {
