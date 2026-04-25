@@ -158,7 +158,7 @@ The `private/` directory is a **nested independent git repository** (`page-conte
 - `private/PLAN.md` — full project plan, phases, progress tracking
 - `private/DESIGN-BRIEF.md` — design notes
 - `private/cleanpage.md` — working drafts
-- `private/samples/` — captured HTML/markdown samples for site module development
+- `private/captures/` — captured HTML/markdown pages for site module development and regression checking
 
 **Setup (collaborators with access):**
 ```bash

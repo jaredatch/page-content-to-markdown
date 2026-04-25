@@ -128,7 +128,7 @@ No changes needed to popup, background, or content script — the registry handl
 
 ### 7. Verify against the sample
 
-If you captured a sample markdown file (e.g., `private/samples/grok-2026-04-14.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well. Samples live in the private repo — see CLAUDE.md → "Private working directory".
+If you captured a markdown file (e.g., `private/captures/grok-2026-04-14.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well. Captures live in the private repo — see CLAUDE.md → "Private working directory".
 
 ### 8. Write tests
 
@@ -294,4 +294,4 @@ _(none currently — open an issue or add to `private/PLAN.md`)_
 - Existing site modules: `src/sites/claude/`, `src/sites/x/`, `src/sites/grok/`
 - Registry: `src/utils/site-registry.js`
 - MCP project (upstream): https://github.com/mozilla/firefox-devtools-mcp
-- Samples directory: `private/samples/` (lives in the private repo — see CLAUDE.md)
+- Captures directory: `private/captures/` (lives in the private repo — see CLAUDE.md)
