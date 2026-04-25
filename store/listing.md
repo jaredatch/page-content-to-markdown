@@ -17,6 +17,7 @@ Copy Page as Markdown converts web page content into clean, structured markdown 
 - Convert an entire page to markdown, or pick specific elements with a visual selector
 - Output as GitHub Flavored Markdown (GFM) -- tables, fenced code blocks, task lists, and strikethrough are all preserved
 - Copy to clipboard or save as a .md file
+- Customize saved filenames with token-based templates ({title}, {date}, {domain}, {slug}, and more) and choose preserve / kebab-case / snake_case
 - Right-click context menu to convert selected text or pick an element
 - Dedicated site actions for X/Twitter (single tweets, threads, articles), Claude (shared conversations), and Grok (shared conversations and active chats)
 - Configure heading style, bullet markers, code block format, and link style from the settings page

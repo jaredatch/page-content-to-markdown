@@ -2,6 +2,7 @@
 // This script runs in the background and coordinates the extension functionality
 
 const Preferences = require('../utils/preferences');
+const FilenameTemplate = require('../utils/filename-template');
 
 console.log('🚀 [background] Background script loaded');
 
@@ -508,20 +509,19 @@ class BackgroundScript {
   }
 
   /**
-   * Generate a sanitized filename from page metadata
+   * Generate a sanitized filename from page metadata using the user's
+   * configured template + style.
    */
-  generateFilename(metadata) {
-    let title = (metadata && metadata.title) || 'page';
-    // Strip invalid filename characters
-    title = title.replace(/[\/\\:*?"<>|]/g, '');
-    // Collapse whitespace
-    title = title.replace(/\s+/g, ' ').trim();
-    // Truncate to 80 chars
-    if (title.length > 80) {
-      title = title.substring(0, 80).trim();
-    }
-    const date = new Date().toISOString().split('T')[0];
-    return `${title} - ${date}.md`;
+  generateFilename(metadata, prefs) {
+    return FilenameTemplate.formatFilename(
+      prefs.filenameTemplate,
+      prefs.filenameStyle,
+      {
+        title: metadata && metadata.title,
+        url: metadata && metadata.url,
+        date: new Date()
+      }
+    );
   }
 
   /**
@@ -559,7 +559,7 @@ class BackgroundScript {
     const prefs = await Preferences.get();
 
     if (prefs.outputMode === 'file') {
-      const filename = this.generateFilename(metadata);
+      const filename = this.generateFilename(metadata, prefs);
       return this.saveAsFile(markdown, filename);
     }
 
@@ -603,7 +603,7 @@ if (typeof module !== 'undefined' && module.exports) {
     handleExtractAndCopy: (sendResponse) => backgroundScript.handleExtractAndCopy(sendResponse),
     getSelectionState: () => backgroundScript.selectionState,
     toggleSelectionMode: () => backgroundScript.toggleSelectionMode(),
-    generateFilename: (metadata) => backgroundScript.generateFilename(metadata),
+    generateFilename: (metadata, prefs) => backgroundScript.generateFilename(metadata, prefs),
     saveAsFile: (markdown, filename) => backgroundScript.saveAsFile(markdown, filename),
     dispatchOutput: (markdown, metadata) => backgroundScript.dispatchOutput(markdown, metadata)
   };

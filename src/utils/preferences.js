@@ -1,12 +1,14 @@
 // Preferences wrapper around chrome.storage.local
 
 const DEFAULTS = {
-  outputMode: 'clipboard',    // 'clipboard' or 'file'
+  outputMode: 'clipboard',                 // 'clipboard' or 'file'
   includeMetadata: true,
-  headingStyle: 'atx',        // 'atx' (#) or 'setext' (underline)
-  bulletListMarker: '-',      // '-' or '*'
-  codeBlockStyle: 'fenced',   // 'fenced' (```) or 'indented'
-  linkStyle: 'inlined'        // 'inlined' [text](url) or 'referenced' [text][1]
+  headingStyle: 'atx',                     // 'atx' (#) or 'setext' (underline)
+  bulletListMarker: '-',                   // '-' or '*'
+  codeBlockStyle: 'fenced',                // 'fenced' (```) or 'indented'
+  linkStyle: 'inlined',                    // 'inlined' [text](url) or 'referenced' [text][1]
+  filenameTemplate: '{title} - {date}',    // see src/utils/filename-template.js
+  filenameStyle: 'preserve'                // 'preserve' | 'kebab' | 'snake'
 };
 
 class Preferences {

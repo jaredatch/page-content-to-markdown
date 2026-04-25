@@ -72,22 +72,160 @@ body {
   margin-bottom: 4px;
 }
 
-.setting-select {
+/* Text input */
+.setting-input {
   width: 100%;
   padding: 7px 10px;
   border: 1px solid #d0d0d0;
   border-radius: 5px;
   font-size: 13px;
-  font-family: inherit;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   color: #1a1a1a;
   background: #fff;
-  cursor: pointer;
-  appearance: auto;
 }
 
-.setting-select:focus {
+.setting-input:focus {
   outline: none;
   border-color: #999;
+}
+
+/* Filename preview */
+.filename-preview {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: #f5f5f5;
+  border-radius: 5px;
+  font-size: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.filename-preview-label {
+  color: #999;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.filename-preview code {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  color: #1a1a1a;
+  word-break: break-all;
+}
+
+/* Token reference (collapsible cheat sheet) */
+.token-reference {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.token-reference summary {
+  cursor: pointer;
+  color: #555;
+  font-weight: 500;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.token-reference summary:hover {
+  color: #1a1a1a;
+}
+
+.token-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+  row-gap: 4px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fafafa;
+  border-radius: 5px;
+}
+
+.token-list dt {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.token-list dt code {
+  color: #1a1a1a;
+}
+
+.token-list dd {
+  color: #777;
+}
+
+.token-reference-note {
+  margin-top: 8px;
+  color: #777;
+  line-height: 1.5;
+}
+
+.token-reference-note code {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  color: #1a1a1a;
+}
+
+.token-reference-note a {
+  color: #4a90e2;
+  text-decoration: none;
+}
+
+.token-reference-note a:hover {
+  text-decoration: underline;
+}
+
+/* Segmented control (radio group styled as pill buttons) */
+.segmented {
+  display: flex;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.segmented input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.segmented label {
+  flex: 1;
+  padding: 7px 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+  border-left: 1px solid #d0d0d0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.segmented label:first-of-type {
+  border-left: none;
+}
+
+.segmented label:hover {
+  background: #f5f5f5;
+}
+
+.segmented input[type="radio"]:checked + label {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.segmented input[type="radio"]:focus-visible + label {
+  outline: 2px solid #4a90e2;
+  outline-offset: -2px;
 }
 
 .setting-hint {

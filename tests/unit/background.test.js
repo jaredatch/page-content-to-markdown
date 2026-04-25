@@ -438,37 +438,32 @@ describe('BackgroundScript', () => {
   });
 
   describe('generateFilename', () => {
-    test('should create filename from title and date', () => {
-      const filename = BackgroundScript.generateFilename({ title: 'My Page' });
+    // Behavioral coverage of template/style/sanitization lives in
+    // filename-template.test.js. These tests just check that
+    // BackgroundScript wires prefs + metadata into the formatter.
+    const DEFAULT_PREFS = {
+      filenameTemplate: '{title} - {date}',
+      filenameStyle: 'preserve'
+    };
+
+    test('formats from metadata using default prefs', () => {
+      const filename = BackgroundScript.generateFilename(
+        { title: 'My Page' },
+        DEFAULT_PREFS
+      );
       expect(filename).toMatch(/^My Page - \d{4}-\d{2}-\d{2}\.md$/);
     });
 
-    test('should strip invalid filename characters', () => {
-      const filename = BackgroundScript.generateFilename({ title: 'File: with/bad*chars?"<>|' });
-      expect(filename).not.toMatch(/[\/\\:*?"<>|]/);
-      expect(filename).toContain('File');
+    test('respects custom template + style from prefs', () => {
+      const filename = BackgroundScript.generateFilename(
+        { title: 'My Page', url: 'https://www.example.com/' },
+        { filenameTemplate: '{domain}-{title}', filenameStyle: 'kebab' }
+      );
+      expect(filename).toBe('example-com-my-page.md');
     });
 
-    test('should collapse whitespace', () => {
-      const filename = BackgroundScript.generateFilename({ title: 'Lots   of    spaces' });
-      expect(filename).toContain('Lots of spaces');
-    });
-
-    test('should truncate long titles to 80 chars', () => {
-      const longTitle = 'A'.repeat(120);
-      const filename = BackgroundScript.generateFilename({ title: longTitle });
-      // Title portion should be 80 chars max, plus " - YYYY-MM-DD.md"
-      const titlePart = filename.split(' - ')[0];
-      expect(titlePart.length).toBeLessThanOrEqual(80);
-    });
-
-    test('should fallback to "page" when title is missing', () => {
-      const filename = BackgroundScript.generateFilename({});
-      expect(filename).toMatch(/^page - \d{4}-\d{2}-\d{2}\.md$/);
-    });
-
-    test('should fallback to "page" when metadata is null', () => {
-      const filename = BackgroundScript.generateFilename(null);
+    test('falls back to page.md when metadata is null', () => {
+      const filename = BackgroundScript.generateFilename(null, DEFAULT_PREFS);
       expect(filename).toMatch(/^page - /);
     });
   });

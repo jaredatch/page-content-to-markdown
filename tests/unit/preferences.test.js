@@ -52,7 +52,9 @@ describe('Preferences', () => {
         headingStyle: 'setext',
         bulletListMarker: '*',
         codeBlockStyle: 'indented',
-        linkStyle: 'referenced'
+        linkStyle: 'referenced',
+        filenameTemplate: '{domain}-{slug}',
+        filenameStyle: 'kebab'
       };
       chrome.storage.local.get.mockResolvedValue(overrides);
 

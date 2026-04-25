@@ -1,16 +1,62 @@
 const Preferences = require('../utils/preferences');
+const FilenameTemplate = require('../utils/filename-template');
 
 console.log('🔧 [options] Options page loaded');
+
+// Sample data used to render the filename preview as the user edits.
+const FILENAME_PREVIEW_SAMPLE = {
+  title: 'Example Article',
+  url: 'https://www.example.com/blog/post-name'
+};
+
+// Debounce window for saving the filename template input. Lets users
+// type without spamming chrome.storage.local.set + the saved-toast.
+const TEMPLATE_SAVE_DEBOUNCE_MS = 400;
+
+// Wraps a radio-button group so it exposes the same .value / addEventListener
+// interface as a <select>, letting the controller treat both uniformly.
+class RadioGroup {
+  constructor(name) {
+    this.inputs = Array.from(
+      document.querySelectorAll(`input[type="radio"][name="${name}"]`)
+    );
+  }
+
+  get value() {
+    const checked = this.inputs.find(i => i.checked);
+    return checked ? checked.value : null;
+  }
+
+  set value(v) {
+    for (const input of this.inputs) {
+      input.checked = input.value === v;
+    }
+  }
+
+  addEventListener(event, handler) {
+    for (const input of this.inputs) {
+      input.addEventListener(event, handler);
+    }
+  }
+
+  dispatchEvent(event) {
+    const target = this.inputs.find(i => i.checked) || this.inputs[0];
+    if (target) target.dispatchEvent(event);
+  }
+}
 
 class OptionsController {
   constructor() {
     this.elements = {
-      outputMode: document.getElementById('outputMode'),
+      outputMode: new RadioGroup('outputMode'),
       includeMetadata: document.getElementById('includeMetadata'),
-      headingStyle: document.getElementById('headingStyle'),
-      bulletListMarker: document.getElementById('bulletListMarker'),
-      codeBlockStyle: document.getElementById('codeBlockStyle'),
-      linkStyle: document.getElementById('linkStyle'),
+      filenameTemplate: document.getElementById('filenameTemplate'),
+      filenameStyle: new RadioGroup('filenameStyle'),
+      filenamePreview: document.getElementById('filenamePreview'),
+      headingStyle: new RadioGroup('headingStyle'),
+      bulletListMarker: new RadioGroup('bulletListMarker'),
+      codeBlockStyle: new RadioGroup('codeBlockStyle'),
+      linkStyle: new RadioGroup('linkStyle'),
       headingHint: document.getElementById('headingHint'),
       bulletHint: document.getElementById('bulletHint'),
       codeHint: document.getElementById('codeHint'),
@@ -20,6 +66,7 @@ class OptionsController {
     };
 
     this.statusTimeout = null;
+    this.templateSaveTimeout = null;
     this.init();
   }
 
@@ -27,6 +74,7 @@ class OptionsController {
     await this.loadPreferences();
     this.setupEventListeners();
     this.updateAllHints();
+    this.updateFilenamePreview();
   }
 
   async loadPreferences() {
@@ -34,6 +82,8 @@ class OptionsController {
 
     this.elements.outputMode.value = prefs.outputMode;
     this.elements.includeMetadata.checked = prefs.includeMetadata;
+    this.elements.filenameTemplate.value = prefs.filenameTemplate;
+    this.elements.filenameStyle.value = prefs.filenameStyle;
     this.elements.headingStyle.value = prefs.headingStyle;
     this.elements.bulletListMarker.value = prefs.bulletListMarker;
     this.elements.codeBlockStyle.value = prefs.codeBlockStyle;
@@ -70,6 +120,20 @@ class OptionsController {
       this.updateHint('link');
     });
 
+    // Filename template: live preview on every keystroke, debounced save.
+    this.elements.filenameTemplate.addEventListener('input', () => {
+      this.updateFilenamePreview();
+      if (this.templateSaveTimeout) clearTimeout(this.templateSaveTimeout);
+      this.templateSaveTimeout = setTimeout(() => {
+        this.save({ filenameTemplate: this.elements.filenameTemplate.value });
+      }, TEMPLATE_SAVE_DEBOUNCE_MS);
+    });
+
+    this.elements.filenameStyle.addEventListener('change', () => {
+      this.save({ filenameStyle: this.elements.filenameStyle.value });
+      this.updateFilenamePreview();
+    });
+
     this.elements.resetBtn.addEventListener('click', () => this.resetToDefaults());
   }
 
@@ -83,6 +147,7 @@ class OptionsController {
     await Preferences.set(defaults);
     await this.loadPreferences();
     this.updateAllHints();
+    this.updateFilenamePreview();
     this.showStatus('Reset to defaults', 'reset');
   }
 
@@ -103,6 +168,16 @@ class OptionsController {
     this.updateHint('bullet');
     this.updateHint('code');
     this.updateHint('link');
+  }
+
+  updateFilenamePreview() {
+    const template = this.elements.filenameTemplate.value;
+    const style = this.elements.filenameStyle.value;
+    const result = FilenameTemplate.formatFilename(template, style, {
+      ...FILENAME_PREVIEW_SAMPLE,
+      date: new Date()
+    });
+    this.elements.filenamePreview.textContent = result;
   }
 
   updateHint(type) {

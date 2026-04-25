@@ -4,7 +4,9 @@ const MOCK_DEFAULTS = {
   headingStyle: 'atx',
   bulletListMarker: '-',
   codeBlockStyle: 'fenced',
-  linkStyle: 'inlined'
+  linkStyle: 'inlined',
+  filenameTemplate: '{title} - {date}',
+  filenameStyle: 'preserve'
 };
 
 jest.mock('../../src/utils/preferences', () => ({
@@ -25,10 +27,13 @@ const OPTIONS_HTML = `
     <main class="main">
       <section class="section">
         <div class="setting">
-          <select id="outputMode" class="setting-select">
-            <option value="clipboard">Copy to clipboard</option>
-            <option value="file">Save as file</option>
-          </select>
+          <span class="setting-label">Default output</span>
+          <div class="segmented" role="radiogroup" aria-label="Default output">
+            <input type="radio" id="outputMode-clipboard" name="outputMode" value="clipboard">
+            <label for="outputMode-clipboard">Copy to clipboard</label>
+            <input type="radio" id="outputMode-file" name="outputMode" value="file">
+            <label for="outputMode-file">Save as file</label>
+          </div>
         </div>
         <div class="setting">
           <label class="checkbox-label">
@@ -39,31 +44,63 @@ const OPTIONS_HTML = `
       </section>
       <section class="section">
         <div class="setting">
-          <select id="headingStyle" class="setting-select">
-            <option value="atx"># ATX headings</option>
-            <option value="setext">Setext headings</option>
-          </select>
+          <label class="setting-label" for="filenameTemplate">Template</label>
+          <input type="text" id="filenameTemplate" class="setting-input">
+          <div class="filename-preview">
+            <code id="filenamePreview"></code>
+          </div>
+        </div>
+        <div class="setting">
+          <span class="setting-label">Style</span>
+          <div class="segmented" role="radiogroup" aria-label="File name style">
+            <input type="radio" id="filenameStyle-preserve" name="filenameStyle" value="preserve">
+            <label for="filenameStyle-preserve">Preserve</label>
+            <input type="radio" id="filenameStyle-kebab" name="filenameStyle" value="kebab">
+            <label for="filenameStyle-kebab">kebab-case</label>
+            <input type="radio" id="filenameStyle-snake" name="filenameStyle" value="snake">
+            <label for="filenameStyle-snake">snake_case</label>
+          </div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="setting">
+          <span class="setting-label">Heading style</span>
+          <div class="segmented" role="radiogroup" aria-label="Heading style">
+            <input type="radio" id="headingStyle-atx" name="headingStyle" value="atx">
+            <label for="headingStyle-atx"># ATX headings</label>
+            <input type="radio" id="headingStyle-setext" name="headingStyle" value="setext">
+            <label for="headingStyle-setext">Setext headings</label>
+          </div>
           <div class="setting-hint" id="headingHint"></div>
         </div>
         <div class="setting">
-          <select id="bulletListMarker" class="setting-select">
-            <option value="-">- Dash</option>
-            <option value="*">* Asterisk</option>
-          </select>
+          <span class="setting-label">Bullet list marker</span>
+          <div class="segmented" role="radiogroup" aria-label="Bullet list marker">
+            <input type="radio" id="bulletListMarker-dash" name="bulletListMarker" value="-">
+            <label for="bulletListMarker-dash">- Dash</label>
+            <input type="radio" id="bulletListMarker-asterisk" name="bulletListMarker" value="*">
+            <label for="bulletListMarker-asterisk">* Asterisk</label>
+          </div>
           <div class="setting-hint" id="bulletHint"></div>
         </div>
         <div class="setting">
-          <select id="codeBlockStyle" class="setting-select">
-            <option value="fenced">Fenced</option>
-            <option value="indented">Indented</option>
-          </select>
+          <span class="setting-label">Code block style</span>
+          <div class="segmented" role="radiogroup" aria-label="Code block style">
+            <input type="radio" id="codeBlockStyle-fenced" name="codeBlockStyle" value="fenced">
+            <label for="codeBlockStyle-fenced">Fenced</label>
+            <input type="radio" id="codeBlockStyle-indented" name="codeBlockStyle" value="indented">
+            <label for="codeBlockStyle-indented">Indented</label>
+          </div>
           <div class="setting-hint" id="codeHint"></div>
         </div>
         <div class="setting">
-          <select id="linkStyle" class="setting-select">
-            <option value="inlined">Inlined</option>
-            <option value="referenced">Referenced</option>
-          </select>
+          <span class="setting-label">Link style</span>
+          <div class="segmented" role="radiogroup" aria-label="Link style">
+            <input type="radio" id="linkStyle-inlined" name="linkStyle" value="inlined">
+            <label for="linkStyle-inlined">Inlined</label>
+            <input type="radio" id="linkStyle-referenced" name="linkStyle" value="referenced">
+            <label for="linkStyle-referenced">Referenced</label>
+          </div>
           <div class="setting-hint" id="linkHint"></div>
         </div>
       </section>
@@ -112,6 +149,9 @@ describe('OptionsController', () => {
       const opts = await createOptions();
       expect(opts.elements.outputMode).toBeTruthy();
       expect(opts.elements.includeMetadata).toBeTruthy();
+      expect(opts.elements.filenameTemplate).toBeTruthy();
+      expect(opts.elements.filenameStyle).toBeTruthy();
+      expect(opts.elements.filenamePreview).toBeTruthy();
       expect(opts.elements.headingStyle).toBeTruthy();
       expect(opts.elements.bulletListMarker).toBeTruthy();
       expect(opts.elements.codeBlockStyle).toBeTruthy();
@@ -168,6 +208,96 @@ describe('OptionsController', () => {
     test('populates linkStyle select', async () => {
       const opts = await createOptions({ linkStyle: 'referenced' });
       expect(opts.elements.linkStyle.value).toBe('referenced');
+    });
+
+    test('populates filenameTemplate input', async () => {
+      const opts = await createOptions({ filenameTemplate: '{domain}-{slug}' });
+      expect(opts.elements.filenameTemplate.value).toBe('{domain}-{slug}');
+    });
+
+    test('populates filenameStyle radio group', async () => {
+      const opts = await createOptions({ filenameStyle: 'kebab' });
+      expect(opts.elements.filenameStyle.value).toBe('kebab');
+    });
+  });
+
+  // -------------------------------------------------------
+  // Filename section
+  // -------------------------------------------------------
+  describe('filename template + style', () => {
+    test('renders preview on init using current prefs', async () => {
+      const opts = await createOptions();
+      expect(opts.elements.filenamePreview.textContent)
+        .toMatch(/^Example Article - \d{4}-\d{2}-\d{2}\.md$/);
+    });
+
+    test('preview reflects style on init', async () => {
+      const opts = await createOptions({ filenameStyle: 'kebab' });
+      expect(opts.elements.filenamePreview.textContent)
+        .toMatch(/^example-article-\d{4}-\d{2}-\d{2}\.md$/);
+    });
+
+    test('input event updates the preview immediately', async () => {
+      const opts = await createOptions();
+      opts.elements.filenameTemplate.value = '{domain}/{slug}';
+      opts.elements.filenameTemplate.dispatchEvent(new Event('input'));
+      expect(opts.elements.filenamePreview.textContent)
+        .toBe('example.com-post-name.md');
+    });
+
+    test('style change updates the preview immediately', async () => {
+      const opts = await createOptions();
+      opts.elements.filenameStyle.value = 'snake';
+      opts.elements.filenameStyle.dispatchEvent(new Event('change'));
+      expect(opts.elements.filenamePreview.textContent)
+        .toMatch(/^example_article_\d{4}_\d{2}_\d{2}\.md$/);
+    });
+
+    test('style change saves immediately', async () => {
+      const opts = await createOptions();
+      Preferences.set.mockClear();
+
+      opts.elements.filenameStyle.value = 'kebab';
+      opts.elements.filenameStyle.dispatchEvent(new Event('change'));
+      await flushPromises();
+
+      expect(Preferences.set).toHaveBeenCalledWith({ filenameStyle: 'kebab' });
+    });
+
+    test('template input save is debounced', async () => {
+      const opts = await createOptions();
+      Preferences.set.mockClear();
+      jest.useFakeTimers();
+
+      opts.elements.filenameTemplate.value = '{slug}';
+      opts.elements.filenameTemplate.dispatchEvent(new Event('input'));
+
+      // Before the debounce window expires, save has not fired
+      expect(Preferences.set).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(500);
+
+      // Preferences.set is invoked synchronously inside save() before
+      // the first await, so the call is observable without a microtask flush.
+      expect(Preferences.set).toHaveBeenCalledWith({ filenameTemplate: '{slug}' });
+    });
+
+    test('rapid keystrokes coalesce into one save', async () => {
+      const opts = await createOptions();
+      Preferences.set.mockClear();
+      jest.useFakeTimers();
+
+      opts.elements.filenameTemplate.value = '{';
+      opts.elements.filenameTemplate.dispatchEvent(new Event('input'));
+      opts.elements.filenameTemplate.value = '{s';
+      opts.elements.filenameTemplate.dispatchEvent(new Event('input'));
+      opts.elements.filenameTemplate.value = '{slug}';
+      opts.elements.filenameTemplate.dispatchEvent(new Event('input'));
+
+      jest.advanceTimersByTime(500);
+
+      expect(Preferences.set).toHaveBeenCalledTimes(1);
+      expect(Preferences.set).toHaveBeenCalledWith({ filenameTemplate: '{slug}' });
     });
   });
 

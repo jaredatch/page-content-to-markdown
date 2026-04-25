@@ -17,11 +17,13 @@
         <h2 class="section-title">Output</h2>
 
         <div class="setting">
-          <label class="setting-label" for="outputMode">Default output</label>
-          <select id="outputMode" class="setting-select">
-            <option value="clipboard">Copy to clipboard</option>
-            <option value="file">Save as file</option>
-          </select>
+          <span class="setting-label">Default output</span>
+          <div class="segmented" role="radiogroup" aria-label="Default output">
+            <input type="radio" id="outputMode-clipboard" name="outputMode" value="clipboard">
+            <label for="outputMode-clipboard">Copy to clipboard</label>
+            <input type="radio" id="outputMode-file" name="outputMode" value="file">
+            <label for="outputMode-file">Save as file</label>
+          </div>
         </div>
 
         <div class="setting">
@@ -33,41 +35,99 @@
       </section>
 
       <section class="section">
+        <h2 class="section-title">File name</h2>
+
+        <div class="setting">
+          <label class="setting-label" for="filenameTemplate">Template</label>
+          <input
+            type="text"
+            id="filenameTemplate"
+            class="setting-input"
+            spellcheck="false"
+            autocomplete="off"
+          >
+          <div class="filename-preview">
+            <span class="filename-preview-label">Preview:</span>
+            <code id="filenamePreview"></code>
+          </div>
+
+          <details class="token-reference">
+            <summary>Available tokens</summary>
+            <dl class="token-list">
+              <dt><code>{title}</code></dt><dd>Page title</dd>
+              <dt><code>{domain}</code></dt><dd>example.com</dd>
+              <dt><code>{host}</code></dt><dd>www.example.com</dd>
+              <dt><code>{path}</code></dt><dd>blog/post-name</dd>
+              <dt><code>{slug}</code></dt><dd>post-name</dd>
+              <dt><code>{date[:fmt]}</code></dt><dd>2026-04-25</dd>
+              <dt><code>{time[:fmt]}</code></dt><dd>140509</dd>
+              <dt><code>{datetime[:fmt]}</code></dt><dd>2026-04-25_140509</dd>
+            </dl>
+            <p class="token-reference-note">
+              Date / time formats use Moment-style tokens:
+              <code>YYYY MM DD HH mm ss</code> ·
+              <a href="https://day.js.org/docs/en/display/format" target="_blank" rel="noopener">full reference →</a>
+            </p>
+          </details>
+        </div>
+
+        <div class="setting">
+          <span class="setting-label">Style</span>
+          <div class="segmented" role="radiogroup" aria-label="File name style">
+            <input type="radio" id="filenameStyle-preserve" name="filenameStyle" value="preserve">
+            <label for="filenameStyle-preserve">Preserve</label>
+            <input type="radio" id="filenameStyle-kebab" name="filenameStyle" value="kebab">
+            <label for="filenameStyle-kebab">kebab-case</label>
+            <input type="radio" id="filenameStyle-snake" name="filenameStyle" value="snake">
+            <label for="filenameStyle-snake">snake_case</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
         <h2 class="section-title">Formatting</h2>
 
         <div class="setting">
-          <label class="setting-label" for="headingStyle">Heading style</label>
-          <select id="headingStyle" class="setting-select">
-            <option value="atx"># ATX headings</option>
-            <option value="setext">Setext (underline) headings</option>
-          </select>
+          <span class="setting-label">Heading style</span>
+          <div class="segmented" role="radiogroup" aria-label="Heading style">
+            <input type="radio" id="headingStyle-atx" name="headingStyle" value="atx">
+            <label for="headingStyle-atx"># ATX headings</label>
+            <input type="radio" id="headingStyle-setext" name="headingStyle" value="setext">
+            <label for="headingStyle-setext">Setext (underline) headings</label>
+          </div>
           <div class="setting-hint" id="headingHint"></div>
         </div>
 
         <div class="setting">
-          <label class="setting-label" for="bulletListMarker">Bullet list marker</label>
-          <select id="bulletListMarker" class="setting-select">
-            <option value="-">- Dash</option>
-            <option value="*">* Asterisk</option>
-          </select>
+          <span class="setting-label">Bullet list marker</span>
+          <div class="segmented" role="radiogroup" aria-label="Bullet list marker">
+            <input type="radio" id="bulletListMarker-dash" name="bulletListMarker" value="-">
+            <label for="bulletListMarker-dash">- Dash</label>
+            <input type="radio" id="bulletListMarker-asterisk" name="bulletListMarker" value="*">
+            <label for="bulletListMarker-asterisk">* Asterisk</label>
+          </div>
           <div class="setting-hint" id="bulletHint"></div>
         </div>
 
         <div class="setting">
-          <label class="setting-label" for="codeBlockStyle">Code block style</label>
-          <select id="codeBlockStyle" class="setting-select">
-            <option value="fenced">``` Fenced</option>
-            <option value="indented">    Indented</option>
-          </select>
+          <span class="setting-label">Code block style</span>
+          <div class="segmented" role="radiogroup" aria-label="Code block style">
+            <input type="radio" id="codeBlockStyle-fenced" name="codeBlockStyle" value="fenced">
+            <label for="codeBlockStyle-fenced">``` Fenced</label>
+            <input type="radio" id="codeBlockStyle-indented" name="codeBlockStyle" value="indented">
+            <label for="codeBlockStyle-indented">Indented</label>
+          </div>
           <div class="setting-hint" id="codeHint"></div>
         </div>
 
         <div class="setting">
-          <label class="setting-label" for="linkStyle">Link style</label>
-          <select id="linkStyle" class="setting-select">
-            <option value="inlined">[text](url) Inlined</option>
-            <option value="referenced">[text][1] Referenced</option>
-          </select>
+          <span class="setting-label">Link style</span>
+          <div class="segmented" role="radiogroup" aria-label="Link style">
+            <input type="radio" id="linkStyle-inlined" name="linkStyle" value="inlined">
+            <label for="linkStyle-inlined">[text](url) Inlined</label>
+            <input type="radio" id="linkStyle-referenced" name="linkStyle" value="referenced">
+            <label for="linkStyle-referenced">[text][1] Referenced</label>
+          </div>
           <div class="setting-hint" id="linkHint"></div>
         </div>
       </section>
