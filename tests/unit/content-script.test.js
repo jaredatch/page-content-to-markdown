@@ -363,6 +363,38 @@ describe('ContentScript', () => {
       expect(result.markdown).toContain('**Source:**');
     });
 
+    test('convertPageToMarkdown emits YAML frontmatter when metadataFormat is yaml', async () => {
+      mockConvertFromDOM.mockReturnValue('## Heading\n\nLots of content here that is definitely more than fifty characters long.');
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown({ metadataFormat: 'yaml' });
+
+      expect(result.success).toBe(true);
+      // Frontmatter delimiters and field
+      expect(result.markdown).toMatch(/^---\n/);
+      expect(result.markdown).toContain('title: "');
+      expect(result.markdown).toContain('url: ');
+      expect(result.markdown).toContain('date: ');
+      // Should NOT contain the legacy header
+      expect(result.markdown).not.toContain('**Source:**');
+      // Body should still follow the frontmatter
+      expect(result.markdown).toContain('## Heading');
+    });
+
+    test('YAML frontmatter escapes quotes and backslashes in title', async () => {
+      mockConvertFromDOM.mockReturnValue('## Body\n\nLots of content here that is definitely more than fifty characters long.');
+      // Override document.title for this test
+      const originalTitle = document.title;
+      document.title = 'A "quoted" \\ tricky title';
+
+      const instance = new ContentScript();
+      const result = await instance.convertPageToMarkdown({ metadataFormat: 'yaml' });
+
+      expect(result.markdown).toContain('title: "A \\"quoted\\" \\\\ tricky title"');
+
+      document.title = originalTitle;
+    });
+
     test('convertElementsToMarkdown should skip metadata when storage says false', async () => {
       chrome.storage.local.get.mockResolvedValue({ includeMetadata: false });
 

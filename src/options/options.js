@@ -50,16 +50,24 @@ class OptionsController {
     this.elements = {
       outputMode: new RadioGroup('outputMode'),
       includeMetadata: document.getElementById('includeMetadata'),
+      metadataFormat: new RadioGroup('metadataFormat'),
+      autoClosePopup: document.getElementById('autoClosePopup'),
       filenameTemplate: document.getElementById('filenameTemplate'),
       filenameStyle: new RadioGroup('filenameStyle'),
       filenamePreview: document.getElementById('filenamePreview'),
       headingStyle: new RadioGroup('headingStyle'),
       bulletListMarker: new RadioGroup('bulletListMarker'),
       codeBlockStyle: new RadioGroup('codeBlockStyle'),
+      imageMode: new RadioGroup('imageMode'),
+      linkMode: new RadioGroup('linkMode'),
       linkStyle: new RadioGroup('linkStyle'),
+      stripTrackingParams: document.getElementById('stripTrackingParams'),
+      metadataFormatHint: document.getElementById('metadataFormatHint'),
       headingHint: document.getElementById('headingHint'),
       bulletHint: document.getElementById('bulletHint'),
       codeHint: document.getElementById('codeHint'),
+      imageModeHint: document.getElementById('imageModeHint'),
+      linkModeHint: document.getElementById('linkModeHint'),
       linkHint: document.getElementById('linkHint'),
       resetBtn: document.getElementById('resetBtn'),
       status: document.getElementById('status')
@@ -82,12 +90,17 @@ class OptionsController {
 
     this.elements.outputMode.value = prefs.outputMode;
     this.elements.includeMetadata.checked = prefs.includeMetadata;
+    this.elements.metadataFormat.value = prefs.metadataFormat;
+    this.elements.autoClosePopup.checked = prefs.autoClosePopup;
     this.elements.filenameTemplate.value = prefs.filenameTemplate;
     this.elements.filenameStyle.value = prefs.filenameStyle;
     this.elements.headingStyle.value = prefs.headingStyle;
     this.elements.bulletListMarker.value = prefs.bulletListMarker;
     this.elements.codeBlockStyle.value = prefs.codeBlockStyle;
+    this.elements.imageMode.value = prefs.imageMode;
+    this.elements.linkMode.value = prefs.linkMode;
     this.elements.linkStyle.value = prefs.linkStyle;
+    this.elements.stripTrackingParams.checked = prefs.stripTrackingParams !== false;
   }
 
   setupEventListeners() {
@@ -98,6 +111,15 @@ class OptionsController {
 
     this.elements.includeMetadata.addEventListener('change', () => {
       this.save({ includeMetadata: this.elements.includeMetadata.checked });
+    });
+
+    this.elements.metadataFormat.addEventListener('change', () => {
+      this.save({ metadataFormat: this.elements.metadataFormat.value });
+      this.updateHint('metadataFormat');
+    });
+
+    this.elements.autoClosePopup.addEventListener('change', () => {
+      this.save({ autoClosePopup: this.elements.autoClosePopup.checked });
     });
 
     this.elements.headingStyle.addEventListener('change', () => {
@@ -115,9 +137,23 @@ class OptionsController {
       this.updateHint('code');
     });
 
+    this.elements.imageMode.addEventListener('change', () => {
+      this.save({ imageMode: this.elements.imageMode.value });
+      this.updateHint('imageMode');
+    });
+
+    this.elements.linkMode.addEventListener('change', () => {
+      this.save({ linkMode: this.elements.linkMode.value });
+      this.updateHint('linkMode');
+    });
+
     this.elements.linkStyle.addEventListener('change', () => {
       this.save({ linkStyle: this.elements.linkStyle.value });
       this.updateHint('link');
+    });
+
+    this.elements.stripTrackingParams.addEventListener('change', () => {
+      this.save({ stripTrackingParams: this.elements.stripTrackingParams.checked });
     });
 
     // Filename template: live preview on every keystroke, debounced save.
@@ -164,9 +200,12 @@ class OptionsController {
   }
 
   updateAllHints() {
+    this.updateHint('metadataFormat');
     this.updateHint('heading');
     this.updateHint('bullet');
     this.updateHint('code');
+    this.updateHint('imageMode');
+    this.updateHint('linkMode');
     this.updateHint('link');
   }
 
@@ -182,6 +221,12 @@ class OptionsController {
 
   updateHint(type) {
     switch (type) {
+      case 'metadataFormat':
+        this.elements.metadataFormatHint.textContent =
+          this.elements.metadataFormat.value === 'yaml'
+            ? '---\ntitle: "Example"\nurl: https://example.com\ndate: 2026-04-26\n---'
+            : '# Example\n\n**Source:** https://example.com';
+        break;
       case 'heading':
         this.elements.headingHint.textContent =
           this.elements.headingStyle.value === 'atx'
@@ -197,6 +242,28 @@ class OptionsController {
           this.elements.codeBlockStyle.value === 'fenced'
             ? '```\nconst x = 1;\n```'
             : '    const x = 1;';
+        break;
+      }
+      case 'imageMode': {
+        const mode = this.elements.imageMode.value;
+        this.elements.imageModeHint.textContent =
+          mode === 'alt'
+            ? 'A photo of a sunset'
+            : mode === 'strip'
+              ? '(no image output)'
+              : mode === 'url-list'
+                ? 'Images collected at end of doc'
+                : '![A photo of a sunset](photo.jpg)';
+        break;
+      }
+      case 'linkMode': {
+        const mode = this.elements.linkMode.value;
+        this.elements.linkModeHint.textContent =
+          mode === 'strip'
+            ? 'Example'
+            : mode === 'bare'
+              ? 'Example (https://example.com)'
+              : '[Example](https://example.com)';
         break;
       }
       case 'link':

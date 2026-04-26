@@ -8,7 +8,12 @@ const DEFAULTS = {
   codeBlockStyle: 'fenced',                // 'fenced' (```) or 'indented'
   linkStyle: 'inlined',                    // 'inlined' [text](url) or 'referenced' [text][1]
   filenameTemplate: '{title} - {date}',    // see src/utils/filename-template.js
-  filenameStyle: 'preserve'                // 'preserve' | 'kebab' | 'snake'
+  filenameStyle: 'preserve',               // 'preserve' | 'kebab' | 'snake'
+  autoClosePopup: true,                    // close popup automatically after a successful action
+  stripTrackingParams: true,               // strip utm_*, fbclid, gclid, etc. from URLs
+  linkMode: 'keep',                        // 'keep' | 'strip' (text only) | 'bare' (text + URL)
+  imageMode: 'keep',                       // 'keep' | 'alt' (alt text only) | 'strip' | 'url-list' (collect URLs at end)
+  metadataFormat: 'header'                 // 'header' (markdown title block) | 'yaml' (frontmatter)
 };
 
 class Preferences {

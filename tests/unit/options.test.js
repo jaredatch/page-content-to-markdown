@@ -6,7 +6,12 @@ const MOCK_DEFAULTS = {
   codeBlockStyle: 'fenced',
   linkStyle: 'inlined',
   filenameTemplate: '{title} - {date}',
-  filenameStyle: 'preserve'
+  filenameStyle: 'preserve',
+  autoClosePopup: true,
+  stripTrackingParams: true,
+  linkMode: 'keep',
+  imageMode: 'keep',
+  metadataFormat: 'header'
 };
 
 jest.mock('../../src/utils/preferences', () => ({
@@ -39,6 +44,22 @@ const OPTIONS_HTML = `
           <label class="checkbox-label">
             <input type="checkbox" id="includeMetadata" checked>
             <span>Include page info</span>
+          </label>
+        </div>
+        <div class="setting">
+          <span class="setting-label">Page info format</span>
+          <div class="segmented" role="radiogroup" aria-label="Page info format">
+            <input type="radio" id="metadataFormat-header" name="metadataFormat" value="header">
+            <label for="metadataFormat-header">Markdown header</label>
+            <input type="radio" id="metadataFormat-yaml" name="metadataFormat" value="yaml">
+            <label for="metadataFormat-yaml">YAML frontmatter</label>
+          </div>
+          <div class="setting-hint" id="metadataFormatHint"></div>
+        </div>
+        <div class="setting">
+          <label class="checkbox-label">
+            <input type="checkbox" id="autoClosePopup" checked>
+            <span>Auto-close popup after action</span>
           </label>
         </div>
       </section>
@@ -94,6 +115,32 @@ const OPTIONS_HTML = `
           <div class="setting-hint" id="codeHint"></div>
         </div>
         <div class="setting">
+          <span class="setting-label">Image handling</span>
+          <div class="segmented" role="radiogroup" aria-label="Image handling">
+            <input type="radio" id="imageMode-keep" name="imageMode" value="keep">
+            <label for="imageMode-keep">Keep</label>
+            <input type="radio" id="imageMode-alt" name="imageMode" value="alt">
+            <label for="imageMode-alt">Alt only</label>
+            <input type="radio" id="imageMode-strip" name="imageMode" value="strip">
+            <label for="imageMode-strip">Strip</label>
+            <input type="radio" id="imageMode-url-list" name="imageMode" value="url-list">
+            <label for="imageMode-url-list">URL list</label>
+          </div>
+          <div class="setting-hint" id="imageModeHint"></div>
+        </div>
+        <div class="setting">
+          <span class="setting-label">Link handling</span>
+          <div class="segmented" role="radiogroup" aria-label="Link handling">
+            <input type="radio" id="linkMode-keep" name="linkMode" value="keep">
+            <label for="linkMode-keep">Keep links</label>
+            <input type="radio" id="linkMode-strip" name="linkMode" value="strip">
+            <label for="linkMode-strip">Text only</label>
+            <input type="radio" id="linkMode-bare" name="linkMode" value="bare">
+            <label for="linkMode-bare">Text + URL</label>
+          </div>
+          <div class="setting-hint" id="linkModeHint"></div>
+        </div>
+        <div class="setting">
           <span class="setting-label">Link style</span>
           <div class="segmented" role="radiogroup" aria-label="Link style">
             <input type="radio" id="linkStyle-inlined" name="linkStyle" value="inlined">
@@ -102,6 +149,12 @@ const OPTIONS_HTML = `
             <label for="linkStyle-referenced">Referenced</label>
           </div>
           <div class="setting-hint" id="linkHint"></div>
+        </div>
+        <div class="setting">
+          <label class="checkbox-label">
+            <input type="checkbox" id="stripTrackingParams" checked>
+            <span>Strip tracking parameters from URLs</span>
+          </label>
         </div>
       </section>
       <section class="section">

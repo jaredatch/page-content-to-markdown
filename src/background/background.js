@@ -376,7 +376,11 @@ class BackgroundScript {
           headingStyle: prefs.headingStyle,
           bulletListMarker: prefs.bulletListMarker,
           codeBlockStyle: prefs.codeBlockStyle,
-          linkStyle: prefs.linkStyle
+          linkStyle: prefs.linkStyle,
+          stripTrackingParams: prefs.stripTrackingParams,
+          linkMode: prefs.linkMode,
+          imageMode: prefs.imageMode,
+          metadataFormat: prefs.metadataFormat
         }
       });
 
@@ -429,7 +433,11 @@ class BackgroundScript {
           headingStyle: prefs.headingStyle,
           bulletListMarker: prefs.bulletListMarker,
           codeBlockStyle: prefs.codeBlockStyle,
-          linkStyle: prefs.linkStyle
+          linkStyle: prefs.linkStyle,
+          stripTrackingParams: prefs.stripTrackingParams,
+          linkMode: prefs.linkMode,
+          imageMode: prefs.imageMode,
+          metadataFormat: prefs.metadataFormat
         }
       });
 

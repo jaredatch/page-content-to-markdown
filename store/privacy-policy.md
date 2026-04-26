@@ -6,6 +6,8 @@
 
 Copy Page as Markdown reads the content of web pages you are viewing in order to convert that content into markdown format. It can also write to your clipboard when you choose to copy the converted output.
 
+By default it strips well-known tracking parameters (utm_*, fbclid, gclid, and similar) from URLs in the converted output. This happens entirely within your browser; the original page is unaffected.
+
 ## Data collection
 
 This extension does not collect, transmit, or store any of your data on any server. There is no analytics, no tracking, no telemetry, and no third-party services of any kind.
@@ -14,7 +16,7 @@ This extension does not collect, transmit, or store any of your data on any serv
 
 - **Page content:** The extension reads the DOM of the active page to convert it to markdown. This happens entirely within your browser.
 - **Clipboard:** When you choose the "Copy" output option, the extension writes the converted markdown to your clipboard. It does not read your clipboard.
-- **Local storage:** Your preferences (output mode, metadata toggle, formatting options) are saved using the browser's local storage API (`chrome.storage.local`). This data stays on your device and is never transmitted anywhere.
+- **Local storage:** Your preferences (output mode, page-info toggle and format, image and link handling, tracking-param strip, filename template, formatting options, auto-close behavior) are saved using the browser's local storage API (`chrome.storage.local`). This data stays on your device and is never transmitted anywhere.
 
 ## Permissions
 

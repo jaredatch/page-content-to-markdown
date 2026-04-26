@@ -449,6 +449,128 @@ describe('MarkdownConverter', () => {
     });
   });
 
+  describe('imageMode', () => {
+    const html = '<article><h1>Sunset</h1><p><img src="https://example.com/photo.jpg" alt="A photo of a sunset"></p><p>A description that is long enough to satisfy the content threshold check on the article container.</p></article>';
+
+    test('keep mode emits inline image (default)', () => {
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('![A photo of a sunset](https://example.com/photo.jpg)');
+    });
+
+    test('alt mode emits alt text only', () => {
+      converter.applyFormattingOptions({ imageMode: 'alt' });
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('A photo of a sunset');
+      expect(result).not.toContain('https://example.com/photo.jpg');
+      expect(result).not.toContain('![');
+    });
+
+    test('strip mode drops images entirely', () => {
+      converter.applyFormattingOptions({ imageMode: 'strip' });
+      const result = converter.convertToMarkdown(html);
+      expect(result).not.toContain('A photo of a sunset');
+      expect(result).not.toContain('https://example.com/photo.jpg');
+    });
+
+    test('url-list mode collects URLs at end under ## Images', () => {
+      converter.applyFormattingOptions({ imageMode: 'url-list' });
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('## Images');
+      expect(result).toContain('- https://example.com/photo.jpg');
+      // Inline image should not be emitted
+      expect(result).not.toContain('![A photo of a sunset]');
+    });
+
+    test('url-list mode dedupes repeated URLs', () => {
+      const dupHtml = '<article><p><img src="https://example.com/dup.jpg" alt="A"><img src="https://example.com/dup.jpg" alt="B"></p><p>Filler content long enough to satisfy the content threshold check for the test setup.</p></article>';
+      converter.applyFormattingOptions({ imageMode: 'url-list' });
+      const result = converter.convertToMarkdown(dupHtml);
+      const matches = result.match(/https:\/\/example\.com\/dup\.jpg/g) || [];
+      expect(matches).toHaveLength(1);
+    });
+
+    test('url-list mode strips tracking params from collected URLs', () => {
+      const trackedHtml = '<article><p><img src="https://example.com/photo.jpg?utm_source=site" alt="A"></p><p>Filler content long enough to satisfy the content threshold check for the test setup.</p></article>';
+      converter.applyFormattingOptions({ imageMode: 'url-list', stripTrackingParams: true });
+      const result = converter.convertToMarkdown(trackedHtml);
+      expect(result).toContain('- https://example.com/photo.jpg');
+      expect(result).not.toContain('utm_source');
+    });
+
+    test('url-list mode emits no Images section when no images present', () => {
+      converter.applyFormattingOptions({ imageMode: 'url-list' });
+      const noImg = '<article><h1>Plain</h1><p>This article has no images at all but enough text to satisfy the content threshold check.</p></article>';
+      const result = converter.convertToMarkdown(noImg);
+      expect(result).not.toContain('## Images');
+    });
+
+    test('reset between conversions: prior URLs do not leak', () => {
+      converter.applyFormattingOptions({ imageMode: 'url-list' });
+      converter.convertToMarkdown(html);
+      const second = '<article><h1>No images here</h1><p>This article has no images at all but enough text to satisfy the content threshold check.</p></article>';
+      const result = converter.convertToMarkdown(second);
+      expect(result).not.toContain('https://example.com/photo.jpg');
+      expect(result).not.toContain('## Images');
+    });
+  });
+
+  describe('linkMode', () => {
+    const html = '<article><p>Visit <a href="https://example.com">Example</a> for content that is long enough to pass the threshold check.</p></article>';
+
+    test('keep mode preserves the inline link (default)', () => {
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('[Example](https://example.com)');
+    });
+
+    test('strip mode emits link text only', () => {
+      converter.applyFormattingOptions({ linkMode: 'strip' });
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('Example');
+      expect(result).not.toContain('https://example.com');
+      expect(result).not.toContain('[Example]');
+    });
+
+    test('bare mode appends URL after text', () => {
+      converter.applyFormattingOptions({ linkMode: 'bare' });
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('Example (https://example.com)');
+      expect(result).not.toContain('[Example]');
+    });
+
+    test('strip mode applies to fragment service too', () => {
+      converter.convertHtmlFragment('<p>init</p>');
+      converter.applyFormattingOptions({ linkMode: 'strip' });
+      const result = converter.convertHtmlFragment('<p>See <a href="https://example.com">here</a></p>');
+      expect(result).toContain('here');
+      expect(result).not.toContain('https://example.com');
+    });
+
+    test('bare mode + tracking strip removes utm_* from emitted URL', () => {
+      converter.applyFormattingOptions({ linkMode: 'bare', stripTrackingParams: true });
+      const trackedHtml = '<article><p>Visit <a href="https://example.com/?utm_source=x">Example</a> with content long enough to pass the threshold check.</p></article>';
+      const result = converter.convertToMarkdown(trackedHtml);
+      expect(result).toContain('Example (https://example.com/)');
+      expect(result).not.toContain('utm_source');
+    });
+  });
+
+  describe('stripTrackingParams', () => {
+    test('removes utm_* from inline link URLs', () => {
+      converter.applyFormattingOptions({ stripTrackingParams: true });
+      const html = '<article><p>Read <a href="https://example.com/post?utm_source=newsletter&id=42">the post</a> for content long enough to pass the threshold check.</p></article>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('https://example.com/post?id=42');
+      expect(result).not.toContain('utm_source');
+    });
+
+    test('leaves URLs alone when toggle is off', () => {
+      converter.applyFormattingOptions({ stripTrackingParams: false });
+      const html = '<article><p>Read <a href="https://example.com/post?utm_source=newsletter">the post</a> for content long enough to pass the threshold check.</p></article>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('utm_source=newsletter');
+    });
+  });
+
   describe('size guard', () => {
     test('convertToMarkdown should handle large HTML without throwing', () => {
       // Create a large HTML string (~1MB, below the 5MB guard)

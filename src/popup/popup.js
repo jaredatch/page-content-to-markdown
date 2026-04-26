@@ -25,6 +25,7 @@ class PopupController {
     };
 
     this.currentTab = null;
+    this.autoClosePopup = true;
     this.init();
   }
 
@@ -120,6 +121,7 @@ class PopupController {
       const prefs = await Preferences.get();
 
       this.elements.metadataToggle.checked = prefs.includeMetadata;
+      this.autoClosePopup = prefs.autoClosePopup !== false;
 
       // Set output toggle active state
       this.elements.outputToggle.querySelectorAll('.toggle-btn').forEach(btn => {
@@ -214,7 +216,11 @@ class PopupController {
       if (response && response.success) {
         console.log('✅ [popup] Site action successful');
         this.showSuccess(response.message || 'Content processed!');
-        setTimeout(() => { window.close(); }, 1500);
+        if (this.autoClosePopup) {
+          setTimeout(() => { window.close(); }, 1500);
+        } else {
+          this.enableExtraction();
+        }
       } else {
         console.error('🚨 [popup] Site action failed:', response && response.error);
         this.showError((response && response.error) || 'Failed to extract content');
@@ -351,10 +357,11 @@ class PopupController {
         console.log('✅ [popup] Content extraction successful');
         this.showSuccess(response.message || 'Content copied to clipboard!');
 
-        // Auto-close popup after successful extraction
-        setTimeout(() => {
-          window.close();
-        }, 1500);
+        if (this.autoClosePopup) {
+          setTimeout(() => { window.close(); }, 1500);
+        } else {
+          this.enableExtraction();
+        }
       } else {
         console.error('🚨 [popup] Content extraction failed:', response.error);
         this.showError(response.error || 'Failed to extract content');

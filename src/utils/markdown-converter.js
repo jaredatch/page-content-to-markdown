@@ -2,6 +2,7 @@ const TurndownImport = require('turndown');
 const TurndownService = TurndownImport.default || TurndownImport;
 const TurndownPluginGfmImport = require('turndown-plugin-gfm');
 const turndownPluginGfm = TurndownPluginGfmImport.gfm || TurndownPluginGfmImport;
+const UrlCleaner = require('./url-cleaner');
 
 class MarkdownConverter {
   constructor() {
@@ -18,6 +19,17 @@ class MarkdownConverter {
 
     // Enable GFM: tables, strikethrough, task lists
     this.turndownService.use(turndownPluginGfm);
+
+    // Extraction-time options. Defaults match Preferences.DEFAULTS so the
+    // converter behaves correctly when used without applyFormattingOptions
+    // (e.g. fragment conversions before formatting prefs are applied).
+    this._stripTrackingParams = true;
+    this._linkMode = 'keep';
+    this._imageMode = 'keep';
+
+    // Per-conversion image URL collection (populated by the image rule when
+    // mode is 'url-list'). Reset at the top of each conversion entry point.
+    this._pendingImageUrls = [];
 
     // Configure rules for clean conversion
     this.setupCustomRules();
@@ -46,6 +58,90 @@ class MarkdownConverter {
         }
       }
     }
+
+    // Extraction-time toggles (not Turndown options)
+    if (options.stripTrackingParams !== undefined) {
+      this._stripTrackingParams = !!options.stripTrackingParams;
+    }
+    if (options.linkMode !== undefined) {
+      this._linkMode = options.linkMode;
+    }
+    if (options.imageMode !== undefined) {
+      this._imageMode = options.imageMode;
+    }
+  }
+
+  /**
+   * Image rule body shared by both the full-page and fragment Turndown
+   * services. Returns the markdown replacement based on the current mode
+   * and (for 'url-list') records the URL into the pending collection.
+   */
+  _imageReplacement(node) {
+    const alt = node.getAttribute('alt') || '';
+    const src = this._resolveImageSrc(node);
+    if (!src) return '';
+
+    switch (this._imageMode) {
+      case 'strip':
+        return '';
+      case 'alt':
+        return alt || '';
+      case 'url-list':
+        if (!this._pendingImageUrls.includes(src)) {
+          this._pendingImageUrls.push(src);
+        }
+        return '';
+      case 'keep':
+      default:
+        return `![${alt}](${src})`;
+    }
+  }
+
+  /**
+   * Reset the per-conversion image URL collection. Call at the top of every
+   * top-level conversion entry point.
+   */
+  _resetConversionState() {
+    this._pendingImageUrls = [];
+  }
+
+  /**
+   * Append the collected image URLs as a section to the markdown if the
+   * current mode is 'url-list' and any URLs were collected. Called after
+   * Turndown but before cleanupMarkdown so the URLs go through the same
+   * tracking-strip pass as inline links.
+   */
+  _appendImageUrlList(markdown) {
+    if (this._imageMode !== 'url-list' || this._pendingImageUrls.length === 0) {
+      return markdown;
+    }
+    const list = this._pendingImageUrls.map(u => `- ${u}`).join('\n');
+    const sep = markdown.endsWith('\n') ? '\n' : '\n\n';
+    return `${markdown}${sep}## Images\n\n${list}`;
+  }
+
+  /**
+   * Register the Turndown rule that overrides <a> handling for strip / bare
+   * modes. When linkMode === 'keep', the filter returns false and Turndown's
+   * default inline/reference link rules handle the node.
+   */
+  _registerLinkModeRule(service) {
+    const converter = this;
+    service.addRule('linkModeOverride', {
+      filter: function (node) {
+        if (node.nodeName !== 'A') return false;
+        if (!node.getAttribute('href')) return false;
+        return converter._linkMode === 'strip' || converter._linkMode === 'bare';
+      },
+      replacement: function (content, node) {
+        if (converter._linkMode === 'strip') return content;
+        // bare: append URL in parens. Tracking-param strip happens later in
+        // cleanupMarkdown so the URL emitted here may still contain trackers
+        // — they get stripped at the post-processing step.
+        const href = node.getAttribute('href') || '';
+        return href ? `${content} (${href})` : content;
+      }
+    });
   }
 
   setupCustomRules() {
@@ -80,15 +176,11 @@ class MarkdownConverter {
       replacement: () => '\n'
     });
 
-    // Handle images — resolve lazy-loaded src and keep images without alt text
+    // Handle images — resolve lazy-loaded src and honor the user's
+    // imageMode preference (keep / alt / strip / url-list).
     this.turndownService.addRule('betterImages', {
       filter: 'img',
-      replacement: (content, node) => {
-        const alt = node.getAttribute('alt') || '';
-        const src = this._resolveImageSrc(node);
-        if (!src) return '';
-        return `![${alt}](${src})`;
-      }
+      replacement: (content, node) => this._imageReplacement(node)
     });
 
     // Handle social media specific elements
@@ -100,6 +192,8 @@ class MarkdownConverter {
       },
       replacement: (content) => content
     });
+
+    this._registerLinkModeRule(this.turndownService);
   }
 
   /**
@@ -159,12 +253,7 @@ class MarkdownConverter {
         // Handle lazy-loaded images (same rule as the full-page service)
         this._fragmentService.addRule('betterImages', {
           filter: 'img',
-          replacement: (content, node) => {
-            const alt = node.getAttribute('alt') || '';
-            const src = this._resolveImageSrc(node);
-            if (!src) return '';
-            return `![${alt}](${src})`;
-          }
+          replacement: (content, node) => this._imageReplacement(node)
         });
 
         // Clean up line breaks
@@ -172,9 +261,13 @@ class MarkdownConverter {
           filter: 'br',
           replacement: () => '\n'
         });
+
+        this._registerLinkModeRule(this._fragmentService);
       }
 
+      this._resetConversionState();
       let markdown = this._fragmentService.turndown(html);
+      markdown = this._appendImageUrlList(markdown);
       markdown = this.cleanupMarkdown(markdown);
       return markdown;
     } catch (error) {
@@ -197,9 +290,11 @@ class MarkdownConverter {
       // Find the main content element directly in the live DOM
       const contentElement = this.extractMainContentFromDOM(rootElement);
 
+      this._resetConversionState();
       // Pass DOM node directly to Turndown (it clones internally)
       let markdown = this.turndownService.turndown(contentElement);
 
+      markdown = this._appendImageUrlList(markdown);
       markdown = this.cleanupMarkdown(markdown);
       return markdown;
     } catch (error) {
@@ -251,8 +346,11 @@ class MarkdownConverter {
       // Extract main content first
       const mainContent = this.extractMainContent(html);
 
+      this._resetConversionState();
       // Convert to markdown
       let markdown = this.turndownService.turndown(mainContent);
+
+      markdown = this._appendImageUrlList(markdown);
 
       // Clean up the result
       markdown = this.cleanupMarkdown(markdown);
@@ -589,7 +687,7 @@ class MarkdownConverter {
     const emptyListItem = new RegExp(`\\n(?:${escapedBullet} \\s*|> \\s*)\\n`, 'g');
     const listSpacing = new RegExp(`(\\n${escapedBullet} .+?)(\\n{2,})(${escapedBullet} )`, 'g');
 
-    return markdown
+    let result = markdown
       // Normalize list markers to configured bullet
       .replace(bulletNormalize, `${bullet} `)
       // Remove empty list items and empty blockquotes
@@ -610,6 +708,12 @@ class MarkdownConverter {
       // Trim blank lines from start/end without stripping leading spaces on content lines
       .replace(/^\n+/, '')
       .replace(/\n+$/, '');
+
+    if (this._stripTrackingParams) {
+      result = UrlCleaner.cleanUrlsInMarkdown(result);
+    }
+
+    return result;
   }
 }
 

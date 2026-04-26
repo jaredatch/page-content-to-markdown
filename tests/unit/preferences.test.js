@@ -54,7 +54,12 @@ describe('Preferences', () => {
         codeBlockStyle: 'indented',
         linkStyle: 'referenced',
         filenameTemplate: '{domain}-{slug}',
-        filenameStyle: 'kebab'
+        filenameStyle: 'kebab',
+        autoClosePopup: false,
+        stripTrackingParams: false,
+        linkMode: 'strip',
+        imageMode: 'strip',
+        metadataFormat: 'yaml'
       };
       chrome.storage.local.get.mockResolvedValue(overrides);
 

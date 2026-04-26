@@ -8,6 +8,7 @@ const MarkdownConverter = require('../utils/markdown-converter');
 const SimpleUniversalExtractor = require('../utils/simple-universal-extractor');
 const ElementPicker = require('./element-picker');
 const SiteRegistry = require('../utils/site-registry');
+const UrlCleaner = require('../utils/url-cleaner');
 
 class ContentScript {
   constructor() {
@@ -26,11 +27,11 @@ class ContentScript {
    * Emergency: Basic error markdown with page title/URL.
    */
   async convertPageToMarkdown(options = {}) {
-    const metadata = this.getPageMetadata();
-    const includeMetadata = options.includeMetadata !== false;
-
     // Apply formatting preferences if provided
     this._applyFormattingOptions(options);
+
+    const metadata = this._getMetadata(options);
+    const includeMetadata = options.includeMetadata !== false;
 
     // Size guard: skip full conversion for extremely large pages
     const MAX_ELEMENTS = 50000;
@@ -40,7 +41,7 @@ class ContentScript {
       try {
         const extractionResult = await this.fallbackExtractor.extractContent();
         const markdown = includeMetadata
-          ? this.addMetadataHeader(extractionResult.markdown, metadata)
+          ? this.addMetadataHeader(extractionResult.markdown, metadata, options.metadataFormat)
           : extractionResult.markdown;
         return {
           success: true,
@@ -78,7 +79,7 @@ class ContentScript {
 
       if (markdown && markdown.trim().length > 50) {
         console.log(`✅ [content-script] Turndown conversion succeeded (${method})`);
-        const result = includeMetadata ? this.addMetadataHeader(markdown, metadata) : markdown;
+        const result = includeMetadata ? this.addMetadataHeader(markdown, metadata, options.metadataFormat) : markdown;
         return {
           success: true,
           markdown: result,
@@ -133,12 +134,17 @@ class ContentScript {
 
   /**
    * Apply formatting preferences to the converter if present in options.
+   * Forwards both Turndown formatting options and extraction-time toggles
+   * (tracking strip, link mode, image mode).
    */
   _applyFormattingOptions(options) {
     if (!options) return;
-    const formattingKeys = ['headingStyle', 'bulletListMarker', 'codeBlockStyle', 'linkStyle'];
+    const passthroughKeys = [
+      'headingStyle', 'bulletListMarker', 'codeBlockStyle', 'linkStyle',
+      'stripTrackingParams', 'linkMode', 'imageMode'
+    ];
     const formatting = {};
-    for (const key of formattingKeys) {
+    for (const key of passthroughKeys) {
       if (options[key] !== undefined) formatting[key] = options[key];
     }
     if (Object.keys(formatting).length > 0) {
@@ -147,11 +153,74 @@ class ContentScript {
   }
 
   /**
-   * Prepend a metadata header to the converted markdown
+   * Get page metadata, applying any extraction-time options (e.g. cleaning
+   * tracking params from the URL).
    */
-  addMetadataHeader(markdown, metadata) {
+  _getMetadata(options) {
+    const metadata = this.getPageMetadata();
+    if (options && options.stripTrackingParams) {
+      metadata.url = UrlCleaner.cleanUrl(metadata.url);
+    }
+    return metadata;
+  }
+
+  /**
+   * Fill any options not passed by the caller from chrome.storage.local.
+   * Used by paths that aren't invoked through the background's pref-reading
+   * pipeline (text selection, element selection from page).
+   */
+  async _fillOptionsFromStorage(options) {
+    const keys = [
+      'includeMetadata', 'stripTrackingParams', 'linkMode', 'imageMode',
+      'headingStyle', 'bulletListMarker', 'codeBlockStyle', 'linkStyle',
+      'metadataFormat'
+    ];
+    const missing = keys.filter(k => options[k] === undefined);
+    if (missing.length === 0) return options;
+    try {
+      const stored = await chrome.storage.local.get(missing);
+      // Caller-passed options take precedence over stored values.
+      return { ...stored, ...options };
+    } catch (e) {
+      return options;
+    }
+  }
+
+  /**
+   * Prepend a metadata header to the converted markdown.
+   * Format defaults to the legacy markdown title block; pass 'yaml' for
+   * YAML frontmatter (compatible with Obsidian, Logseq, Hugo, Jekyll, …).
+   */
+  addMetadataHeader(markdown, metadata, format) {
+    if (format === 'yaml') {
+      return this._buildYamlFrontmatter(metadata) + markdown;
+    }
     const header = `# ${metadata.title}\n\n**Source:** ${metadata.url}  \n**Extracted:** ${metadata.timestamp}\n\n---\n\n`;
     return header + markdown;
+  }
+
+  /**
+   * Build a YAML frontmatter block from page metadata.
+   * Title is double-quoted with backslash and quote escaping; URL/domain/date
+   * are emitted unquoted because their values are tame in standard form.
+   */
+  _buildYamlFrontmatter(metadata) {
+    const safeTitle = String(metadata.title || '')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+    const date = (metadata.timestamp || '').split('T')[0] ||
+      new Date().toISOString().split('T')[0];
+    return [
+      '---',
+      `title: "${safeTitle}"`,
+      `url: ${metadata.url || ''}`,
+      `domain: ${metadata.domain || ''}`,
+      `date: ${date}`,
+      '---',
+      '',
+      ''
+    ].join('\n');
   }
 
   /**
@@ -170,18 +239,11 @@ class ContentScript {
    * Convert user-selected elements to markdown.
    */
   async convertElementsToMarkdown(elements, options = {}) {
-    const metadata = this.getPageMetadata();
-    let includeMetadata = options.includeMetadata;
+    options = await this._fillOptionsFromStorage(options);
+    this._applyFormattingOptions(options);
 
-    // If not explicitly provided, read from storage
-    if (includeMetadata === undefined) {
-      try {
-        const stored = await chrome.storage.local.get(['includeMetadata']);
-        includeMetadata = stored.includeMetadata !== false;
-      } catch (e) {
-        includeMetadata = true;
-      }
-    }
+    const metadata = this._getMetadata(options);
+    const includeMetadata = options.includeMetadata !== false;
 
     try {
       const htmlParts = elements.map(el => el.outerHTML);
@@ -194,7 +256,7 @@ class ContentScript {
       }
 
       if (includeMetadata) {
-        markdown = this.addMetadataHeader(markdown, metadata);
+        markdown = this.addMetadataHeader(markdown, metadata, options.metadataFormat);
       }
 
       return {
@@ -224,15 +286,11 @@ class ContentScript {
       return { success: false, error: 'No text selected' };
     }
 
-    const metadata = this.getPageMetadata();
+    const options = await this._fillOptionsFromStorage({});
+    this._applyFormattingOptions(options);
 
-    let includeMetadata = true;
-    try {
-      const stored = await chrome.storage.local.get(['includeMetadata']);
-      includeMetadata = stored.includeMetadata !== false;
-    } catch (e) {
-      // default true
-    }
+    const metadata = this._getMetadata(options);
+    const includeMetadata = options.includeMetadata !== false;
 
     try {
       const range = selection.getRangeAt(0);
@@ -247,7 +305,7 @@ class ContentScript {
       }
 
       if (includeMetadata) {
-        markdown = this.addMetadataHeader(markdown, metadata);
+        markdown = this.addMetadataHeader(markdown, metadata, options.metadataFormat);
       }
 
       return {
@@ -270,11 +328,11 @@ class ContentScript {
    * Falls back to the general convertPageToMarkdown path on failure.
    */
   async extractSiteContent(siteId, contentType, options = {}) {
-    const metadata = this.getPageMetadata();
-    const includeMetadata = options.includeMetadata !== false;
-
     // Apply formatting preferences if provided
     this._applyFormattingOptions(options);
+
+    const metadata = this._getMetadata(options);
+    const includeMetadata = options.includeMetadata !== false;
 
     try {
       const site = SiteRegistry.getById(siteId);
@@ -290,7 +348,7 @@ class ContentScript {
       let markdown = formatter.format(contentType, data, this.converter);
 
       if (includeMetadata) {
-        markdown = this.addMetadataHeader(markdown, metadata);
+        markdown = this.addMetadataHeader(markdown, metadata, options.metadataFormat);
       }
 
       console.log(`✅ [content-script] ${site.name} extraction succeeded: ${contentType}`);
