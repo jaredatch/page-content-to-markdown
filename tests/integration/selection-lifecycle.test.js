@@ -17,13 +17,15 @@ describe('Selection mode lifecycle', () => {
   beforeEach(() => {
     pickerInstances = [];
     mockElementPicker.mockReset();
-    mockElementPicker.mockImplementation(({ onConfirm, onCancel }) => {
+    mockElementPicker.mockImplementation(({ onCopy, onSave, onCancel, initialOutputMode }) => {
       const instance = {
         activate: jest.fn(),
         deactivate: jest.fn(),
         preselectElement: jest.fn(),
-        onConfirm,
+        onCopy,
+        onSave,
         onCancel,
+        initialOutputMode,
         selectedElements: []
       };
       pickerInstances.push(instance);
@@ -44,7 +46,7 @@ describe('Selection mode lifecycle', () => {
     expect(pickerInstances[0].activate).toHaveBeenCalled();
   });
 
-  test('selectionComplete triggers clipboard write and clears state', async () => {
+  test('Copy action writes to clipboard; selection mode stays active afterwards', async () => {
     // Start selection mode first
     await bus.simulatePopupMessage({ action: 'startSelectionMode' });
 
@@ -52,13 +54,12 @@ describe('Selection mode lifecycle', () => {
     const stateBeforeResponse = await bus.simulatePopupMessage({ action: 'getSelectionState' });
     expect(stateBeforeResponse.active).toBe(true);
 
-    // Simulate user confirming selection with a real DOM element
+    // Simulate user clicking Copy with a real DOM element
     const testElement = document.createElement('div');
     testElement.innerHTML = '<p>Selected content for testing purposes with enough text</p>';
     document.body.appendChild(testElement);
 
-    // Invoke onConfirm — this triggers selectionComplete message to background
-    await pickerInstances[0].onConfirm([testElement]);
+    await pickerInstances[0].onCopy([testElement]);
     await flushPromises();
 
     // Clipboard should have been written
@@ -66,9 +67,10 @@ describe('Selection mode lifecycle', () => {
     const clipboardText = navigator.clipboard.writeText.mock.calls[0][0];
     expect(clipboardText).toContain('Selected content');
 
-    // Selection state should be cleared
+    // Selection state should remain active — user can fire another action on the same set.
+    // Only Cancel / X / Esc / tab close flips it off.
     const stateAfterResponse = await bus.simulatePopupMessage({ action: 'getSelectionState' });
-    expect(stateAfterResponse.active).toBe(false);
+    expect(stateAfterResponse.active).toBe(true);
   });
 
   test('cancelSelectionMode flows through and clears state', async () => {
@@ -113,17 +115,19 @@ describe('Selection mode lifecycle', () => {
     expect(stateResponse.active).toBe(false);
   });
 
-  test('selectionComplete with file output saves file instead of clipboard', async () => {
+  test('Save action saves file instead of clipboard, regardless of pref', async () => {
     jest.resetModules();
     pickerInstances = [];
     mockElementPicker.mockReset();
-    mockElementPicker.mockImplementation(({ onConfirm, onCancel }) => {
+    mockElementPicker.mockImplementation(({ onCopy, onSave, onCancel, initialOutputMode }) => {
       const instance = {
         activate: jest.fn(),
         deactivate: jest.fn(),
         preselectElement: jest.fn(),
-        onConfirm,
+        onCopy,
+        onSave,
         onCancel,
+        initialOutputMode,
         selectedElements: []
       };
       pickerInstances.push(instance);
@@ -137,14 +141,20 @@ describe('Selection mode lifecycle', () => {
 
     await bus.simulatePopupMessage({ action: 'startSelectionMode' });
 
+    // The picker should have received outputMode = 'file' as its initial Default
+    // — used to render the right primary button, but selection-mode toggles are
+    // session-local so the pref isn't rewritten by clicks.
+    expect(pickerInstances[0].initialOutputMode).toBe('file');
+
     const testElement = document.createElement('div');
     testElement.innerHTML = '<p>File save test content with enough text to convert</p>';
     document.body.appendChild(testElement);
 
-    await pickerInstances[0].onConfirm([testElement]);
+    // User clicks Save explicitly.
+    await pickerInstances[0].onSave([testElement]);
     await flushPromises();
 
-    // Should use file save, not clipboard
+    // Should use file save, not clipboard.
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
   });

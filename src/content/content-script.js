@@ -369,25 +369,29 @@ class ContentScript {
 
   /**
    * Start element selection mode.
+   *
+   * Reads outputMode from storage so the picker's "Default: Copy / Save"
+   * segmented control reflects the user's preferred default. Flipping it
+   * inside the picker is session-local — the popup remains the canonical
+   * place to change the persistent pref.
    */
-  startSelectionMode() {
+  async startSelectionMode() {
     if (this.elementPicker) {
       this.elementPicker.deactivate();
     }
 
+    let initialOutputMode = 'clipboard';
+    try {
+      const stored = await chrome.storage.local.get(['outputMode']);
+      if (stored && stored.outputMode === 'file') initialOutputMode = 'file';
+    } catch (e) {
+      // Default to clipboard on storage failure.
+    }
+
     this.elementPicker = new ElementPicker({
-      onConfirm: async (selectedElements) => {
-        console.log(`🎯 [content-script] Selection confirmed: ${selectedElements.length} element(s)`);
-        const result = await this.convertElementsToMarkdown(selectedElements);
-
-        chrome.runtime.sendMessage({
-          action: 'selectionComplete',
-          result
-        });
-
-        this.elementPicker.deactivate();
-        this.elementPicker = null;
-      },
+      initialOutputMode,
+      onCopy: (els) => this._completeSelection(els, 'clipboard'),
+      onSave: (els) => this._completeSelection(els, 'file'),
       onCancel: () => {
         console.log('🎯 [content-script] Selection cancelled');
         chrome.runtime.sendMessage({ action: 'selectionCancelled' });
@@ -397,6 +401,30 @@ class ContentScript {
 
     this.elementPicker.activate();
     console.log('🎯 [content-script] Selection mode started');
+  }
+
+  /**
+   * Convert the user's selection and forward to the background for output
+   * dispatch. Returns `{ success }` so the picker can flash the button green
+   * on success and stay quiet on failure (background surfaces errors via
+   * its own notification path). Picker stays active afterwards — the user
+   * can keep refining the selection or fire the other action on the same set.
+   */
+  async _completeSelection(elements, mode) {
+    console.log(`🎯 [content-script] Selection ${mode}: ${elements.length} element(s)`);
+    const result = await this.convertElementsToMarkdown(elements);
+
+    if (!result || result.success === false) {
+      return { success: false, error: result && result.error };
+    }
+
+    result.mode = mode;
+    try {
+      chrome.runtime.sendMessage({ action: 'selectionComplete', result });
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+    return { success: true };
   }
 
   /**
@@ -423,8 +451,8 @@ class ContentScript {
   /**
    * Start selection mode with the last right-clicked element pre-selected.
    */
-  startSelectionWithElement() {
-    this.startSelectionMode();
+  async startSelectionWithElement() {
+    await this.startSelectionMode();
 
     if (this.lastRightClickedElement && this.elementPicker) {
       this.elementPicker.preselectElement(this.lastRightClickedElement);

@@ -254,16 +254,20 @@ class BackgroundScript {
   }
 
   /**
-   * Handle selectionComplete message from content script
+   * Handle selectionComplete message from content script.
+   *
+   * The picker stays active across copy/save now (each action keeps the
+   * selection so the user can fire the other one on the same set), so we
+   * no longer clear selectionState here — only the picker's own X/Esc
+   * (selectionCancelled) or tab navigation flips it off.
+   *
+   * `result.mode` ('clipboard' | 'file') comes from whichever button the
+   * user clicked, mirroring the popup pattern: we pass it as the dispatch
+   * override so a per-action click never rewrites prefs.outputMode.
    */
-  async handleSelectionComplete(result, sender) {
-    const tabId = sender.tab ? sender.tab.id : null;
-    if (tabId) {
-      this.selectionState.delete(tabId);
-    }
-
+  async handleSelectionComplete(result, _sender) {
     if (result && result.success && result.markdown) {
-      const outputResult = await this.dispatchOutput(result.markdown, result.metadata);
+      const outputResult = await this.dispatchOutput(result.markdown, result.metadata, result.mode);
       if (outputResult.success) {
         const count = result.extractionInfo ? result.extractionInfo.note : '';
         const verb = outputResult.method === 'file' ? 'saved' : 'copied';

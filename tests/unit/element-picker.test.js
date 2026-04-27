@@ -2,7 +2,8 @@ const ElementPicker = require('../../src/content/element-picker');
 
 describe('ElementPicker', () => {
   let picker;
-  let onConfirm;
+  let onCopy;
+  let onSave;
   let onCancel;
 
   beforeEach(() => {
@@ -17,9 +18,10 @@ describe('ElementPicker', () => {
       </div>
     `;
 
-    onConfirm = jest.fn();
+    onCopy = jest.fn().mockResolvedValue({ success: true });
+    onSave = jest.fn().mockResolvedValue({ success: true });
     onCancel = jest.fn();
-    picker = new ElementPicker({ onConfirm, onCancel });
+    picker = new ElementPicker({ onCopy, onSave, onCancel });
   });
 
   afterEach(() => {
@@ -67,6 +69,24 @@ describe('ElementPicker', () => {
     test('should be safe to deactivate when not active', () => {
       expect(() => picker.deactivate()).not.toThrow();
     });
+
+    test('renders a phantom capture layer above page content', () => {
+      picker.activate();
+      const layer = picker.shadowRoot.querySelector('.mdpicker-capture');
+      expect(layer).not.toBeNull();
+      expect(layer).toBe(picker._captureLayer);
+    });
+
+    test('does not mutate body styles', () => {
+      // The phantom capture layer handles cursor + interaction lockdown, so
+      // the picker no longer touches body inline styles. Verify we don't
+      // accidentally regress to mutating them.
+      document.body.style.setProperty('cursor', 'grab');
+      picker.activate();
+      expect(document.body.style.getPropertyValue('cursor')).toBe('grab');
+      picker.deactivate();
+      document.body.style.removeProperty('cursor');
+    });
   });
 
   describe('selection', () => {
@@ -87,7 +107,6 @@ describe('ElementPicker', () => {
       picker.selectedElements.push(el);
       expect(picker.selectedElements.length).toBe(1);
 
-      // Simulate deselect
       const index = picker.selectedElements.indexOf(el);
       picker.selectedElements.splice(index, 1);
       expect(picker.selectedElements.length).toBe(0);
@@ -110,11 +129,9 @@ describe('ElementPicker', () => {
       const parent = document.getElementById('block1');
       const child = document.getElementById('nested-para');
 
-      // Select child first
       picker.selectedElements.push(child);
       expect(picker.selectedElements.length).toBe(1);
 
-      // Now select parent — should remove child
       picker.selectedElements = picker.selectedElements.filter(el =>
         !parent.contains(el) && !el.contains(parent)
       );
@@ -146,70 +163,293 @@ describe('ElementPicker', () => {
   });
 
   describe('keyboard handling', () => {
-    test('should call onCancel when Escape is pressed', () => {
+    test('Esc hard-exits and calls onCancel', () => {
       picker.activate();
 
-      const event = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true
-      });
-      document.dispatchEvent(event);
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape', bubbles: true, cancelable: true
+      }));
 
       expect(onCancel).toHaveBeenCalled();
       expect(picker.active).toBe(false);
     });
 
-    test('should call onConfirm when Enter is pressed with selections', () => {
+    test('Enter fires the default action (Copy when default = clipboard)', () => {
       picker.activate();
+      picker.selectedElements.push(document.getElementById('para1'));
 
-      const el = document.getElementById('para1');
-      picker.selectedElements.push(el);
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', bubbles: true, cancelable: true
+      }));
 
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        bubbles: true,
-        cancelable: true
-      });
-      document.dispatchEvent(event);
-
-      expect(onConfirm).toHaveBeenCalledWith([el]);
+      expect(onCopy).toHaveBeenCalledTimes(1);
+      expect(onSave).not.toHaveBeenCalled();
     });
 
-    test('should not call onConfirm when Enter is pressed without selections', () => {
+    test('Enter fires Save when default = file', () => {
+      picker = new ElementPicker({ onCopy, onSave, onCancel, initialOutputMode: 'file' });
+      picker.activate();
+      picker.selectedElements.push(document.getElementById('para1'));
+
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', bubbles: true, cancelable: true
+      }));
+
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onCopy).not.toHaveBeenCalled();
+    });
+
+    test('C key fires Copy regardless of default', () => {
+      picker = new ElementPicker({ onCopy, onSave, onCancel, initialOutputMode: 'file' });
+      picker.activate();
+      picker.selectedElements.push(document.getElementById('para1'));
+
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'c', bubbles: true, cancelable: true
+      }));
+
+      expect(onCopy).toHaveBeenCalledTimes(1);
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    test('S key fires Save regardless of default', () => {
+      picker.activate(); // default is clipboard
+      picker.selectedElements.push(document.getElementById('para1'));
+
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 's', bubbles: true, cancelable: true
+      }));
+
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onCopy).not.toHaveBeenCalled();
+    });
+
+    test('Enter / C / S do nothing without selections', () => {
       picker.activate();
 
-      const event = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        bubbles: true,
-        cancelable: true
+      ['Enter', 'c', 's'].forEach(key => {
+        document.dispatchEvent(new KeyboardEvent('keydown', {
+          key, bubbles: true, cancelable: true
+        }));
       });
+
+      expect(onCopy).not.toHaveBeenCalled();
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    test('trusted mousedown is suppressed (drag-text-select / link press)', () => {
+      // jsdom-dispatched events get isTrusted = false (matching synthetic clicks),
+      // and isTrusted is a non-writable getter on the prototype, so we exercise
+      // the handler directly with a mock to simulate a real user mousedown.
+      picker.activate();
+      const event = {
+        isTrusted: true,
+        target: document.body,
+        composedPath: () => [document.body, document],
+        preventDefault: jest.fn(),
+        stopImmediatePropagation: jest.fn()
+      };
+      picker._onMouseDown(event);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopImmediatePropagation).toHaveBeenCalled();
+    });
+
+    test('trusted contextmenu is suppressed (native right-click menu)', () => {
+      picker.activate();
+      const event = {
+        isTrusted: true,
+        target: document.body,
+        composedPath: () => [document.body, document],
+        preventDefault: jest.fn(),
+        stopImmediatePropagation: jest.fn()
+      };
+      picker._onContextMenu(event);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopImmediatePropagation).toHaveBeenCalled();
+    });
+
+    test('synthetic mousedown / contextmenu (isTrusted === false) pass through', () => {
+      picker.activate();
+      const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      const cm = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      picker._captureLayer.dispatchEvent(md);
+      picker._captureLayer.dispatchEvent(cm);
+      expect(md.defaultPrevented).toBe(false);
+      expect(cm.defaultPrevented).toBe(false);
+    });
+
+    test('synthetic clicks (e.isTrusted === false) pass through without preventDefault', () => {
+      // The picker stays alive across copy/save, and the file-save path triggers
+      // a synthetic <a download>.click(). The picker must not swallow that click.
+      picker.activate();
+
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+      // jsdom-dispatched events have isTrusted = false, matching synthetic clicks.
+      picker._captureLayer.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    test('letter shortcuts skip when target is editable', () => {
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      picker.activate();
+      picker.selectedElements.push(document.getElementById('para1'));
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'c', bubbles: true, cancelable: true
+      });
+      Object.defineProperty(event, 'target', { value: input });
       document.dispatchEvent(event);
 
-      expect(onConfirm).not.toHaveBeenCalled();
+      expect(onCopy).not.toHaveBeenCalled();
     });
   });
 
-  describe('toolbar', () => {
-    test('should create toolbar in shadow DOM', () => {
+  describe('banner + segmented default control', () => {
+    test('renders the banner on activate', () => {
       picker.activate();
-
-      const toolbar = picker.shadowRoot.querySelector('.picker-toolbar');
-      expect(toolbar).not.toBeNull();
+      const banner = picker.shadowRoot.querySelector('.mdpicker-banner');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('Selection mode');
     });
 
-    test('should have disabled copy button initially', () => {
+    test('initial default reflects initialOutputMode = clipboard', () => {
       picker.activate();
-
-      const copyBtn = picker.shadowRoot.querySelector('.picker-copy-btn');
-      expect(copyBtn.disabled).toBe(true);
+      const opts = picker.shadowRoot.querySelectorAll('[data-default-mode]');
+      const active = Array.from(opts).find(o => o.classList.contains('active'));
+      expect(active.dataset.defaultMode).toBe('clipboard');
     });
 
-    test('should show element count', () => {
+    test('initial default reflects initialOutputMode = file', () => {
+      picker = new ElementPicker({ onCopy, onSave, onCancel, initialOutputMode: 'file' });
       picker.activate();
+      const opts = picker.shadowRoot.querySelectorAll('[data-default-mode]');
+      const active = Array.from(opts).find(o => o.classList.contains('active'));
+      expect(active.dataset.defaultMode).toBe('file');
+    });
 
-      const count = picker.shadowRoot.querySelector('.picker-count');
-      expect(count.textContent).toBe('No elements selected');
+    test('clicking the segmented control flips primary/secondary buttons (session-local)', () => {
+      picker.activate();
+      // Default = clipboard → primary should be Copy
+      expect(picker.primaryBtn.textContent).toBe('Copy');
+      expect(picker.secondaryBtn.textContent).toBe('Save');
+
+      const fileOpt = picker.shadowRoot.querySelector('[data-default-mode="file"]');
+      fileOpt.click();
+
+      expect(picker.defaultMode).toBe('file');
+      expect(picker.primaryBtn.textContent).toBe('Save');
+      expect(picker.secondaryBtn.textContent).toBe('Copy');
+    });
+  });
+
+  describe('action bar', () => {
+    test('renders the action bar on activate', () => {
+      picker.activate();
+      expect(picker.shadowRoot.querySelector('.mdpicker-bar')).not.toBeNull();
+    });
+
+    test('action bar is hidden when count = 0', () => {
+      picker.activate();
+      const bar = picker.shadowRoot.querySelector('.mdpicker-bar');
+      expect(bar.classList.contains('visible')).toBe(false);
+    });
+
+    test('action bar becomes visible after preselect adds an element', () => {
+      picker.activate();
+      const el = document.getElementById('para1');
+      picker._resolveTarget = jest.fn().mockReturnValue(el);
+      picker.preselectElement(el);
+
+      const bar = picker.shadowRoot.querySelector('.mdpicker-bar');
+      expect(bar.classList.contains('visible')).toBe(true);
+      expect(picker.countNum.textContent).toBe('1');
+    });
+
+    test('Clear button empties selection and hides the bar', () => {
+      picker.activate();
+      const el = document.getElementById('para1');
+      picker._resolveTarget = jest.fn().mockReturnValue(el);
+      picker.preselectElement(el);
+
+      const bar = picker.shadowRoot.querySelector('.mdpicker-bar');
+      expect(bar.classList.contains('visible')).toBe(true);
+
+      picker.shadowRoot.querySelector('[data-act="clear"]').click();
+
+      expect(picker.selectedElements).toEqual([]);
+      expect(bar.classList.contains('visible')).toBe(false);
+      expect(picker.active).toBe(true); // Clear stays in mode
+    });
+
+    test('X icon button hard-exits', () => {
+      picker.activate();
+      picker.shadowRoot.querySelector('[data-act="exit"]').click();
+
+      expect(onCancel).toHaveBeenCalled();
+      expect(picker.active).toBe(false);
+    });
+
+    test('primary button click calls onCopy when default = clipboard', async () => {
+      picker.activate();
+      const el = document.getElementById('para1');
+      picker._resolveTarget = jest.fn().mockReturnValue(el);
+      picker.preselectElement(el);
+
+      picker.primaryBtn.click();
+      // _fireAction is async; let it resolve.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onCopy).toHaveBeenCalledTimes(1);
+      expect(onCopy.mock.calls[0][0]).toContain(el);
+    });
+
+    test('secondary button click calls onSave when default = clipboard', async () => {
+      picker.activate();
+      const el = document.getElementById('para1');
+      picker._resolveTarget = jest.fn().mockReturnValue(el);
+      picker.preselectElement(el);
+
+      picker.secondaryBtn.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    test('selection persists after a successful action', async () => {
+      picker.activate();
+      const el = document.getElementById('para1');
+      picker._resolveTarget = jest.fn().mockReturnValue(el);
+      picker.preselectElement(el);
+
+      picker.primaryBtn.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(picker.selectedElements).toContain(el);
+      expect(picker.active).toBe(true);
+    });
+
+    test('double-click while in flight is ignored', async () => {
+      let resolveCopy;
+      onCopy = jest.fn(() => new Promise(res => { resolveCopy = res; }));
+      picker = new ElementPicker({ onCopy, onSave, onCancel });
+      picker.activate();
+      const el = document.getElementById('para1');
+      picker._resolveTarget = jest.fn().mockReturnValue(el);
+      picker.preselectElement(el);
+
+      picker.primaryBtn.click();
+      picker.primaryBtn.click();
+      picker.primaryBtn.click();
+
+      expect(onCopy).toHaveBeenCalledTimes(1);
+      resolveCopy({ success: true });
+      await Promise.resolve();
+      await Promise.resolve();
     });
   });
 
@@ -217,7 +457,6 @@ describe('ElementPicker', () => {
     test('should add element to selection when _resolveTarget succeeds', () => {
       picker.activate();
 
-      // Mock _resolveTarget to bypass jsdom's 0x0 getBoundingClientRect
       const el = document.getElementById('para1');
       picker._resolveTarget = jest.fn().mockReturnValue(el);
       picker.preselectElement(el);
@@ -276,11 +515,9 @@ describe('ElementPicker', () => {
     test('should return an element (walks up from small elements in jsdom)', () => {
       picker.activate();
       const el = document.getElementById('para1');
-      // In jsdom, getBoundingClientRect returns 0x0, so _resolveTarget
-      // walks up to a parent. Just verify it returns a valid element.
       const result = picker._resolveTarget(el);
       expect(result).not.toBeNull();
-      expect(result.nodeType).toBe(1); // Element node
+      expect(result.nodeType).toBe(1);
     });
   });
 });

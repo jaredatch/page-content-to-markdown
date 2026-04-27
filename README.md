@@ -36,7 +36,7 @@ Firefox-first, with Chrome support.
 
 Click the extension icon to open the popup. Pick what you want to capture (Page content, or — on a supported site — a Tweet, Thread, Conversation, etc.), then hit **Copy** or **Save**. The popup remembers your last pick per site.
 
-- **Pick elements:** "or select elements on page" link → hover and click → confirm in the floating toolbar
+- **Pick elements:** "or select elements on page" link → hover and click → Copy or Save from the floating action bar (selection persists, so you can fire both on the same set)
 - **Selected text:** right-click → "Copy selection as Markdown"
 - **Default action:** Copy or Save — whichever you set as default in the options page becomes the filled primary button
 - **Settings:** click the gear icon in the popup header to configure output, formatting, and the page-info format
