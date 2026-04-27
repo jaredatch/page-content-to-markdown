@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,62 +7,94 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <header class="header">
-      <h1 class="title">Markdown</h1>
-      <button id="settingsBtn" class="settings-btn" title="Settings">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
+  <div class="popup" id="popup">
+    <header class="popup-header">
+      <div class="header-left">
+        <span class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="logo-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#4F6BF6"/>
+                <stop offset="100%" stop-color="#7C3AED"/>
+              </linearGradient>
+            </defs>
+            <rect width="128" height="128" rx="23.04" ry="23.04" fill="url(#logo-bg)"/>
+            <g transform="translate(15.36, 34.06769230769231) scale(0.4676923076923077)">
+              <path d="M193 128H15a15 15 0 0 1-15-15V15A15 15 0 0 1 15 0h178a15 15 0 0 1 15 15v98a15 15 0 0 1-15 15zM50 98V59l20 25 20-25v39h20V30H90L70 55 50 30H30v68zm134-34h-20V30h-20v34h-20l30 35z" fill="rgba(255,255,255,0.95)"/>
+            </g>
+          </svg>
+        </span>
+        <span class="title">Markdown</span>
+      </div>
+      <div class="header-right">
+        <label class="page-info-toggle" id="metadataToggleLabel">
+          <input type="checkbox" id="metadataToggle" checked>
+          <span class="checkbox-box" aria-hidden="true">
+            <svg class="checkbox-check" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <span class="checkbox-text">Page info</span>
+        </label>
+        <button class="gear" id="settingsBtn" aria-label="Settings" title="Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
     </header>
 
-    <main class="main">
-      <div class="options">
-        <label class="checkbox-label" for="metadataToggle">
-          <input type="checkbox" id="metadataToggle" checked>
-          <span>Include page info</span>
-        </label>
-        <div class="output-toggle" id="outputToggle">
-          <button class="toggle-btn active" data-mode="clipboard">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy
-          </button>
-          <button class="toggle-btn" data-mode="file">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Save
-          </button>
-        </div>
-      </div>
-
-      <div id="siteActions" class="site-actions hidden"></div>
-
-      <div class="actions">
-        <button id="extractBtn" class="btn btn-primary">
-          <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <span class="btn-text">Copy Page as Markdown</span>
+    <main class="popup-body" id="popupBody">
+      <div class="row-list" id="rowList">
+        <button type="button" class="row selected" id="pageRow" data-content-type="page" data-site-id="">
+          <span class="row-icon" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </span>
+          <span class="row-label">Page content</span>
+          <span class="row-check" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
         </button>
-        <button id="selectBtn" class="btn btn-secondary">
-          <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-          <span class="btn-text">Select Elements</span>
-        </button>
-      </div>
 
-      <div id="selectionActive" class="selection-active hidden">
-        <p>Selection mode is active on this page.</p>
-        <button id="cancelSelectBtn" class="btn btn-outline">Cancel Selection</button>
-      </div>
-
-      <div id="status" class="status hidden">
-        <div class="status-icon"></div>
-        <div class="status-message"></div>
-      </div>
-
-      <div id="progress" class="progress hidden">
-        <div class="progress-bar">
-          <div class="progress-fill"></div>
+        <div class="site-divider hidden" id="siteDivider">
+          <span class="divider-badge" id="dividerBadge" aria-hidden="true"></span>
+          <span class="divider-text" id="dividerText"></span>
+          <span class="divider-line" aria-hidden="true"></span>
         </div>
-        <div class="progress-text">Extracting content...</div>
+
+        <div class="site-rows" id="siteRows"></div>
+      </div>
+
+      <div class="selection-active hidden" id="selectionActive">
+        <div class="selection-card">
+          <span class="selection-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          </span>
+          <p class="selection-message">Selection mode is active on this page.</p>
+          <button type="button" class="btn btn-secondary" id="cancelSelectBtn">Cancel selection</button>
+        </div>
       </div>
     </main>
+
+    <div class="error-banner hidden" id="errorBanner" role="alert">
+      <span class="error-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </span>
+      <span class="error-message" id="errorMessage"></span>
+    </div>
+
+    <footer class="popup-footer" id="popupFooter">
+      <div class="actions">
+        <button type="button" class="btn btn-action btn-primary" id="primaryBtn" data-action="clipboard">
+          <span class="btn-text">Copy</span>
+        </button>
+        <button type="button" class="btn btn-action" id="secondaryBtn" data-action="file">
+          <span class="btn-text">Save</span>
+        </button>
+      </div>
+      <button type="button" class="select-link" id="selectBtn">
+        <span class="select-icon" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        </span>
+        <span class="select-link-text">or select elements on page</span>
+      </button>
+    </footer>
   </div>
 
   <script src="popup.js"></script>

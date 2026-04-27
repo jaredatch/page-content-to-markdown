@@ -29,7 +29,7 @@ Copy Page as Markdown converts web page content into clean, structured markdown 
 
 **How it works:**
 
-Click the extension icon to open the popup. Hit "Copy Page as Markdown" for full-page conversion, or "Select Elements" to hover and pick specific parts of the page. On supported sites (X/Twitter, Claude, Grok), dedicated site action buttons appear automatically.
+Click the extension icon to open the popup, then pick what you want to capture: Page content for the full page, or — on a supported site (X/Twitter, Claude, Grok) — the site's content options like Tweet, Thread, or Conversation. Hit Copy or Save. There's also a "select elements on page" link to pick specific parts of any page by hover-and-click.
 
 The extension processes page content locally in your browser. Nothing is sent to any server.
 

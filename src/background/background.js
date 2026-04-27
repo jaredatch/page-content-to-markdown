@@ -29,7 +29,7 @@ class BackgroundScript {
       console.log('📨 [background] Received message:', request);
 
       if (request.action === 'extractAndCopy') {
-        this.handleExtractAndCopy(sendResponse);
+        this.handleExtractAndCopy(sendResponse, request.mode);
         return true; // Indicates async response
       }
 
@@ -49,7 +49,7 @@ class BackgroundScript {
       }
 
       if (request.action === 'extractSiteContent') {
-        this.handleExtractSiteContent(request.siteId, request.contentType, sendResponse);
+        this.handleExtractSiteContent(request.siteId, request.contentType, sendResponse, request.mode);
         return true;
       }
 
@@ -166,8 +166,9 @@ class BackgroundScript {
   /**
    * Handle extractAndCopy message from popup
    * @param {function} sendResponse - Response callback
+   * @param {string} [mode] - Optional output mode override ('clipboard' | 'file'). Falls through to outputMode pref when omitted.
    */
-  async handleExtractAndCopy(sendResponse) {
+  async handleExtractAndCopy(sendResponse, mode) {
     try {
       console.log('🔄 [background] Handling extractAndCopy message');
 
@@ -177,7 +178,7 @@ class BackgroundScript {
         return;
       }
 
-      const result = await this.dispatchOutput(extractResult.markdown, extractResult.metadata);
+      const result = await this.dispatchOutput(extractResult.markdown, extractResult.metadata, mode);
       sendResponse(result);
 
     } catch (error) {
@@ -354,8 +355,12 @@ class BackgroundScript {
 
   /**
    * Handle site-specific content extraction
+   * @param {string} siteId - Site module id
+   * @param {string} contentType - Content type id within the site module
+   * @param {function} sendResponse - Response callback
+   * @param {string} [mode] - Optional output mode override ('clipboard' | 'file'). Falls through to outputMode pref when omitted.
    */
-  async handleExtractSiteContent(siteId, contentType, sendResponse) {
+  async handleExtractSiteContent(siteId, contentType, sendResponse, mode) {
     try {
       console.log(`🔧 [background] Extracting site content: ${siteId}/${contentType}`);
 
@@ -389,7 +394,7 @@ class BackgroundScript {
         return;
       }
 
-      const result = await this.dispatchOutput(response.markdown, response.metadata);
+      const result = await this.dispatchOutput(response.markdown, response.metadata, mode);
       const verb = result.method === 'file' ? 'saved' : 'copied';
       this.showNotification('Success', `${contentType} ${verb} as markdown`, 'success');
       sendResponse(result);
@@ -561,12 +566,16 @@ class BackgroundScript {
   }
 
   /**
-   * Dispatch output based on user preferences (clipboard or file)
+   * Dispatch output based on user preferences (clipboard or file).
+   * @param {string} markdown - Markdown content to output
+   * @param {object} metadata - Metadata object (used for filename generation)
+   * @param {string} [modeOverride] - Optional explicit mode ('clipboard' | 'file'). When provided, takes precedence over the outputMode preference. Used by the popup to make Copy/Save explicit per click without rewriting the user's preferred default.
    */
-  async dispatchOutput(markdown, metadata) {
+  async dispatchOutput(markdown, metadata, modeOverride) {
     const prefs = await Preferences.get();
+    const mode = modeOverride || prefs.outputMode;
 
-    if (prefs.outputMode === 'file') {
+    if (mode === 'file') {
       const filename = this.generateFilename(metadata, prefs);
       return this.saveAsFile(markdown, filename);
     }

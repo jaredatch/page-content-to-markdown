@@ -1,71 +1,116 @@
 jest.mock('../../src/utils/preferences', () => ({
-  get: jest.fn().mockResolvedValue({
+  DEFAULTS: {
     outputMode: 'clipboard',
-    includeMetadata: true
-  }),
-  set: jest.fn().mockResolvedValue()
+    includeMetadata: true,
+    autoClosePopup: true,
+    lastUsedPerSite: {}
+  },
+  get: jest.fn(),
+  set: jest.fn()
 }));
 
 jest.mock('../../src/utils/site-registry', () => ({
   detect: jest.fn().mockReturnValue(null)
 }));
 
-// Re-acquired in beforeEach after jest.resetModules()
 let Preferences, SiteRegistry;
 
-// Minimal popup DOM matching src/popup/popup.html structure
 const POPUP_HTML = `
-  <div class="container">
-    <header class="header">
-      <h1 class="title">Markdown</h1>
-      <button id="settingsBtn" class="settings-btn" title="Settings"></button>
-    </header>
-    <main class="main">
-      <div class="options">
-        <label class="checkbox-label" for="metadataToggle">
+  <div class="popup" id="popup">
+    <header class="popup-header">
+      <div class="header-left">
+        <span class="logo"><svg></svg></span>
+        <span class="title">Markdown</span>
+      </div>
+      <div class="header-right">
+        <label class="page-info-toggle" id="metadataToggleLabel">
           <input type="checkbox" id="metadataToggle" checked>
-          <span>Include page info</span>
+          <span class="checkbox-box"><svg class="checkbox-check"></svg></span>
+          <span class="checkbox-text">Page info</span>
         </label>
-        <div class="output-toggle" id="outputToggle">
-          <button class="toggle-btn active" data-mode="clipboard">Copy</button>
-          <button class="toggle-btn" data-mode="file">Save</button>
+        <button class="gear" id="settingsBtn"><svg></svg></button>
+      </div>
+    </header>
+    <main class="popup-body" id="popupBody">
+      <div class="row-list" id="rowList">
+        <button type="button" class="row selected" id="pageRow" data-content-type="page" data-site-id="">
+          <span class="row-icon"><svg></svg></span>
+          <span class="row-label">Page content</span>
+          <span class="row-check"><svg></svg></span>
+        </button>
+        <div class="site-divider hidden" id="siteDivider">
+          <span class="divider-badge" id="dividerBadge"></span>
+          <span class="divider-text" id="dividerText"></span>
+          <span class="divider-line"></span>
+        </div>
+        <div class="site-rows" id="siteRows"></div>
+      </div>
+      <div class="selection-active hidden" id="selectionActive">
+        <div class="selection-card">
+          <span class="selection-icon"><svg></svg></span>
+          <p class="selection-message">Selection mode is active on this page.</p>
+          <button type="button" class="btn btn-secondary" id="cancelSelectBtn">Cancel selection</button>
         </div>
       </div>
-      <div id="siteActions" class="site-actions hidden"></div>
-      <div class="actions">
-        <button id="extractBtn" class="btn btn-primary">
-          <span class="btn-text">Copy Page as Markdown</span>
-        </button>
-        <button id="selectBtn" class="btn btn-secondary">
-          <span class="btn-text">Select Elements</span>
-        </button>
-      </div>
-      <div id="selectionActive" class="selection-active hidden">
-        <p>Selection mode is active on this page.</p>
-        <button id="cancelSelectBtn" class="btn btn-outline">Cancel Selection</button>
-      </div>
-      <div id="status" class="status hidden">
-        <div class="status-icon"></div>
-        <div class="status-message"></div>
-      </div>
-      <div id="progress" class="progress hidden">
-        <div class="progress-bar"><div class="progress-fill"></div></div>
-        <div class="progress-text">Extracting content...</div>
-      </div>
     </main>
+    <div class="error-banner hidden" id="errorBanner" role="alert">
+      <span class="error-icon"><svg></svg></span>
+      <span class="error-message" id="errorMessage"></span>
+    </div>
+    <footer class="popup-footer" id="popupFooter">
+      <div class="actions">
+        <button type="button" class="btn btn-action btn-primary" id="primaryBtn" data-action="clipboard">
+          <span class="btn-text">Copy</span>
+        </button>
+        <button type="button" class="btn btn-action" id="secondaryBtn" data-action="file">
+          <span class="btn-text">Save</span>
+        </button>
+      </div>
+      <button type="button" class="select-link" id="selectBtn">
+        <span class="select-icon"><svg></svg></span>
+        <span class="select-link-text">or select elements on page</span>
+      </button>
+    </footer>
   </div>
 `;
 
-/**
- * Helper: create a PopupController with all mocks pre-configured.
- * By default, chrome.tabs.query returns a valid tab and sendMessage returns {}.
- */
+const DEFAULT_PREFS = {
+  outputMode: 'clipboard',
+  includeMetadata: true,
+  autoClosePopup: true,
+  lastUsedPerSite: {}
+};
+
+const X_SITE = {
+  id: 'x',
+  name: 'X / Twitter',
+  contentTypes: [
+    { id: 'single-tweet', label: 'Tweet', icon: '<svg></svg>' },
+    { id: 'thread', label: 'Thread', icon: '<svg></svg>' },
+    { id: 'article', label: 'Article', icon: '<svg></svg>' }
+  ]
+};
+
+const CLAUDE_SITE = {
+  id: 'claude',
+  name: 'Claude',
+  contentTypes: [
+    { id: 'conversation', label: 'Conversation', icon: '<svg></svg>' }
+  ]
+};
+
 async function createPopup(opts = {}) {
   const tabUrl = opts.tabUrl || 'https://example.com';
+  const prefs = { ...DEFAULT_PREFS, ...(opts.prefs || {}) };
 
+  Preferences.get.mockResolvedValue(prefs);
+  Preferences.set.mockResolvedValue();
   chrome.tabs.query.mockResolvedValue([{ id: 1, url: tabUrl }]);
 
-  // Default: sendMessage calls callback with empty object (no error)
+  if (opts.site !== undefined) {
+    SiteRegistry.detect.mockReturnValue(opts.site);
+  }
+
   if (!opts.skipSendMessageMock) {
     chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
       if (callback) callback(opts.sendMessageResponse || {});
@@ -75,724 +120,442 @@ async function createPopup(opts = {}) {
   const PopupController = require('../../src/popup/popup');
   const controller = new PopupController();
   await flushPromises();
+  await flushPromises();
   return controller;
 }
 
 describe('PopupController', () => {
-  let consoleLogSpy, consoleErrorSpy;
+  let consoleLogSpy, consoleErrorSpy, consoleWarnSpy;
 
   beforeEach(() => {
     jest.resetModules();
     document.body.innerHTML = POPUP_HTML;
     window.close = jest.fn();
 
-    // Re-acquire mock references after resetModules
     Preferences = require('../../src/utils/preferences');
     SiteRegistry = require('../../src/utils/site-registry');
 
-    // Reset chrome mocks
     chrome.tabs.query.mockReset();
     chrome.runtime.sendMessage.mockReset();
     chrome.runtime.openOptionsPage.mockReset();
     chrome.runtime.lastError = null;
 
-    // Set up module mock defaults
-    Preferences.get.mockResolvedValue({ outputMode: 'clipboard', includeMetadata: true });
+    Preferences.get.mockResolvedValue(DEFAULT_PREFS);
     Preferences.set.mockResolvedValue();
     SiteRegistry.detect.mockReturnValue(null);
 
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
   });
 
   afterEach(() => {
     consoleLogSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
     jest.useRealTimers();
   });
 
-  // -------------------------------------------------------
-  // Constructor / init
-  // -------------------------------------------------------
-  describe('constructor and init', () => {
-    test('binds all expected DOM elements', async () => {
+  describe('init', () => {
+    test('binds DOM element refs', async () => {
       const popup = await createPopup();
-      expect(popup.elements.extractBtn).toBeTruthy();
-      expect(popup.elements.selectBtn).toBeTruthy();
-      expect(popup.elements.cancelSelectBtn).toBeTruthy();
-      expect(popup.elements.selectionActive).toBeTruthy();
-      expect(popup.elements.status).toBeTruthy();
-      expect(popup.elements.progress).toBeTruthy();
-      expect(popup.elements.statusIcon).toBeTruthy();
-      expect(popup.elements.statusMessage).toBeTruthy();
-      expect(popup.elements.progressText).toBeTruthy();
+      expect(popup.elements.popup).toBeTruthy();
       expect(popup.elements.metadataToggle).toBeTruthy();
-      expect(popup.elements.outputToggle).toBeTruthy();
-      expect(popup.elements.siteActions).toBeTruthy();
       expect(popup.elements.settingsBtn).toBeTruthy();
+      expect(popup.elements.pageRow).toBeTruthy();
+      expect(popup.elements.primaryBtn).toBeTruthy();
+      expect(popup.elements.secondaryBtn).toBeTruthy();
+      expect(popup.elements.selectBtn).toBeTruthy();
+      expect(popup.elements.errorBanner).toBeTruthy();
     });
 
-    test('checks current tab on init', async () => {
+    test('queries the active tab', async () => {
       await createPopup();
       expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
     });
-  });
 
-  // -------------------------------------------------------
-  // isRestrictedUrl
-  // -------------------------------------------------------
-  describe('isRestrictedUrl', () => {
-    let popup;
-
-    beforeEach(async () => {
-      popup = await createPopup();
+    test('reads preferences on init', async () => {
+      await createPopup();
+      expect(Preferences.get).toHaveBeenCalled();
     });
 
-    test.each([
-      ['chrome://extensions', true],
-      ['chrome-extension://abc123/popup.html', true],
-      ['moz-extension://abc/popup.html', true],
-      ['edge://settings', true],
-      ['about:blank', true],
-      ['file:///home/user/doc.html', true],
-      ['https://example.com', false],
-      ['http://localhost:3000', false],
-    ])('isRestrictedUrl(%s) = %s', (url, expected) => {
-      expect(popup.isRestrictedUrl(url)).toBe(expected);
-    });
-  });
-
-  // -------------------------------------------------------
-  // checkCurrentTab
-  // -------------------------------------------------------
-  describe('checkCurrentTab', () => {
-    test('enables extraction for valid http tab', async () => {
+    test('view defaults to main on a normal http(s) URL', async () => {
       const popup = await createPopup({ tabUrl: 'https://example.com' });
-      expect(popup.elements.extractBtn.disabled).toBe(false);
-      expect(popup.elements.selectBtn.disabled).toBe(false);
+      expect(popup.state.view).toBe('main');
+      expect(popup.elements.popup.classList.contains('disabled')).toBe(false);
+      expect(popup.elements.popup.classList.contains('selecting')).toBe(false);
     });
 
-    test('disables extraction for restricted URL', async () => {
-      const popup = await createPopup({ tabUrl: 'chrome://extensions' });
-      expect(popup.elements.extractBtn.disabled).toBe(true);
-      expect(popup.elements.selectBtn.disabled).toBe(true);
+    test('survives preference load failure', async () => {
+      Preferences.get.mockRejectedValue(new Error('storage error'));
+      chrome.tabs.query.mockResolvedValue([{ id: 1, url: 'https://example.com' }]);
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => callback && callback({}));
+
+      const PopupController = require('../../src/popup/popup');
+      const popup = new PopupController();
+      await flushPromises();
+      await flushPromises();
+
+      expect(popup.elements.popup).toBeTruthy();
+    });
+  });
+
+  describe('restricted URL handling', () => {
+    test.each([
+      ['chrome://extensions'],
+      ['chrome-extension://abc/popup.html'],
+      ['moz-extension://abc/popup.html'],
+      ['about:blank'],
+      ['file:///home/user/doc.html']
+    ])('marks view as restricted for %s', async (url) => {
+      const popup = await createPopup({ tabUrl: url });
+      expect(popup.state.view).toBe('restricted');
+      expect(popup.elements.popup.classList.contains('disabled')).toBe(true);
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.errorMessage.textContent).toBe("Can't extract from this page");
     });
 
-    test('shows error when no active tab found', async () => {
+    test('marks view as restricted when no active tab is found', async () => {
+      Preferences.get.mockResolvedValue(DEFAULT_PREFS);
       chrome.tabs.query.mockResolvedValue([]);
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({});
-      });
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => callback && callback({}));
+
       const PopupController = require('../../src/popup/popup');
       const popup = new PopupController();
       await flushPromises();
-
-      expect(popup.elements.status.classList.contains('hidden')).toBe(false);
-      expect(popup.elements.statusMessage.textContent).toBe('No active tab found');
-    });
-
-    test('shows error on query failure', async () => {
-      chrome.tabs.query.mockRejectedValue(new Error('Query failed'));
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({});
-      });
-      const PopupController = require('../../src/popup/popup');
-      const popup = new PopupController();
       await flushPromises();
 
-      expect(popup.elements.statusMessage.textContent).toBe('Error accessing current tab');
+      expect(popup.state.view).toBe('restricted');
+      expect(popup.elements.popup.classList.contains('disabled')).toBe(true);
     });
   });
 
-  // -------------------------------------------------------
-  // handleExtractClick
-  // -------------------------------------------------------
-  describe('handleExtractClick', () => {
-    test('does nothing when button is disabled', async () => {
-      const popup = await createPopup();
-      popup.elements.extractBtn.disabled = true;
-      chrome.runtime.sendMessage.mockClear();
-
-      await popup.handleExtractClick();
-
-      // sendMessage should not have been called for extractAndCopy
-      const extractCalls = chrome.runtime.sendMessage.mock.calls.filter(
-        c => c[0] && c[0].action === 'extractAndCopy'
-      );
-      expect(extractCalls).toHaveLength(0);
+  describe('action button derivation from outputMode pref', () => {
+    test("primary = Copy when outputMode pref is 'clipboard'", async () => {
+      const popup = await createPopup({ prefs: { outputMode: 'clipboard' } });
+      expect(popup.elements.primaryBtn.dataset.action).toBe('clipboard');
+      expect(popup.elements.primaryBtn.classList.contains('btn-primary')).toBe(true);
+      expect(popup.elements.primaryBtn.querySelector('.btn-text').textContent).toBe('Copy');
+      expect(popup.elements.secondaryBtn.dataset.action).toBe('file');
+      expect(popup.elements.secondaryBtn.classList.contains('btn-primary')).toBe(false);
+      expect(popup.elements.secondaryBtn.querySelector('.btn-text').textContent).toBe('Save');
     });
 
-    test('shows progress and disables buttons on click', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        // Don't call callback immediately so we can inspect intermediate state
-        if (msg.action === 'extractAndCopy') {
-          // Delay response
-          Promise.resolve().then(() => callback({ success: true, message: 'Done' }));
-        } else if (callback) {
-          callback({});
-        }
-      });
-      const popup = await createPopup();
-
-      // Start extraction but don't await yet
-      const extractPromise = popup.handleExtractClick();
-
-      expect(popup.elements.progress.classList.contains('hidden')).toBe(false);
-      expect(popup.elements.extractBtn.disabled).toBe(true);
-
-      await extractPromise;
-      await flushPromises();
-    });
-
-    test('sends extractAndCopy message', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Copied!' });
-      });
-      const popup = await createPopup();
-      chrome.runtime.sendMessage.mockClear();
-
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Copied!' });
-      });
-      await popup.handleExtractClick();
-
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'extractAndCopy' },
-        expect.any(Function)
-      );
-    });
-
-    test('shows success and schedules auto-close on success', async () => {
-      const popup = await createPopup();
-
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Copied!' });
-      });
-      jest.useFakeTimers();
-      await popup.handleExtractClick();
-
-      expect(popup.elements.statusMessage.textContent).toBe('Copied!');
-      expect(popup.elements.status.className).toContain('success');
-
-      jest.advanceTimersByTime(1500);
-      expect(window.close).toHaveBeenCalled();
-    });
-
-    test('shows error and re-enables on failure response', async () => {
-      const popup = await createPopup();
-
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: false, error: 'Extraction failed' });
-      });
-      await popup.handleExtractClick();
-
-      expect(popup.elements.statusMessage.textContent).toBe('Extraction failed');
-      expect(popup.elements.status.className).toContain('error');
-      expect(popup.elements.extractBtn.disabled).toBe(false);
-    });
-
-    test('shows error on sendMessage rejection', async () => {
-      const popup = await createPopup();
-
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        chrome.runtime.lastError = { message: 'Extension context invalidated' };
-        if (callback) callback(undefined);
-        chrome.runtime.lastError = null;
-      });
-      await popup.handleExtractClick();
-
-      expect(popup.elements.statusMessage.textContent).toBe('Unexpected error occurred');
-      expect(popup.elements.extractBtn.disabled).toBe(false);
+    test("primary = Save when outputMode pref is 'file'", async () => {
+      const popup = await createPopup({ prefs: { outputMode: 'file' } });
+      expect(popup.elements.primaryBtn.dataset.action).toBe('file');
+      expect(popup.elements.primaryBtn.querySelector('.btn-text').textContent).toBe('Save');
+      expect(popup.elements.secondaryBtn.dataset.action).toBe('clipboard');
+      expect(popup.elements.secondaryBtn.querySelector('.btn-text').textContent).toBe('Copy');
     });
   });
 
-  // -------------------------------------------------------
-  // handleSelectClick
-  // -------------------------------------------------------
-  describe('handleSelectClick', () => {
-    test('sends startSelectionMode and closes window on success', async () => {
-      const popup = await createPopup();
+  describe('site detection and rendering', () => {
+    test('hides site divider on non-supported site', async () => {
+      const popup = await createPopup({ tabUrl: 'https://example.com', site: null });
+      expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(true);
+      expect(popup.elements.siteRows.children).toHaveLength(0);
+    });
 
+    test('renders site rows and divider on a supported site', async () => {
+      const popup = await createPopup({ tabUrl: 'https://x.com/u/status/1', site: X_SITE });
+      expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.dividerText.textContent).toBe('Available on X');
+      expect(popup.elements.dividerBadge.textContent).toBe('\u{1D54F}');
+      expect(popup.elements.siteRows.children).toHaveLength(3);
+      expect(popup.elements.siteRows.children[0].dataset.contentType).toBe('single-tweet');
+      expect(popup.elements.siteRows.children[1].dataset.contentType).toBe('thread');
+      expect(popup.elements.siteRows.children[2].dataset.contentType).toBe('article');
+    });
+
+    test('renders single-content-site (Claude) with divider always shown', async () => {
+      const popup = await createPopup({ tabUrl: 'https://claude.ai/share/abc', site: CLAUDE_SITE });
+      expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.dividerText.textContent).toBe('Available on Claude');
+      expect(popup.elements.dividerBadge.textContent).toBe('C');
+      expect(popup.elements.siteRows.children).toHaveLength(1);
+    });
+  });
+
+  describe('lastUsedPerSite — restore', () => {
+    test('defaults to "page" when nothing is remembered', async () => {
+      const popup = await createPopup({ tabUrl: 'https://x.com/foo', site: X_SITE });
+      expect(popup.state.selectedContentType).toBe('page');
+      expect(popup.elements.pageRow.classList.contains('selected')).toBe(true);
+    });
+
+    test('restores remembered content type for the current site', async () => {
+      const popup = await createPopup({
+        tabUrl: 'https://x.com/foo',
+        site: X_SITE,
+        prefs: { lastUsedPerSite: { x: 'thread' } }
+      });
+      expect(popup.state.selectedContentType).toBe('thread');
+      expect(popup.state.selectedSiteId).toBe('x');
+
+      const threadRow = popup.elements.siteRows.querySelector('[data-content-type="thread"]');
+      expect(threadRow.classList.contains('selected')).toBe(true);
+      expect(popup.elements.pageRow.classList.contains('selected')).toBe(false);
+    });
+
+    test('falls back to "page" if remembered content type is no longer valid', async () => {
+      const popup = await createPopup({
+        tabUrl: 'https://x.com/foo',
+        site: X_SITE,
+        prefs: { lastUsedPerSite: { x: 'something-removed' } }
+      });
+      expect(popup.state.selectedContentType).toBe('page');
+    });
+  });
+
+  describe('lastUsedPerSite — persist', () => {
+    test('clicking a site row persists last-used for that site', async () => {
+      const popup = await createPopup({ tabUrl: 'https://x.com/foo', site: X_SITE });
+      Preferences.set.mockClear();
+
+      const threadRow = popup.elements.siteRows.querySelector('[data-content-type="thread"]');
+      threadRow.click();
+
+      expect(Preferences.set).toHaveBeenCalledWith({
+        lastUsedPerSite: { x: 'thread' }
+      });
+      expect(popup.state.selectedContentType).toBe('thread');
+      expect(threadRow.classList.contains('selected')).toBe(true);
+      expect(popup.elements.pageRow.classList.contains('selected')).toBe(false);
+    });
+
+    test('clicking page row clears that site’s remembered choice', async () => {
+      const popup = await createPopup({
+        tabUrl: 'https://x.com/foo',
+        site: X_SITE,
+        prefs: { lastUsedPerSite: { x: 'thread', claude: 'conversation' } }
+      });
+      Preferences.set.mockClear();
+
+      popup.elements.pageRow.click();
+
+      expect(Preferences.set).toHaveBeenCalledWith({
+        lastUsedPerSite: { claude: 'conversation' }
+      });
+    });
+
+    test('clicking page row on non-supported site does not persist', async () => {
+      const popup = await createPopup({ tabUrl: 'https://example.com', site: null });
+      Preferences.set.mockClear();
+
+      popup.elements.pageRow.click();
+
+      expect(Preferences.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleAction — Page content', () => {
+    test('sends extractAndCopy with mode=clipboard when primary is clicked', async () => {
+      const popup = await createPopup({ prefs: { outputMode: 'clipboard' } });
+      chrome.runtime.sendMessage.mockClear();
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
         if (callback) callback({ success: true });
       });
-      await popup.handleSelectClick();
 
-      expect(window.close).toHaveBeenCalled();
-    });
-
-    test('shows error on failure response', async () => {
-      const popup = await createPopup();
-
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: false, error: 'No tab' });
-      });
-      await popup.handleSelectClick();
-
-      expect(popup.elements.statusMessage.textContent).toBe('No tab');
-    });
-
-    test('shows error on rejection', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        chrome.runtime.lastError = { message: 'Failed' };
-        if (callback) callback(undefined);
-        chrome.runtime.lastError = null;
-      });
-      const popup = await createPopup();
-
-      await popup.handleSelectClick();
-
-      expect(popup.elements.statusMessage.textContent).toBe('Failed to start selection mode');
-    });
-  });
-
-  // -------------------------------------------------------
-  // handleCancelSelectClick
-  // -------------------------------------------------------
-  describe('handleCancelSelectClick', () => {
-    test('sends cancelSelectionMode and hides selection UI', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({});
-      });
-      const popup = await createPopup();
-      popup.showSelectionActive();
-
-      await popup.handleCancelSelectClick();
-
-      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(true);
-      expect(popup.elements.extractBtn.classList.contains('hidden')).toBe(false);
-    });
-
-    test('hides selection UI even on error', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        chrome.runtime.lastError = { message: 'Failed' };
-        if (callback) callback(undefined);
-        chrome.runtime.lastError = null;
-      });
-      const popup = await createPopup();
-      popup.showSelectionActive();
-
-      await popup.handleCancelSelectClick();
-
-      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(true);
-    });
-  });
-
-  // -------------------------------------------------------
-  // loadPreferences
-  // -------------------------------------------------------
-  describe('loadPreferences', () => {
-    test('sets metadata toggle from preferences', async () => {
-      Preferences.get.mockResolvedValue({ outputMode: 'clipboard', includeMetadata: false });
-      const popup = await createPopup();
-
-      expect(popup.elements.metadataToggle.checked).toBe(false);
-    });
-
-    test('sets output toggle active state from preferences', async () => {
-      Preferences.get.mockResolvedValue({ outputMode: 'file', includeMetadata: true });
-      const popup = await createPopup();
-
-      const fileBtn = popup.elements.outputToggle.querySelector('[data-mode="file"]');
-      const clipboardBtn = popup.elements.outputToggle.querySelector('[data-mode="clipboard"]');
-      expect(fileBtn.classList.contains('active')).toBe(true);
-      expect(clipboardBtn.classList.contains('active')).toBe(false);
-    });
-
-    test('updates button text based on output mode', async () => {
-      Preferences.get.mockResolvedValue({ outputMode: 'file', includeMetadata: true });
-      const popup = await createPopup();
-
-      const btnText = popup.elements.extractBtn.querySelector('.btn-text');
-      expect(btnText.textContent).toBe('Save Page as Markdown');
-    });
-
-    test('handles preference load error gracefully', async () => {
-      Preferences.get.mockRejectedValue(new Error('Storage error'));
-      const popup = await createPopup();
-
-      // Should not throw — just logs
-      expect(popup.elements.extractBtn).toBeTruthy();
-    });
-  });
-
-  // -------------------------------------------------------
-  // detectSiteActions
-  // -------------------------------------------------------
-  describe('detectSiteActions', () => {
-    test('shows site actions when on x.com', async () => {
-      SiteRegistry.detect.mockReturnValue({
-        id: 'x',
-        name: 'X / Twitter',
-        contentTypes: [
-          { id: 'single-tweet', label: 'Tweet', icon: '<svg></svg>' },
-          { id: 'thread', label: 'Thread', icon: '<svg></svg>' },
-          { id: 'article', label: 'Article', icon: '<svg></svg>' }
-        ],
-        Extractor: jest.fn(),
-        Formatter: jest.fn()
-      });
-      const popup = await createPopup({ tabUrl: 'https://x.com/user/status/123' });
-
-      expect(popup.elements.siteActions.classList.contains('hidden')).toBe(false);
-      // Buttons should have been dynamically generated
-      const buttons = popup.elements.siteActions.querySelectorAll('[data-site-id]');
-      expect(buttons.length).toBe(3);
-      expect(buttons[0].dataset.siteId).toBe('x');
-      expect(buttons[0].dataset.contentType).toBe('single-tweet');
-    });
-
-    test('does not show site actions for non-matching site', async () => {
-      SiteRegistry.detect.mockReturnValue(null);
-      const popup = await createPopup({ tabUrl: 'https://example.com' });
-
-      expect(popup.elements.siteActions.classList.contains('hidden')).toBe(true);
-    });
-
-    test('does nothing when currentTab is null', async () => {
-      chrome.tabs.query.mockResolvedValue([]);
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({});
-      });
-      const PopupController = require('../../src/popup/popup');
-      const popup = new PopupController();
+      popup.elements.primaryBtn.click();
       await flushPromises();
 
-      // siteActions should remain hidden (no crash)
-      expect(popup.elements.siteActions.classList.contains('hidden')).toBe(true);
-    });
-  });
-
-  // -------------------------------------------------------
-  // handleSiteExtract
-  // -------------------------------------------------------
-  describe('handleSiteExtract', () => {
-    test('sends extractSiteContent with correct siteId and contentType', async () => {
-      const popup = await createPopup();
-
-      chrome.runtime.sendMessage.mockClear();
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Done' });
-      });
-      await popup.handleSiteExtract('x', 'single-tweet');
-
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'extractSiteContent', siteId: 'x', contentType: 'single-tweet' },
+        { action: 'extractAndCopy', mode: 'clipboard' },
         expect.any(Function)
       );
     });
 
-    test('shows success and auto-closes on success', async () => {
-      const popup = await createPopup();
-
+    test('sends extractAndCopy with mode=file when secondary is clicked (clipboard is primary)', async () => {
+      const popup = await createPopup({ prefs: { outputMode: 'clipboard' } });
+      chrome.runtime.sendMessage.mockClear();
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Tweet copied!' });
+        if (callback) callback({ success: true });
       });
-      jest.useFakeTimers();
-      await popup.handleSiteExtract('x', 'single-tweet');
 
-      expect(popup.elements.statusMessage.textContent).toBe('Tweet copied!');
-      jest.advanceTimersByTime(1500);
+      popup.elements.secondaryBtn.click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'extractAndCopy', mode: 'file' },
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('handleAction — site content', () => {
+    test('sends extractSiteContent with siteId, contentType and mode', async () => {
+      const popup = await createPopup({
+        tabUrl: 'https://x.com/foo',
+        site: X_SITE,
+        prefs: { lastUsedPerSite: { x: 'thread' }, outputMode: 'clipboard' }
+      });
+      chrome.runtime.sendMessage.mockClear();
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        if (callback) callback({ success: true });
+      });
+
+      popup.elements.primaryBtn.click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'extractSiteContent', siteId: 'x', contentType: 'thread', mode: 'clipboard' },
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('handleAction — success and error', () => {
+    test('flashes success and schedules auto-close when autoClosePopup is on', async () => {
+      const popup = await createPopup({ prefs: { autoClosePopup: true } });
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        if (callback) callback({ success: true });
+      });
+
+      popup.elements.primaryBtn.click();
+      await flushPromises();
+
+      expect(popup.elements.primaryBtn.classList.contains('btn-success')).toBe(true);
+
+      const closeCall = setTimeoutSpy.mock.calls.find(c => c[1] === 1600);
+      expect(closeCall).toBeDefined();
+      closeCall[0]();
       expect(window.close).toHaveBeenCalled();
+      setTimeoutSpy.mockRestore();
     });
 
-    test('shows error and re-enables on failure', async () => {
-      const popup = await createPopup();
-
+    test('flashes success and reverts without closing when autoClosePopup is off', async () => {
+      const popup = await createPopup({ prefs: { autoClosePopup: false } });
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: false, error: 'Not a tweet page' });
+        if (callback) callback({ success: true });
       });
-      await popup.handleSiteExtract('x', 'single-tweet');
 
-      expect(popup.elements.statusMessage.textContent).toBe('Not a tweet page');
-      expect(popup.elements.extractBtn.disabled).toBe(false);
+      popup.elements.primaryBtn.click();
+      await flushPromises();
+
+      expect(popup.elements.primaryBtn.classList.contains('btn-success')).toBe(true);
+
+      const closeCall = setTimeoutSpy.mock.calls.find(c => c[1] === 1600);
+      expect(closeCall).toBeUndefined();
+
+      // Run the flash-revert and busy-reset timers manually
+      setTimeoutSpy.mock.calls.forEach(([cb]) => cb());
+      expect(window.close).not.toHaveBeenCalled();
+      expect(popup.elements.primaryBtn.classList.contains('btn-success')).toBe(false);
+      expect(popup.state.busy).toBe(false);
+      setTimeoutSpy.mockRestore();
     });
 
-    test('shows error on rejection', async () => {
+    test('shows inline error banner on failure response', async () => {
       const popup = await createPopup();
-
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        chrome.runtime.lastError = { message: 'Failed' };
+        if (callback) callback({ success: false, error: 'Extraction failed' });
+      });
+
+      popup.elements.primaryBtn.click();
+      await flushPromises();
+
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.errorMessage.textContent).toBe('Extraction failed');
+      expect(popup.elements.primaryBtn.disabled).toBe(false);
+    });
+
+    test('shows generic error message on sendMessage rejection', async () => {
+      const popup = await createPopup();
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        chrome.runtime.lastError = { message: 'context invalidated' };
         if (callback) callback(undefined);
         chrome.runtime.lastError = null;
       });
-      await popup.handleSiteExtract('x', 'thread');
 
-      expect(popup.elements.statusMessage.textContent).toBe('Unexpected error occurred');
-      expect(popup.elements.extractBtn.disabled).toBe(false);
+      popup.elements.primaryBtn.click();
+      await flushPromises();
+
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.errorMessage.textContent).toBe('Unexpected error occurred');
     });
   });
 
-  // -------------------------------------------------------
-  // updateButtonText
-  // -------------------------------------------------------
-  describe('updateButtonText', () => {
-    test('sets "Copy Page as Markdown" for clipboard mode', async () => {
+  describe('select-elements link', () => {
+    test('sends startSelectionMode and closes the popup on success', async () => {
       const popup = await createPopup();
-      popup.updateButtonText('clipboard');
-
-      const btnText = popup.elements.extractBtn.querySelector('.btn-text');
-      expect(btnText.textContent).toBe('Copy Page as Markdown');
-    });
-
-    test('sets "Save Page as Markdown" for file mode', async () => {
-      const popup = await createPopup();
-      popup.updateButtonText('file');
-
-      const btnText = popup.elements.extractBtn.querySelector('.btn-text');
-      expect(btnText.textContent).toBe('Save Page as Markdown');
-    });
-
-    test('updates site action button text for file mode', async () => {
-      SiteRegistry.detect.mockReturnValue({
-        id: 'x',
-        name: 'X / Twitter',
-        contentTypes: [
-          { id: 'single-tweet', label: 'Tweet', icon: '<svg></svg>' },
-          { id: 'thread', label: 'Thread', icon: '<svg></svg>' },
-          { id: 'article', label: 'Article', icon: '<svg></svg>' }
-        ],
-        Extractor: jest.fn(),
-        Formatter: jest.fn()
-      });
-      const popup = await createPopup({ tabUrl: 'https://x.com/user/status/123' });
-      popup.updateButtonText('file');
-
-      const tweetBtn = popup.elements.siteActions.querySelector('[data-content-type="single-tweet"] .btn-text');
-      const threadBtn = popup.elements.siteActions.querySelector('[data-content-type="thread"] .btn-text');
-      const articleBtn = popup.elements.siteActions.querySelector('[data-content-type="article"] .btn-text');
-      expect(tweetBtn.textContent).toBe('Save Tweet');
-      expect(threadBtn.textContent).toBe('Save Thread');
-      expect(articleBtn.textContent).toBe('Save Article');
-    });
-  });
-
-  // -------------------------------------------------------
-  // UI state methods
-  // -------------------------------------------------------
-  describe('UI state methods', () => {
-    let popup;
-
-    beforeEach(async () => {
-      popup = await createPopup();
-    });
-
-    test('showSelectionActive hides buttons and shows cancel', () => {
-      popup.showSelectionActive();
-
-      expect(popup.elements.extractBtn.classList.contains('hidden')).toBe(true);
-      expect(popup.elements.selectBtn.classList.contains('hidden')).toBe(true);
-      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(false);
-    });
-
-    test('hideSelectionActive shows buttons and hides cancel', () => {
-      popup.showSelectionActive();
-      popup.hideSelectionActive();
-
-      expect(popup.elements.extractBtn.classList.contains('hidden')).toBe(false);
-      expect(popup.elements.selectBtn.classList.contains('hidden')).toBe(false);
-      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(true);
-    });
-
-    test('showProgress shows progress and hides status', () => {
-      popup.showProgress('Loading...');
-
-      expect(popup.elements.progress.classList.contains('hidden')).toBe(false);
-      expect(popup.elements.progressText.textContent).toBe('Loading...');
-      expect(popup.elements.status.classList.contains('hidden')).toBe(true);
-    });
-
-    test('hideProgress hides progress element', () => {
-      popup.showProgress('test');
-      popup.hideProgress();
-
-      expect(popup.elements.progress.classList.contains('hidden')).toBe(true);
-    });
-
-    test('showSuccess sets success class and message', () => {
-      popup.showSuccess('All done!');
-
-      expect(popup.elements.statusMessage.textContent).toBe('All done!');
-      expect(popup.elements.status.className).toContain('success');
-      expect(popup.elements.status.classList.contains('hidden')).toBe(false);
-    });
-
-    test('showError sets error class and message', () => {
-      popup.showError('Something broke');
-
-      expect(popup.elements.statusMessage.textContent).toBe('Something broke');
-      expect(popup.elements.status.className).toContain('error');
-      expect(popup.elements.status.classList.contains('hidden')).toBe(false);
-    });
-
-    test('enableExtraction enables buttons and restores text', () => {
-      popup.disableExtraction();
-      popup.enableExtraction();
-
-      expect(popup.elements.extractBtn.disabled).toBe(false);
-      expect(popup.elements.selectBtn.disabled).toBe(false);
-      expect(popup.elements.extractBtn.querySelector('.btn-text').textContent).toBe('Copy Page as Markdown');
-    });
-
-    test('disableExtraction disables buttons and changes text', () => {
-      popup.disableExtraction();
-
-      expect(popup.elements.extractBtn.disabled).toBe(true);
-      expect(popup.elements.selectBtn.disabled).toBe(true);
-      expect(popup.elements.extractBtn.querySelector('.btn-text').textContent).toBe('Cannot Extract from This Page');
-    });
-  });
-
-  // -------------------------------------------------------
-  // checkSelectionState
-  // -------------------------------------------------------
-  describe('checkSelectionState', () => {
-    test('shows selection active when background says active', async () => {
-      const popup = await createPopup({
-        sendMessageResponse: { active: true }
-      });
-
-      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(false);
-    });
-
-    test('does nothing when background says not active', async () => {
       chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ active: false });
-      });
-      const popup = await createPopup();
-
-      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(true);
-    });
-
-    test('handles error gracefully', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (msg.action === 'getSelectionState') {
-          chrome.runtime.lastError = { message: 'No connection' };
-          if (callback) callback(undefined);
-          chrome.runtime.lastError = null;
+        if (msg.action === 'startSelectionMode') {
+          if (callback) callback({ success: true });
         } else if (callback) {
           callback({});
         }
       });
-      const popup = await createPopup();
 
-      // Should not throw, selection stays hidden
+      popup.elements.selectBtn.click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'startSelectionMode' },
+        expect.any(Function)
+      );
+      expect(window.close).toHaveBeenCalled();
+    });
+
+    test('shows error banner on selection-start failure', async () => {
+      const popup = await createPopup();
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        if (msg.action === 'startSelectionMode') {
+          if (callback) callback({ success: false, error: 'No tab' });
+        } else if (callback) {
+          callback({});
+        }
+      });
+
+      popup.elements.selectBtn.click();
+      await flushPromises();
+
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.errorMessage.textContent).toBe('No tab');
+    });
+  });
+
+  describe('selection-active state', () => {
+    test('switches view to "selecting" when background reports active picker', async () => {
+      const popup = await createPopup({ sendMessageResponse: { active: true } });
+
+      expect(popup.state.view).toBe('selecting');
+      expect(popup.elements.popup.classList.contains('selecting')).toBe(true);
+      expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(false);
+    });
+
+    test('cancel button sends cancelSelectionMode and returns view to main', async () => {
+      const popup = await createPopup({ sendMessageResponse: { active: true } });
+      chrome.runtime.sendMessage.mockClear();
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        if (callback) callback({});
+      });
+
+      popup.elements.cancelSelectBtn.click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'cancelSelectionMode' },
+        expect.any(Function)
+      );
+      expect(popup.state.view).toBe('main');
+      expect(popup.elements.popup.classList.contains('selecting')).toBe(false);
       expect(popup.elements.selectionActive.classList.contains('hidden')).toBe(true);
     });
   });
 
-  // -------------------------------------------------------
-  // sendMessageToBackground
-  // -------------------------------------------------------
-  describe('sendMessageToBackground', () => {
-    test('resolves with response on success', async () => {
+  describe('settings button', () => {
+    test('opens the options page', async () => {
       const popup = await createPopup();
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, data: 'test' });
-      });
-
-      const result = await popup.sendMessageToBackground({ action: 'test' });
-
-      expect(result).toEqual({ success: true, data: 'test' });
-    });
-
-    test('rejects with lastError when present', async () => {
-      const popup = await createPopup();
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        chrome.runtime.lastError = { message: 'Extension error' };
-        if (callback) callback(undefined);
-        chrome.runtime.lastError = null;
-      });
-
-      await expect(popup.sendMessageToBackground({ action: 'test' }))
-        .rejects.toThrow('Extension error');
+      popup.elements.settingsBtn.click();
+      expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
     });
   });
 
-  // -------------------------------------------------------
-  // Progress timers
-  // -------------------------------------------------------
-  describe('progress timers', () => {
-    test('_startProgressTimers creates timers with escalating messages', async () => {
-      const popup = await createPopup();
-      popup.showProgress('Starting...');
-
-      jest.useFakeTimers();
-      const timers = popup._startProgressTimers();
-
-      expect(timers).toHaveLength(4);
-
-      jest.advanceTimersByTime(2000);
-      expect(popup.elements.progressText.textContent).toBe('Processing page content...');
-
-      jest.advanceTimersByTime(3000); // 5s total
-      expect(popup.elements.progressText.textContent).toBe('Converting to markdown...');
-
-      jest.advanceTimersByTime(5000); // 10s total
-      expect(popup.elements.progressText.textContent).toBe('Large page \u2014 still working...');
-
-      jest.advanceTimersByTime(10000); // 20s total
-      expect(popup.elements.progressText.textContent).toBe('Very large page \u2014 almost done...');
-    });
-
-    test('_clearProgressTimers clears all timers', async () => {
-      const popup = await createPopup();
-      popup.showProgress('Starting...');
-
-      jest.useFakeTimers();
-      const timers = popup._startProgressTimers();
-      popup._clearProgressTimers(timers);
-
-      jest.advanceTimersByTime(25000);
-      // Text should not have changed since timers were cleared
-      expect(popup.elements.progressText.textContent).toBe('Starting...');
-    });
-  });
-
-  // -------------------------------------------------------
-  // Keyboard shortcut
-  // -------------------------------------------------------
-  describe('keyboard shortcut', () => {
-    test('Ctrl+Enter triggers handleExtractClick', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Done' });
-      });
-      const popup = await createPopup();
-      const spy = jest.spyOn(popup, 'handleExtractClick');
-
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
-
-      expect(spy).toHaveBeenCalled();
-    });
-
-    test('Meta+Enter triggers handleExtractClick', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
-        if (callback) callback({ success: true, message: 'Done' });
-      });
-      const popup = await createPopup();
-      const spy = jest.spyOn(popup, 'handleExtractClick');
-
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }));
-
-      expect(spy).toHaveBeenCalled();
-    });
-
-    test('other key combos do not trigger extract', async () => {
-      const popup = await createPopup();
-      const spy = jest.spyOn(popup, 'handleExtractClick');
-
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }));
-
-      expect(spy).not.toHaveBeenCalled();
-    });
-  });
-
-  // -------------------------------------------------------
-  // Event listeners
-  // -------------------------------------------------------
-  describe('event listeners', () => {
-    test('metadata toggle change saves preference', async () => {
+  describe('metadata toggle', () => {
+    test('saves includeMetadata preference on change', async () => {
       const popup = await createPopup();
       Preferences.set.mockClear();
 
@@ -802,23 +565,82 @@ describe('PopupController', () => {
       expect(Preferences.set).toHaveBeenCalledWith({ includeMetadata: false });
     });
 
-    test('output toggle click saves preference and updates text', async () => {
+    test('reflects pref state on init', async () => {
+      const popup = await createPopup({ prefs: { includeMetadata: false } });
+      expect(popup.elements.metadataToggle.checked).toBe(false);
+    });
+  });
+
+  describe('keyboard shortcut', () => {
+    test('Ctrl+Enter triggers the primary action', async () => {
       const popup = await createPopup();
-      Preferences.set.mockClear();
+      const spy = jest.spyOn(popup, 'handleAction');
 
-      const fileBtn = popup.elements.outputToggle.querySelector('[data-mode="file"]');
-      fileBtn.click();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
 
-      expect(Preferences.set).toHaveBeenCalledWith({ outputMode: 'file' });
-      expect(popup.elements.extractBtn.querySelector('.btn-text').textContent).toBe('Save Page as Markdown');
+      expect(spy).toHaveBeenCalled();
     });
 
-    test('settings button opens options page', async () => {
+    test('Cmd+Enter triggers the primary action', async () => {
       const popup = await createPopup();
+      const spy = jest.spyOn(popup, 'handleAction');
 
-      popup.elements.settingsBtn.click();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }));
 
-      expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
+      expect(spy).toHaveBeenCalled();
+    });
+
+    test('plain Enter is ignored', async () => {
+      const popup = await createPopup();
+      const spy = jest.spyOn(popup, 'handleAction');
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('error banner', () => {
+    test('non-sticky error auto-dismisses after 4s', async () => {
+      const popup = await createPopup();
+      jest.useFakeTimers();
+      popup.showError('something');
+
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(false);
+      jest.advanceTimersByTime(4500);
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(true);
+    });
+
+    test('sticky error stays', async () => {
+      const popup = await createPopup();
+      jest.useFakeTimers();
+      popup.showError('cannot extract', { sticky: true });
+
+      jest.advanceTimersByTime(10000);
+      expect(popup.elements.errorBanner.classList.contains('hidden')).toBe(false);
+    });
+  });
+
+  describe('sendMessageToBackground', () => {
+    test('resolves with response on success', async () => {
+      const popup = await createPopup();
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        if (callback) callback({ ok: true });
+      });
+
+      const result = await popup.sendMessageToBackground({ action: 'x' });
+      expect(result).toEqual({ ok: true });
+    });
+
+    test('rejects with lastError when present', async () => {
+      const popup = await createPopup();
+      chrome.runtime.sendMessage.mockImplementation((msg, callback) => {
+        chrome.runtime.lastError = { message: 'oops' };
+        if (callback) callback(undefined);
+        chrome.runtime.lastError = null;
+      });
+
+      await expect(popup.sendMessageToBackground({ action: 'x' })).rejects.toThrow('oops');
     });
   });
 });

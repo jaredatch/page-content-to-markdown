@@ -59,7 +59,8 @@ describe('Preferences', () => {
         stripTrackingParams: false,
         linkMode: 'strip',
         imageMode: 'strip',
-        metadataFormat: 'yaml'
+        metadataFormat: 'yaml',
+        lastUsedPerSite: { x: 'thread' }
       };
       chrome.storage.local.get.mockResolvedValue(overrides);
 

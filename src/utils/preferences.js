@@ -13,7 +13,8 @@ const DEFAULTS = {
   stripTrackingParams: true,               // strip utm_*, fbclid, gclid, etc. from URLs
   linkMode: 'keep',                        // 'keep' | 'strip' (text only) | 'bare' (text + URL)
   imageMode: 'keep',                       // 'keep' | 'alt' (alt text only) | 'strip' | 'url-list' (collect URLs at end)
-  metadataFormat: 'header'                 // 'header' (markdown title block) | 'yaml' (frontmatter)
+  metadataFormat: 'header',                // 'header' (markdown title block) | 'yaml' (frontmatter)
+  lastUsedPerSite: {}                      // map of siteId → contentTypeId; popup remembers last picked content type per supported site
 };
 
 class Preferences {

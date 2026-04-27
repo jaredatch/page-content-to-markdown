@@ -2,7 +2,7 @@
 
 For some sites, the extension provides **site actions**: dedicated extractors that produce cleaner output than the general page path. They handle the site's quirks directly (threading, reasoning blocks, citations, conversation roles) so the result looks like what you'd actually want.
 
-When you're on a supported site, the popup shows the site's action buttons alongside "Copy Page as Markdown" and "Select Elements". Pick the one that matches what's on the page.
+When you're on a supported site, the popup picker shows the site's content options (under an "Available on …" divider) alongside the regular Page content option. Pick the one that matches what's on the page, then Copy or Save.
 
 | Site | Actions | Where it works |
 |---|---|---|
@@ -30,7 +30,7 @@ Three actions, depending on what's on the page:
 
 **Conversation.** Works on Claude's share pages (`claude.ai/share/...`). Captures the conversation title, the "Shared by {name}" attribution, and every human and Claude turn in order, with formatting preserved (headings, lists, code blocks, etc.).
 
-Active chats in your own account aren't supported. For those, use **Select Elements** to pick the parts you want.
+Active chats in your own account aren't supported. For those, use the **select elements on page** link in the popup to pick the parts you want.
 
 ---
 
@@ -50,9 +50,9 @@ Share pages work whether or not you're logged in; active chats require being log
 
 ## When site actions fail
 
-Site detection is hostname-based, so action buttons appear whenever you're on a supported site. A few things can still go wrong:
+Site detection is hostname-based, so the site rows appear in the popup whenever you're on a supported site. A few things can still go wrong:
 
-- **Wrong page type.** The popup shows X's action buttons on any X page, but "Tweet" only works on `/status/` URLs. Picking the wrong action gives a clear error.
+- **Wrong page type.** The popup shows X's content options on any X page, but "Tweet" only works on `/status/` URLs. Picking the wrong one gives a clear error.
 - **DOM changes.** Sites update their HTML structure regularly. If an extractor falls behind, the action may fail or return incomplete output.
 - **Fallback.** When a site action fails, the extension falls back to general content extraction. You get markdown, just not the polished version.
 

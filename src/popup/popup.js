@@ -1,112 +1,113 @@
 // Popup script for browser extension
-// Handles user interactions in the popup interface
+// Content-first picker: select what (Page content / site content type), then how (Copy / Save).
 
 const Preferences = require('../utils/preferences');
 const SiteRegistry = require('../utils/site-registry');
 
 console.log('🚀 [popup] Popup script loaded');
 
+const RESTRICTED_PATTERNS = [
+  /^chrome:\/\//,
+  /^chrome-extension:\/\//,
+  /^moz-extension:\/\//,
+  /^edge:\/\//,
+  /^about:/,
+  /^file:\/\//
+];
+
+// Site badge characters used in the divider. Falls back to first letter of site.name.
+const SITE_BADGE = {
+  x: '\u{1D54F}',  // Mathematical Double-Struck Capital X (𝕏)
+  claude: 'C',
+  grok: 'G'
+};
+
+const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
 class PopupController {
   constructor() {
     this.elements = {
-      extractBtn: document.getElementById('extractBtn'),
-      selectBtn: document.getElementById('selectBtn'),
-      cancelSelectBtn: document.getElementById('cancelSelectBtn'),
-      selectionActive: document.getElementById('selectionActive'),
-      status: document.getElementById('status'),
-      progress: document.getElementById('progress'),
-      statusIcon: document.querySelector('.status-icon'),
-      statusMessage: document.querySelector('.status-message'),
-      progressText: document.querySelector('.progress-text'),
+      popup: document.getElementById('popup'),
       metadataToggle: document.getElementById('metadataToggle'),
-      outputToggle: document.getElementById('outputToggle'),
-      siteActions: document.getElementById('siteActions'),
-      settingsBtn: document.getElementById('settingsBtn')
+      settingsBtn: document.getElementById('settingsBtn'),
+      pageRow: document.getElementById('pageRow'),
+      siteDivider: document.getElementById('siteDivider'),
+      dividerBadge: document.getElementById('dividerBadge'),
+      dividerText: document.getElementById('dividerText'),
+      siteRows: document.getElementById('siteRows'),
+      selectionActive: document.getElementById('selectionActive'),
+      cancelSelectBtn: document.getElementById('cancelSelectBtn'),
+      errorBanner: document.getElementById('errorBanner'),
+      errorMessage: document.getElementById('errorMessage'),
+      primaryBtn: document.getElementById('primaryBtn'),
+      secondaryBtn: document.getElementById('secondaryBtn'),
+      selectBtn: document.getElementById('selectBtn')
     };
 
-    this.currentTab = null;
-    this.autoClosePopup = true;
+    this.state = {
+      currentTab: null,
+      currentSite: null,
+      selectedContentType: 'page',
+      selectedSiteId: null,
+      view: 'main',                    // 'main' | 'selecting' | 'restricted'
+      prefs: { ...Preferences.DEFAULTS },
+      busy: false
+    };
+
+    this._errorTimer = null;
+
     this.init();
   }
 
-  /**
-   * Initialize the popup
-   */
   async init() {
     console.log('🔧 [popup] Initializing popup controller');
+
+    await this.loadPreferences();
+    await this.resolveCurrentTab();
+    await this.checkSelectionState();
+    this.restoreSelectionFromMemory();
     this.setupEventListeners();
-    await this.checkCurrentTab();
-    this.detectSiteActions();
-    this.checkSelectionState();
-    this.loadPreferences();
+    this.render();
   }
 
-  /**
-   * Set up event listeners
-   */
-  setupEventListeners() {
-    this.elements.extractBtn.addEventListener('click', () => {
-      console.log('🖱️ [popup] Extract button clicked');
-      this.handleExtractClick();
-    });
-
-    this.elements.selectBtn.addEventListener('click', () => {
-      console.log('🖱️ [popup] Select button clicked');
-      this.handleSelectClick();
-    });
-
-    this.elements.cancelSelectBtn.addEventListener('click', () => {
-      console.log('🖱️ [popup] Cancel select button clicked');
-      this.handleCancelSelectClick();
-    });
-
-    // Settings button
-    if (this.elements.settingsBtn) {
-      this.elements.settingsBtn.addEventListener('click', () => {
-        chrome.runtime.openOptionsPage();
-      });
-    }
-
-    // Handle keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        this.handleExtractClick();
-      }
-    });
-
-    // Metadata toggle
-    this.elements.metadataToggle.addEventListener('change', (e) => {
-      Preferences.set({ includeMetadata: e.target.checked });
-    });
-
-    // Output mode toggle
-    this.elements.outputToggle.addEventListener('click', (e) => {
-      const btn = e.target.closest('.toggle-btn');
-      if (!btn) return;
-      const mode = btn.dataset.mode;
-
-      this.elements.outputToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      Preferences.set({ outputMode: mode });
-      this.updateButtonText(mode);
-    });
-
-    console.log('👂 [popup] Event listeners set up');
-  }
-
-  /**
-   * Check if selection mode is active for the current tab
-   */
-  async checkSelectionState() {
+  async loadPreferences() {
     try {
-      const response = await this.sendMessageToBackground({
-        action: 'getSelectionState'
-      });
+      this.state.prefs = await Preferences.get();
+    } catch (error) {
+      console.warn('📋 [popup] Could not load preferences:', error.message);
+      this.state.prefs = { ...Preferences.DEFAULTS };
+    }
+  }
 
+  async resolveCurrentTab() {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        this.state.view = 'restricted';
+        return;
+      }
+
+      this.state.currentTab = tabs[0];
+      const url = this.state.currentTab.url || '';
+
+      if (RESTRICTED_PATTERNS.some(pattern => pattern.test(url))) {
+        this.state.view = 'restricted';
+        return;
+      }
+
+      this.state.currentSite = SiteRegistry.detect(url);
+    } catch (error) {
+      console.error('🚨 [popup] Error checking current tab:', error);
+      this.state.view = 'restricted';
+    }
+  }
+
+  async checkSelectionState() {
+    if (this.state.view === 'restricted') return;
+    try {
+      const response = await this.sendMessageToBackground({ action: 'getSelectionState' });
       if (response && response.active) {
-        this.showSelectionActive();
+        this.state.view = 'selecting';
       }
     } catch (error) {
       console.log('📋 [popup] Could not check selection state:', error.message);
@@ -114,312 +115,321 @@ class PopupController {
   }
 
   /**
-   * Load preferences and set UI state
+   * Restore the last-used content type for the current site (or default to 'page').
+   * Persisted in chrome.storage.local under prefs.lastUsedPerSite as { siteId: contentTypeId }.
    */
-  async loadPreferences() {
-    try {
-      const prefs = await Preferences.get();
+  restoreSelectionFromMemory() {
+    const site = this.state.currentSite;
+    const lastUsed = this.state.prefs.lastUsedPerSite || {};
 
-      this.elements.metadataToggle.checked = prefs.includeMetadata;
-      this.autoClosePopup = prefs.autoClosePopup !== false;
-
-      // Set output toggle active state
-      this.elements.outputToggle.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === prefs.outputMode);
-      });
-
-      this.updateButtonText(prefs.outputMode);
-    } catch (error) {
-      console.log('📋 [popup] Could not load preferences:', error.message);
-    }
-  }
-
-  /**
-   * Detect site actions for the current tab and render them if a supported site matches.
-   */
-  detectSiteActions() {
-    if (!this.currentTab || !this.currentTab.url) return;
-
-    const site = SiteRegistry.detect(this.currentTab.url);
-    if (site) {
-      this.currentSite = site;
-      this.showSiteActions(site);
-    }
-  }
-
-  /**
-   * Render site action buttons (dynamically generated from the site module's content types).
-   */
-  showSiteActions(site) {
-    const container = this.elements.siteActions;
-    if (!container) return;
-
-    // Build section label
-    const label = document.createElement('div');
-    label.className = 'section-label';
-    label.textContent = site.name;
-    container.appendChild(label);
-
-    // Build button row
-    const row = document.createElement('div');
-    row.className = 'site-action-buttons';
-
-    for (const ct of site.contentTypes) {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-site-action';
-      btn.dataset.siteId = site.id;
-      btn.dataset.contentType = ct.id;
-      btn.innerHTML = `${ct.icon}<span class="btn-text">Copy ${ct.label}</span>`;
-      row.appendChild(btn);
-    }
-
-    container.appendChild(row);
-    container.classList.remove('hidden');
-
-    // Event delegation for site action buttons
-    container.addEventListener('click', (e) => {
-      const btn = e.target.closest('.btn-site-action');
-      if (!btn) return;
-      const siteId = btn.dataset.siteId;
-      const contentType = btn.dataset.contentType;
-      if (siteId && contentType) {
-        this.handleSiteExtract(siteId, contentType);
+    if (site && lastUsed[site.id]) {
+      const remembered = lastUsed[site.id];
+      const valid = site.contentTypes.some(ct => ct.id === remembered);
+      if (valid) {
+        this.state.selectedContentType = remembered;
+        this.state.selectedSiteId = site.id;
+        return;
       }
+    }
+
+    this.state.selectedContentType = 'page';
+    this.state.selectedSiteId = null;
+  }
+
+  setupEventListeners() {
+    this.elements.settingsBtn.addEventListener('click', () => {
+      chrome.runtime.openOptionsPage();
     });
 
-    console.log(`🔧 [popup] ${site.name} site actions shown`);
-  }
+    this.elements.metadataToggle.addEventListener('change', (e) => {
+      const value = e.target.checked;
+      this.state.prefs.includeMetadata = value;
+      Preferences.set({ includeMetadata: value });
+    });
 
-  /**
-   * Handle a site action click.
-   */
-  async handleSiteExtract(siteId, contentType) {
-    try {
-      console.log(`🔧 [popup] Running site action: ${siteId}/${contentType}`);
+    this.elements.pageRow.addEventListener('click', () => {
+      this.selectContent('page', null);
+    });
 
-      this.showProgress('Extracting content...');
-      this.elements.extractBtn.disabled = true;
-      this.elements.selectBtn.disabled = true;
-      this.elements.siteActions.querySelectorAll('.btn-site-action').forEach(b => b.disabled = true);
+    this.elements.primaryBtn.addEventListener('click', () => {
+      const mode = this.elements.primaryBtn.dataset.action;
+      this.handleAction(mode, this.elements.primaryBtn);
+    });
 
-      const progressTimers = this._startProgressTimers();
+    this.elements.secondaryBtn.addEventListener('click', () => {
+      const mode = this.elements.secondaryBtn.dataset.action;
+      this.handleAction(mode, this.elements.secondaryBtn);
+    });
 
-      const response = await this.sendMessageToBackground({
-        action: 'extractSiteContent',
-        siteId,
-        contentType
-      });
+    this.elements.selectBtn.addEventListener('click', () => {
+      this.handleStartSelection();
+    });
 
-      this._clearProgressTimers(progressTimers);
-      this.hideProgress();
+    this.elements.cancelSelectBtn.addEventListener('click', () => {
+      this.handleCancelSelection();
+    });
 
-      if (response && response.success) {
-        console.log('✅ [popup] Site action successful');
-        this.showSuccess(response.message || 'Content processed!');
-        if (this.autoClosePopup) {
-          setTimeout(() => { window.close(); }, 1500);
-        } else {
-          this.enableExtraction();
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!this.elements.primaryBtn.disabled) {
+          const mode = this.elements.primaryBtn.dataset.action;
+          this.handleAction(mode, this.elements.primaryBtn);
         }
-      } else {
-        console.error('🚨 [popup] Site action failed:', response && response.error);
-        this.showError((response && response.error) || 'Failed to extract content');
-        this.enableExtraction();
       }
-    } catch (error) {
-      console.error('🚨 [popup] Unexpected error in site action:', error);
-      this.hideProgress();
-      this.showError('Unexpected error occurred');
-      this.enableExtraction();
-    }
+    });
+  }
+
+  /* ----- Rendering ---------------------------------------------------- */
+
+  render() {
+    this.renderMetadataToggle();
+    this.renderActionButtons();
+    this.renderRows();
+    this.renderView();
+  }
+
+  renderMetadataToggle() {
+    this.elements.metadataToggle.checked = !!this.state.prefs.includeMetadata;
   }
 
   /**
-   * Update the primary action button text based on output mode
+   * Primary button corresponds to the user's preferred outputMode pref.
+   * Both buttons stay visible; the secondary keeps the default outline look.
    */
-  updateButtonText(mode) {
-    const btnText = this.elements.extractBtn.querySelector('.btn-text');
-    if (mode === 'file') {
-      btnText.textContent = 'Save Page as Markdown';
-    } else {
-      btnText.textContent = 'Copy Page as Markdown';
-    }
+  renderActionButtons() {
+    const preferred = this.state.prefs.outputMode === 'file' ? 'file' : 'clipboard';
+    const other = preferred === 'clipboard' ? 'file' : 'clipboard';
 
-    // Also update site action button text
-    if (this.elements.siteActions && this.currentSite) {
-      const verb = mode === 'file' ? 'Save' : 'Copy';
-      this.elements.siteActions.querySelectorAll('.btn-site-action').forEach(btn => {
-        const textEl = btn.querySelector('.btn-text');
-        if (!textEl) return;
-        const ct = this.currentSite.contentTypes.find(c => c.id === btn.dataset.contentType);
-        if (ct) {
-          textEl.textContent = `${verb} ${ct.label}`;
-        }
-      });
-    }
+    this.applyButton(this.elements.primaryBtn, preferred, true);
+    this.applyButton(this.elements.secondaryBtn, other, false);
   }
 
-  /**
-   * Show selection-active UI (hide buttons, show cancel option)
-   */
-  showSelectionActive() {
-    this.elements.extractBtn.classList.add('hidden');
-    this.elements.selectBtn.classList.add('hidden');
-    this.elements.selectionActive.classList.remove('hidden');
+  applyButton(btn, mode, isPrimary) {
+    btn.dataset.action = mode;
+    btn.classList.toggle('btn-primary', isPrimary);
+    const label = mode === 'file' ? 'Save' : 'Copy';
+    const textEl = btn.querySelector('.btn-text');
+    if (textEl) textEl.textContent = label;
   }
 
-  /**
-   * Hide selection-active UI (show buttons again)
-   */
-  hideSelectionActive() {
-    this.elements.extractBtn.classList.remove('hidden');
-    this.elements.selectBtn.classList.remove('hidden');
-    this.elements.selectionActive.classList.add('hidden');
-  }
+  renderRows() {
+    const site = this.state.currentSite;
 
-  /**
-   * Check if current tab is valid for content extraction
-   */
-  async checkCurrentTab() {
-    try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-
-      if (tabs.length === 0) {
-        this.showError('No active tab found');
-        this.disableExtraction();
-        return;
-      }
-
-      this.currentTab = tabs[0];
-      const url = this.currentTab.url;
-
-      // Check if the URL is valid for content extraction
-      if (this.isRestrictedUrl(url)) {
-        this.showError('Cannot extract content from this page');
-        this.disableExtraction();
-        return;
-      }
-
-      console.log(`✅ [popup] Current tab is valid: ${url}`);
-      this.enableExtraction();
-
-    } catch (error) {
-      console.error('🚨 [popup] Error checking current tab:', error);
-      this.showError('Error accessing current tab');
-      this.disableExtraction();
-    }
-  }
-
-  /**
-   * Check if URL is restricted for content extraction
-   * @param {string} url - The URL to check
-   * @returns {boolean} True if URL is restricted
-   */
-  isRestrictedUrl(url) {
-    const restrictedPatterns = [
-      /^chrome:\/\//,
-      /^chrome-extension:\/\//,
-      /^moz-extension:\/\//,
-      /^edge:\/\//,
-      /^about:/,
-      /^file:\/\//
-    ];
-
-    return restrictedPatterns.some(pattern => pattern.test(url));
-  }
-
-  /**
-   * Handle extract button click
-   */
-  async handleExtractClick() {
-    if (this.elements.extractBtn.disabled) {
+    if (!site) {
+      this.elements.siteDivider.classList.add('hidden');
+      this.elements.siteRows.innerHTML = '';
+      this.applySelectionClasses();
       return;
     }
 
-    try {
-      console.log('🔄 [popup] Starting content extraction');
+    this.elements.dividerBadge.textContent = SITE_BADGE[site.id] || (site.name.charAt(0) || '').toUpperCase();
+    const shortName = (site.name || '').split(' / ')[0];
+    this.elements.dividerText.textContent = `Available on ${shortName}`;
+    this.elements.siteDivider.classList.remove('hidden');
 
-      this.showProgress('Extracting content...');
-      this.disableExtraction();
-
-      // Escalating progress messages for large pages
-      const progressTimers = this._startProgressTimers();
-
-      // Send message to background script to extract and copy content
-      const response = await this.sendMessageToBackground({
-        action: 'extractAndCopy'
+    this.elements.siteRows.innerHTML = '';
+    for (const ct of site.contentTypes) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'row';
+      btn.dataset.contentType = ct.id;
+      btn.dataset.siteId = site.id;
+      btn.innerHTML = `
+        <span class="row-icon" aria-hidden="true">${ct.icon}</span>
+        <span class="row-label">${this.escapeHtml(ct.label)}</span>
+        <span class="row-check" aria-hidden="true">${CHECK_SVG}</span>
+      `;
+      btn.addEventListener('click', () => {
+        this.selectContent(ct.id, site.id);
       });
+      this.elements.siteRows.appendChild(btn);
+    }
 
-      this._clearProgressTimers(progressTimers);
-      this.hideProgress();
+    this.applySelectionClasses();
+  }
 
-      if (response.success) {
-        console.log('✅ [popup] Content extraction successful');
-        this.showSuccess(response.message || 'Content copied to clipboard!');
+  applySelectionClasses() {
+    const isPage = this.state.selectedContentType === 'page';
+    this.elements.pageRow.classList.toggle('selected', isPage);
 
-        if (this.autoClosePopup) {
-          setTimeout(() => { window.close(); }, 1500);
-        } else {
-          this.enableExtraction();
-        }
-      } else {
-        console.error('🚨 [popup] Content extraction failed:', response.error);
-        this.showError(response.error || 'Failed to extract content');
-        this.enableExtraction();
-      }
+    const siteRows = this.elements.siteRows.querySelectorAll('.row');
+    siteRows.forEach(row => {
+      const matches = !isPage
+        && row.dataset.siteId === this.state.selectedSiteId
+        && row.dataset.contentType === this.state.selectedContentType;
+      row.classList.toggle('selected', matches);
+    });
+  }
 
-    } catch (error) {
-      console.error('🚨 [popup] Unexpected error:', error);
-      this.hideProgress();
-      this.showError('Unexpected error occurred');
-      this.enableExtraction();
+  renderView() {
+    const popup = this.elements.popup;
+    popup.classList.toggle('selecting', this.state.view === 'selecting');
+    popup.classList.toggle('disabled', this.state.view === 'restricted');
+
+    this.elements.selectionActive.classList.toggle('hidden', this.state.view !== 'selecting');
+
+    if (this.state.view === 'restricted') {
+      this.showError("Can't extract from this page", { sticky: true });
+    } else {
+      this.hideError();
     }
   }
 
-  /**
-   * Handle select elements button click
-   */
-  async handleSelectClick() {
-    try {
-      console.log('🎯 [popup] Starting selection mode');
+  /* ----- User actions ------------------------------------------------- */
 
-      const response = await this.sendMessageToBackground({
-        action: 'startSelectionMode'
-      });
+  selectContent(contentType, siteId) {
+    if (this.state.busy || this.state.view !== 'main') return;
+
+    this.state.selectedContentType = contentType;
+    this.state.selectedSiteId = siteId;
+    this.applySelectionClasses();
+    this.persistLastUsed();
+  }
+
+  persistLastUsed() {
+    const site = this.state.currentSite;
+    if (!site) return;
+
+    const lastUsed = { ...(this.state.prefs.lastUsedPerSite || {}) };
+
+    if (this.state.selectedContentType === 'page') {
+      // Page content selected on a supported site — clear that site's memory so
+      // next visit defaults to 'page' rather than the previous site row.
+      if (lastUsed[site.id]) {
+        delete lastUsed[site.id];
+      } else {
+        return;
+      }
+    } else {
+      lastUsed[site.id] = this.state.selectedContentType;
+    }
+
+    this.state.prefs.lastUsedPerSite = lastUsed;
+    Preferences.set({ lastUsedPerSite: lastUsed });
+  }
+
+  async handleAction(mode, sourceBtn) {
+    if (this.state.busy || this.state.view !== 'main') return;
+
+    this.state.busy = true;
+    this.setBusy(true);
+    this.hideError();
+
+    const message = this.buildExtractMessage(mode);
+
+    try {
+      const response = await this.sendMessageToBackground(message);
 
       if (response && response.success) {
-        // Close popup so user can interact with the page
+        this.flashSuccess(sourceBtn, mode === 'file' ? 'Saved' : 'Copied');
+        if (this.state.prefs.autoClosePopup !== false) {
+          setTimeout(() => { window.close(); }, 1600);
+        } else {
+          setTimeout(() => {
+            this.state.busy = false;
+            this.setBusy(false);
+          }, 1400);
+        }
+      } else {
+        const errMsg = (response && response.error) || 'Failed to extract content';
+        this.showError(errMsg);
+        this.state.busy = false;
+        this.setBusy(false);
+      }
+    } catch (error) {
+      console.error('🚨 [popup] Action failed:', error);
+      this.showError('Unexpected error occurred');
+      this.state.busy = false;
+      this.setBusy(false);
+    }
+  }
+
+  buildExtractMessage(mode) {
+    if (this.state.selectedContentType === 'page' || !this.state.selectedSiteId) {
+      return { action: 'extractAndCopy', mode };
+    }
+    return {
+      action: 'extractSiteContent',
+      siteId: this.state.selectedSiteId,
+      contentType: this.state.selectedContentType,
+      mode
+    };
+  }
+
+  async handleStartSelection() {
+    if (this.state.busy || this.state.view !== 'main') return;
+
+    try {
+      const response = await this.sendMessageToBackground({ action: 'startSelectionMode' });
+      if (response && response.success) {
         window.close();
       } else {
         this.showError((response && response.error) || 'Failed to start selection mode');
       }
     } catch (error) {
-      console.error('🚨 [popup] Error starting selection mode:', error);
+      console.error('🚨 [popup] Failed to start selection mode:', error);
       this.showError('Failed to start selection mode');
     }
   }
 
-  /**
-   * Handle cancel selection button click
-   */
-  async handleCancelSelectClick() {
+  async handleCancelSelection() {
     try {
-      await this.sendMessageToBackground({
-        action: 'cancelSelectionMode'
-      });
-
-      this.hideSelectionActive();
+      await this.sendMessageToBackground({ action: 'cancelSelectionMode' });
     } catch (error) {
       console.error('🚨 [popup] Error cancelling selection:', error);
-      this.hideSelectionActive();
+    }
+    this.state.view = 'main';
+    this.renderView();
+  }
+
+  /* ----- UI helpers --------------------------------------------------- */
+
+  setBusy(busy) {
+    this.elements.primaryBtn.disabled = busy;
+    this.elements.secondaryBtn.disabled = busy;
+    this.elements.selectBtn.disabled = busy;
+  }
+
+  flashSuccess(btn, label) {
+    if (!btn) return;
+    const original = btn.innerHTML;
+    btn.innerHTML = `<span class="btn-text"><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:-2px;">${CHECK_SVG}<span>${this.escapeHtml(label)}</span></span></span>`;
+    btn.classList.add('btn-success');
+    setTimeout(() => {
+      btn.classList.remove('btn-success');
+      btn.innerHTML = original;
+    }, 1400);
+  }
+
+  showError(message, opts = {}) {
+    const sticky = !!opts.sticky;
+    this.elements.errorMessage.textContent = message;
+    this.elements.errorBanner.classList.remove('hidden');
+
+    if (this._errorTimer) {
+      clearTimeout(this._errorTimer);
+      this._errorTimer = null;
+    }
+    if (!sticky) {
+      this._errorTimer = setTimeout(() => this.hideError(), 4000);
     }
   }
 
-  /**
-   * Send message to background script
-   * @param {object} message - Message to send
-   * @returns {Promise<object>} Response from background script
-   */
+  hideError() {
+    this.elements.errorBanner.classList.add('hidden');
+    if (this._errorTimer) {
+      clearTimeout(this._errorTimer);
+      this._errorTimer = null;
+    }
+  }
+
+  escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, ch => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+    ));
+  }
+
   sendMessageToBackground(message) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(message, (response) => {
@@ -431,114 +441,13 @@ class PopupController {
       });
     });
   }
-
-  /**
-   * Start escalating progress message timers for long-running conversions.
-   * Returns an array of timer IDs to be cleared on completion.
-   */
-  _startProgressTimers() {
-    return [
-      setTimeout(() => this._updateProgressText('Processing page content...'), 2000),
-      setTimeout(() => this._updateProgressText('Converting to markdown...'), 5000),
-      setTimeout(() => this._updateProgressText('Large page — still working...'), 10000),
-      setTimeout(() => this._updateProgressText('Very large page — almost done...'), 20000),
-    ];
-  }
-
-  /**
-   * Clear all progress timers.
-   */
-  _clearProgressTimers(timers) {
-    if (timers) timers.forEach(t => clearTimeout(t));
-  }
-
-  /**
-   * Update only the progress text (without showing/hiding the container).
-   */
-  _updateProgressText(text) {
-    if (this.elements.progressText) {
-      this.elements.progressText.textContent = text;
-    }
-  }
-
-  /**
-   * Show progress indicator
-   * @param {string} text - Progress text to display
-   */
-  showProgress(text = 'Processing...') {
-    this.elements.progressText.textContent = text;
-    this.elements.progress.classList.remove('hidden');
-    this.hideStatus();
-  }
-
-  /**
-   * Hide progress indicator
-   */
-  hideProgress() {
-    this.elements.progress.classList.add('hidden');
-  }
-
-  /**
-   * Show success message
-   * @param {string} message - Success message to display
-   */
-  showSuccess(message) {
-    this.elements.statusMessage.textContent = message;
-    this.elements.status.className = 'status success';
-    this.elements.status.classList.remove('hidden');
-  }
-
-  /**
-   * Show error message
-   * @param {string} message - Error message to display
-   */
-  showError(message) {
-    this.elements.statusMessage.textContent = message;
-    this.elements.status.className = 'status error';
-    this.elements.status.classList.remove('hidden');
-  }
-
-  /**
-   * Hide status message
-   */
-  hideStatus() {
-    this.elements.status.classList.add('hidden');
-  }
-
-  /**
-   * Enable content extraction
-   */
-  enableExtraction() {
-    this.elements.extractBtn.disabled = false;
-    // Restore button text based on current toggle state
-    const activeToggle = this.elements.outputToggle.querySelector('.toggle-btn.active');
-    const mode = activeToggle ? activeToggle.dataset.mode : 'clipboard';
-    this.updateButtonText(mode);
-    this.elements.selectBtn.disabled = false;
-
-    // Re-enable site action buttons if present
-    if (this.elements.siteActions) {
-      this.elements.siteActions.querySelectorAll('.btn-site-action').forEach(b => b.disabled = false);
-    }
-  }
-
-  /**
-   * Disable content extraction
-   */
-  disableExtraction() {
-    this.elements.extractBtn.disabled = true;
-    this.elements.extractBtn.querySelector('.btn-text').textContent = 'Cannot Extract from This Page';
-    this.elements.selectBtn.disabled = true;
-  }
 }
 
-// Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   console.log('📄 [popup] DOM loaded, initializing popup');
   new PopupController();
 });
 
-// Export for testing
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = PopupController;
 }

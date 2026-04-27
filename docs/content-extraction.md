@@ -1,6 +1,6 @@
 # How Content Extraction Works
 
-When you click "Copy Page as Markdown", the extension doesn't dump the whole page into your clipboard. Most of a modern web page is chrome: navigation, ads, footers, cookie banners, comment threads. None of that is what you came for, so we try to find the actual content and leave the rest behind.
+When you pick "Page content" in the popup and hit Copy or Save, the extension doesn't dump the whole page into your clipboard. Most of a modern web page is chrome: navigation, ads, footers, cookie banners, comment threads. None of that is what you came for, so we try to find the actual content and leave the rest behind.
 
 This doc covers how detection works, what gets stripped, what happens when a page is unusual, and what to do if extraction surprised you.
 
@@ -94,9 +94,9 @@ Once we've found the main content, Turndown walks the tree and removes anything 
 
 Short patterns use word-boundary regex to avoid false positives. A class called `header` shouldn't match just because "ad" appears inside it. Longer patterns share a single combined regex for performance, since this filter runs against every node Turndown visits.
 
-### A note on Select Elements
+### A note on selecting elements
 
-When you use **Select Elements** (or right-click → "Copy selection as Markdown"), we apply a much lighter filter: only universal junk like ads, popups, consent banners, and e-commerce CTAs. Navigation, headers, social widgets, and comments are left alone. You've already chosen what you want, and second-guessing would be obnoxious.
+When you pick elements directly via the **select elements on page** link (or right-click → "Copy selection as Markdown"), we apply a much lighter filter: only universal junk like ads, popups, consent banners, and e-commerce CTAs. Navigation, headers, social widgets, and comments are left alone. You've already chosen what you want, and second-guessing would be obnoxious.
 
 The lighter filter lives in `convertHtmlFragment()` in the same file.
 
