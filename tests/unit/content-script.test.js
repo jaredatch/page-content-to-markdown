@@ -183,8 +183,12 @@ describe('ContentScript', () => {
       const instance = new ContentScript();
       const result = await instance.convertPageToMarkdown();
 
-      expect(result.markdown).toContain('# Test Page');
-      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('**Title:** Test Page');
+      expect(result.markdown).toContain('**URL:**');
+      expect(result.markdown).toContain('**Date:**');
+      // Date format: YYYY-MM-DD HH:mm (local), e.g. "2026-04-26 14:30"
+      expect(result.markdown).toMatch(/\*\*Date:\*\* \d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+      expect(result.markdown).not.toContain('**Domain:**');
       expect(result.markdown).toContain('---');
     });
   });
@@ -337,7 +341,7 @@ describe('ContentScript', () => {
 
       const result = await instance.convertElementsToMarkdown([el]);
 
-      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('**URL:**');
       expect(result.markdown).toContain('---');
     });
   });
@@ -350,7 +354,7 @@ describe('ContentScript', () => {
       const result = await instance.convertPageToMarkdown({ includeMetadata: false });
 
       expect(result.success).toBe(true);
-      expect(result.markdown).not.toContain('**Source:**');
+      expect(result.markdown).not.toContain('**URL:**');
       expect(result.markdown).toContain('## Heading');
     });
 
@@ -360,7 +364,7 @@ describe('ContentScript', () => {
       const instance = new ContentScript();
       const result = await instance.convertPageToMarkdown();
 
-      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('**URL:**');
     });
 
     test('convertPageToMarkdown emits YAML frontmatter when metadataFormat is yaml', async () => {
@@ -376,7 +380,7 @@ describe('ContentScript', () => {
       expect(result.markdown).toContain('url: ');
       expect(result.markdown).toContain('date: ');
       // Should NOT contain the legacy header
-      expect(result.markdown).not.toContain('**Source:**');
+      expect(result.markdown).not.toContain('**URL:**');
       // Body should still follow the frontmatter
       expect(result.markdown).toContain('## Heading');
     });
@@ -405,7 +409,7 @@ describe('ContentScript', () => {
       const result = await instance.convertElementsToMarkdown([el]);
 
       expect(result.success).toBe(true);
-      expect(result.markdown).not.toContain('**Source:**');
+      expect(result.markdown).not.toContain('**URL:**');
     });
 
     test('convertElementsToMarkdown should include metadata by default', async () => {
@@ -418,7 +422,7 @@ describe('ContentScript', () => {
       const result = await instance.convertElementsToMarkdown([el]);
 
       expect(result.success).toBe(true);
-      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('**URL:**');
     });
 
     test('convertTextSelection should skip metadata when storage says false', async () => {
@@ -439,7 +443,7 @@ describe('ContentScript', () => {
       const result = await instance.convertTextSelection();
 
       expect(result.success).toBe(true);
-      expect(result.markdown).not.toContain('**Source:**');
+      expect(result.markdown).not.toContain('**URL:**');
     });
 
     test('extractContent message should pass options through', async () => {
@@ -461,7 +465,7 @@ describe('ContentScript', () => {
       );
       // The markdown should not contain the metadata header
       const calledWith = sendResponse.mock.calls[0][0];
-      expect(calledWith.markdown).not.toContain('**Source:**');
+      expect(calledWith.markdown).not.toContain('**URL:**');
     });
   });
 
@@ -637,7 +641,7 @@ describe('ContentScript', () => {
       const result = await instance.extractSiteContent('x', 'single-tweet', { includeMetadata: true });
 
       expect(result.success).toBe(true);
-      expect(result.markdown).toContain('**Source:**');
+      expect(result.markdown).toContain('**URL:**');
     });
 
     test('message handler routes extractSiteContent action', async () => {

@@ -14,7 +14,9 @@ const DEFAULTS = {
   linkMode: 'keep',                        // 'keep' | 'strip' (text only) | 'bare' (text + URL)
   imageMode: 'keep',                       // 'keep' | 'alt' (alt text only) | 'strip' | 'url-list' (collect URLs at end)
   metadataFormat: 'header',                // 'header' (markdown title block) | 'yaml' (frontmatter)
-  lastUsedPerSite: {}                      // map of siteId → contentTypeId; popup remembers last picked content type per supported site
+  lastUsedPerSite: {},                     // map of siteId → contentTypeId; popup remembers last picked content type per supported site
+  uiAdvancedOpen: false,                   // options page: persist Advanced disclosure state across sessions
+  uiTokensOpen: false                      // options page: persist Available-tokens disclosure state across sessions
 };
 
 class Preferences {

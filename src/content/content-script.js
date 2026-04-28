@@ -119,7 +119,7 @@ class ContentScript {
     }
 
     // Emergency: return basic markdown with page info
-    const emergencyMarkdown = `# ${metadata.title}\n\n**Source:** ${metadata.url}  \n**Extracted:** ${metadata.timestamp}  \n**Method:** Emergency Fallback\n\n---\n\nContent extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.`;
+    const emergencyMarkdown = `**Title:** ${metadata.title}  \n**URL:** ${metadata.url}  \n**Date:** ${this._formatLocalDateTime(metadata.timestamp)}  \n**Method:** Emergency Fallback\n\n---\n\nContent extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.`;
 
     return {
       success: true,
@@ -187,21 +187,41 @@ class ContentScript {
   }
 
   /**
-   * Prepend a metadata header to the converted markdown.
-   * Format defaults to the legacy markdown title block; pass 'yaml' for
-   * YAML frontmatter (compatible with Obsidian, Logseq, Hugo, Jekyll, …).
+   * Prepend a metadata header to the converted markdown. Two formats:
+   * 'inline' (bold key-value lines) or 'yaml' (frontmatter, compatible
+   * with Obsidian, Logseq, Hugo, Jekyll, …). Both emit the same field
+   * set (title, url, domain, date) so consumers can grep by key.
+   *
+   * Inline mode deliberately avoids an H1 title — pages typically already
+   * carry their own H1, and site-action formatters emit one too. A bold
+   * key-value block sits cleanly above any content H1 instead of
+   * competing with it.
    */
   addMetadataHeader(markdown, metadata, format) {
     if (format === 'yaml') {
       return this._buildYamlFrontmatter(metadata) + markdown;
     }
-    const header = `# ${metadata.title}\n\n**Source:** ${metadata.url}  \n**Extracted:** ${metadata.timestamp}\n\n---\n\n`;
-    return header + markdown;
+    return this._buildInlineHeader(metadata) + markdown;
+  }
+
+  _buildInlineHeader(metadata) {
+    // Two-space line endings are markdown hard breaks — keeps each
+    // key-value on its own line when the file is rendered. The last
+    // line skips them since the blank line + `---` already separate.
+    return [
+      `**Title:** ${metadata.title || ''}  `,
+      `**URL:** ${metadata.url || ''}  `,
+      `**Date:** ${this._formatLocalDateTime(metadata.timestamp)}`,
+      '',
+      '---',
+      '',
+      ''
+    ].join('\n');
   }
 
   /**
    * Build a YAML frontmatter block from page metadata.
-   * Title is double-quoted with backslash and quote escaping; URL/domain/date
+   * Title is double-quoted with backslash and quote escaping; URL/date
    * are emitted unquoted because their values are tame in standard form.
    */
   _buildYamlFrontmatter(metadata) {
@@ -209,18 +229,28 @@ class ContentScript {
       .replace(/[\r\n]+/g, ' ')
       .replace(/\\/g, '\\\\')
       .replace(/"/g, '\\"');
-    const date = (metadata.timestamp || '').split('T')[0] ||
-      new Date().toISOString().split('T')[0];
     return [
       '---',
       `title: "${safeTitle}"`,
       `url: ${metadata.url || ''}`,
-      `domain: ${metadata.domain || ''}`,
-      `date: ${date}`,
+      `date: ${this._formatLocalDateTime(metadata.timestamp)}`,
       '---',
       '',
       ''
     ].join('\n');
+  }
+
+  /**
+   * Format an ISO UTC timestamp as local `YYYY-MM-DD HH:mm`. Local time
+   * matches the user's mental model — the alternative (UTC date via
+   * timestamp.split('T')[0]) showed the wrong day for evenings west of
+   * UTC. Falls back to "now" if the timestamp is missing or invalid.
+   */
+  _formatLocalDateTime(timestamp) {
+    let d = timestamp ? new Date(timestamp) : new Date();
+    if (Number.isNaN(d.getTime())) d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   /**

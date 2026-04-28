@@ -11,7 +11,7 @@ Firefox-first, with Chrome support.
 - **Site actions for X, Claude, and Grok.** Dedicated extractors that produce cleaner output than the general path. [Supported sites](docs/supported-sites.md)
 - **GFM output.** Tables, strikethrough, task lists.
 - **Clipboard or file.** Copy to clipboard or save as `.md`.
-- **Page info as YAML frontmatter or markdown header.** Drop output straight into Obsidian, Logseq, Hugo, Jekyll — or keep the human-readable header.
+- **Page info as inline metadata or YAML frontmatter.** Title, URL, and date/time at the top of every save — as bold key-value lines or as YAML for Obsidian, Logseq, Hugo, Jekyll, and similar tools.
 - **Image and link handling.** Keep them, replace with alt text, strip them, or collect image URLs at the end of the doc. Useful when feeding output to LLMs that don't need the noise.
 - **Tracking-parameter strip.** `utm_*`, `fbclid`, `gclid`, and other analytics noise removed from URLs by default.
 - **Customizable filenames.** Template-based with tokens (`{title}`, `{date}`, `{domain}`, `{slug}`, etc.) and a choice of preserve / kebab-case / snake_case.

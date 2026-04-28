@@ -1,12 +1,21 @@
 /**
  * Simple Universal Content Extractor - GUARANTEED to work on ANY website
- * 
+ *
  * This takes a completely different approach:
  * 1. Extract ALL visible text from the page
  * 2. Apply basic filtering to remove obvious navigation/UI
  * 3. Convert to markdown with basic structure
  * 4. ALWAYS succeed - even if it's just raw text
  */
+
+// Match the inline-header date format from content-script.js — local
+// `YYYY-MM-DD HH:mm`. UTC date splits showed the wrong day for evenings
+// west of UTC; explicit local-time formatting fixes that.
+function formatLocalDateTime(d) {
+  const date = d instanceof Date && !Number.isNaN(d.getTime()) ? d : new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 class SimpleUniversalExtractor {
   constructor() {
@@ -228,12 +237,14 @@ class SimpleUniversalExtractor {
     // Get page title for header
     const pageTitle = document.title || 'Extracted Content';
     const pageUrl = window.location ? window.location.href : 'Unknown URL';
-    const timestamp = new Date().toLocaleString();
+    const timestamp = formatLocalDateTime(new Date());
 
-    // Create header
-    let markdown = `# ${pageTitle}\n\n`;
-    markdown += `**Source:** ${pageUrl}  \n`;
-    markdown += `**Extracted:** ${timestamp}  \n`;
+    // Create inline metadata header — keys mirror the canonical schema
+    // (title/url/date) so consumers can grep across formats.
+    let markdown = '';
+    markdown += `**Title:** ${pageTitle}  \n`;
+    markdown += `**URL:** ${pageUrl}  \n`;
+    markdown += `**Date:** ${timestamp}  \n`;
     markdown += `**Method:** Universal Text Extraction\n\n`;
     markdown += `---\n\n`;
 
@@ -262,7 +273,6 @@ class SimpleUniversalExtractor {
   emergencyFallback() {
     const title = document.title || 'Webpage Content';
     const url = (window.location && window.location.href) || 'Unknown URL';
-    const timestamp = new Date().toLocaleString();
 
     // Try to get any text we can find
     let bodyText = '';
@@ -284,10 +294,9 @@ class SimpleUniversalExtractor {
       bodyText = bodyText.substring(0, 5000) + '... (truncated)';
     }
 
-    return `# ${title}
-
-**Source:** ${url}  
-**Extracted:** ${timestamp}  
+    return `**Title:** ${title}
+**URL:** ${url}
+**Date:** ${formatLocalDateTime(new Date())}
 **Method:** Emergency Extraction
 
 ---

@@ -60,7 +60,9 @@ describe('Preferences', () => {
         linkMode: 'strip',
         imageMode: 'strip',
         metadataFormat: 'yaml',
-        lastUsedPerSite: { x: 'thread' }
+        lastUsedPerSite: { x: 'thread' },
+        uiAdvancedOpen: true,
+        uiTokensOpen: true
       };
       chrome.storage.local.get.mockResolvedValue(overrides);
 

@@ -65,13 +65,13 @@ describe('Preferences flow', () => {
     // With metadata (default)
     const response1 = await bus.simulatePopupMessage({ action: 'extractAndCopy' });
     const withMetadata = navigator.clipboard.writeText.mock.calls[0][0];
-    expect(withMetadata).toContain('**Source:**');
+    expect(withMetadata).toContain('**URL:**');
 
     // Without metadata
     storage.seed({ includeMetadata: false });
     const response2 = await bus.simulatePopupMessage({ action: 'extractAndCopy' });
     const withoutMetadata = navigator.clipboard.writeText.mock.calls[1][0];
-    expect(withoutMetadata).not.toContain('**Source:**');
+    expect(withoutMetadata).not.toContain('**URL:**');
   });
 
   test('all formatting options forwarded in extractContent message', async () => {

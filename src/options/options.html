@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,191 +7,219 @@
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <div class="container">
-    <header class="header">
-      <h1 class="title">Markdown Settings</h1>
-    </header>
-
-    <main class="main">
-      <section class="section">
-        <h2 class="section-title">Output</h2>
-
-        <div class="setting">
-          <span class="setting-label">Default output</span>
-          <div class="segmented" role="radiogroup" aria-label="Default output">
-            <input type="radio" id="outputMode-clipboard" name="outputMode" value="clipboard">
-            <label for="outputMode-clipboard">Copy to clipboard</label>
-            <input type="radio" id="outputMode-file" name="outputMode" value="file">
-            <label for="outputMode-file">Save as file</label>
-          </div>
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-left">
+        <div class="logo">M</div>
+        <div>
+          <div class="page-title">Markdown Settings</div>
+          <span class="page-subtitle">Saved automatically · applies to copy and save</span>
         </div>
+      </div>
+      <button class="reset-btn" id="resetBtn" type="button">Reset to defaults</button>
+    </div>
 
-        <div class="setting">
-          <label class="setting-label checkbox-label" for="includeMetadata">
-            <input type="checkbox" id="includeMetadata" checked>
-            <span>Include page info (title, URL, date)</span>
-          </label>
-        </div>
+    <div class="layout">
+      <div class="settings-card">
 
-        <div class="setting">
-          <span class="setting-label">Page info format</span>
-          <div class="segmented" role="radiogroup" aria-label="Page info format">
-            <input type="radio" id="metadataFormat-header" name="metadataFormat" value="header">
-            <label for="metadataFormat-header">Markdown header</label>
-            <input type="radio" id="metadataFormat-yaml" name="metadataFormat" value="yaml">
-            <label for="metadataFormat-yaml">YAML frontmatter</label>
-          </div>
-          <div class="setting-hint" id="metadataFormatHint"></div>
-        </div>
+        <!-- ===== OUTPUT ===== -->
+        <section class="section">
+          <div class="section-label">Output</div>
 
-        <div class="setting">
-          <label class="setting-label checkbox-label" for="autoClosePopup">
-            <input type="checkbox" id="autoClosePopup" checked>
-            <span>Auto-close popup after action</span>
-          </label>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2 class="section-title">File name</h2>
-
-        <div class="setting">
-          <label class="setting-label" for="filenameTemplate">Template</label>
-          <input
-            type="text"
-            id="filenameTemplate"
-            class="setting-input"
-            spellcheck="false"
-            autocomplete="off"
-          >
-          <div class="filename-preview">
-            <span class="filename-preview-label">Preview:</span>
-            <code id="filenamePreview"></code>
+          <div class="field">
+            <label class="field-label">Default action</label>
+            <div class="segmented" role="radiogroup" aria-label="Default action">
+              <input type="radio" id="outputMode-clipboard" name="outputMode" value="clipboard">
+              <label for="outputMode-clipboard">Copy to clipboard</label>
+              <input type="radio" id="outputMode-file" name="outputMode" value="file">
+              <label for="outputMode-file">Save as file</label>
+            </div>
+            <div class="field-hint">The primary button when you open the popup. The other action stays available as the secondary button.</div>
           </div>
 
-          <details class="token-reference">
-            <summary>Available tokens</summary>
-            <dl class="token-list">
-              <dt><code>{title}</code></dt><dd>Page title</dd>
-              <dt><code>{domain}</code></dt><dd>example.com</dd>
-              <dt><code>{host}</code></dt><dd>www.example.com</dd>
-              <dt><code>{path}</code></dt><dd>blog/post-name</dd>
-              <dt><code>{slug}</code></dt><dd>post-name</dd>
-              <dt><code>{date[:fmt]}</code></dt><dd>2026-04-25</dd>
-              <dt><code>{time[:fmt]}</code></dt><dd>140509</dd>
-              <dt><code>{datetime[:fmt]}</code></dt><dd>2026-04-25_140509</dd>
-            </dl>
-            <p class="token-reference-note">
-              Date / time formats use Moment-style tokens:
-              <code>YYYY MM DD HH mm ss</code> ·
-              <a href="https://day.js.org/docs/en/display/format" target="_blank" rel="noopener">full reference →</a>
-            </p>
-          </details>
-        </div>
-
-        <div class="setting">
-          <span class="setting-label">Style</span>
-          <div class="segmented" role="radiogroup" aria-label="File name style">
-            <input type="radio" id="filenameStyle-preserve" name="filenameStyle" value="preserve">
-            <label for="filenameStyle-preserve">Preserve</label>
-            <input type="radio" id="filenameStyle-kebab" name="filenameStyle" value="kebab">
-            <label for="filenameStyle-kebab">kebab-case</label>
-            <input type="radio" id="filenameStyle-snake" name="filenameStyle" value="snake">
-            <label for="filenameStyle-snake">snake_case</label>
+          <div class="field">
+            <label class="checkbox-row" for="includeMetadata">
+              <input type="checkbox" id="includeMetadata">
+              <span class="checkbox-fauxbox" aria-hidden="true"></span>
+              <span class="checkbox-content">
+                <span class="checkbox-label">Include page info</span>
+                <span class="checkbox-sub">Adds title, URL, and date/time at the top. Toggleable per-use from the popup.</span>
+              </span>
+            </label>
+            <div class="indented" id="metadataFormatGroup">
+              <label class="field-label">Format</label>
+              <div class="segmented" role="radiogroup" aria-label="Page info format">
+                <input type="radio" id="metadataFormat-header" name="metadataFormat" value="header">
+                <label for="metadataFormat-header">Inline</label>
+                <input type="radio" id="metadataFormat-yaml" name="metadataFormat" value="yaml">
+                <label for="metadataFormat-yaml">Frontmatter</label>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
 
-      <section class="section">
-        <h2 class="section-title">Formatting</h2>
-
-        <div class="setting">
-          <span class="setting-label">Heading style</span>
-          <div class="segmented" role="radiogroup" aria-label="Heading style">
-            <input type="radio" id="headingStyle-atx" name="headingStyle" value="atx">
-            <label for="headingStyle-atx"># ATX headings</label>
-            <input type="radio" id="headingStyle-setext" name="headingStyle" value="setext">
-            <label for="headingStyle-setext">Setext (underline) headings</label>
+          <div class="field">
+            <label class="checkbox-row" for="autoClosePopup">
+              <input type="checkbox" id="autoClosePopup">
+              <span class="checkbox-fauxbox" aria-hidden="true"></span>
+              <span class="checkbox-content">
+                <span class="checkbox-label">Auto-close popup after action</span>
+                <span class="checkbox-sub">Close the popup automatically after copy or save completes.</span>
+              </span>
+            </label>
           </div>
-          <div class="setting-hint" id="headingHint"></div>
-        </div>
+        </section>
 
-        <div class="setting">
-          <span class="setting-label">Bullet list marker</span>
-          <div class="segmented" role="radiogroup" aria-label="Bullet list marker">
-            <input type="radio" id="bulletListMarker-dash" name="bulletListMarker" value="-">
-            <label for="bulletListMarker-dash">- Dash</label>
-            <input type="radio" id="bulletListMarker-asterisk" name="bulletListMarker" value="*">
-            <label for="bulletListMarker-asterisk">* Asterisk</label>
+        <!-- ===== FILE NAME ===== -->
+        <section class="section">
+          <div class="section-label">File name</div>
+
+          <div class="field">
+            <label class="field-label" for="filenameTemplate">Template</label>
+            <input type="text" id="filenameTemplate" class="text-input" spellcheck="false" autocomplete="off">
+            <button class="disclosure" id="tokensToggle" type="button" aria-expanded="false" aria-controls="tokensPanel">
+              <span class="disclosure-tri" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+              <span>Available tokens</span>
+            </button>
+            <div class="tokens-panel" id="tokensPanel" hidden>
+              <div class="tokens-list" id="tokensList"></div>
+              <div class="tokens-note">
+                Date / time formats use Moment-style tokens —
+                <code>YYYY</code> <code>MM</code> <code>DD</code> <code>HH</code> <code>mm</code> <code>ss</code>.
+                <a href="https://day.js.org/docs/en/display/format" target="_blank" rel="noopener noreferrer">Full reference →</a>
+              </div>
+            </div>
           </div>
-          <div class="setting-hint" id="bulletHint"></div>
-        </div>
 
-        <div class="setting">
-          <span class="setting-label">Code block style</span>
-          <div class="segmented" role="radiogroup" aria-label="Code block style">
-            <input type="radio" id="codeBlockStyle-fenced" name="codeBlockStyle" value="fenced">
-            <label for="codeBlockStyle-fenced">``` Fenced</label>
-            <input type="radio" id="codeBlockStyle-indented" name="codeBlockStyle" value="indented">
-            <label for="codeBlockStyle-indented">Indented</label>
+          <div class="field">
+            <label class="field-label">Style</label>
+            <div class="segmented" role="radiogroup" aria-label="File name style">
+              <input type="radio" id="filenameStyle-preserve" name="filenameStyle" value="preserve">
+              <label for="filenameStyle-preserve">Preserve</label>
+              <input type="radio" id="filenameStyle-kebab" name="filenameStyle" value="kebab">
+              <label for="filenameStyle-kebab">kebab-case</label>
+              <input type="radio" id="filenameStyle-snake" name="filenameStyle" value="snake">
+              <label for="filenameStyle-snake">snake_case</label>
+            </div>
           </div>
-          <div class="setting-hint" id="codeHint"></div>
-        </div>
+        </section>
 
-        <div class="setting">
-          <span class="setting-label">Image handling</span>
-          <div class="segmented" role="radiogroup" aria-label="Image handling">
-            <input type="radio" id="imageMode-keep" name="imageMode" value="keep">
-            <label for="imageMode-keep">Keep</label>
-            <input type="radio" id="imageMode-alt" name="imageMode" value="alt">
-            <label for="imageMode-alt">Alt only</label>
-            <input type="radio" id="imageMode-strip" name="imageMode" value="strip">
-            <label for="imageMode-strip">Strip</label>
-            <input type="radio" id="imageMode-url-list" name="imageMode" value="url-list">
-            <label for="imageMode-url-list">URL list</label>
+        <!-- ===== FORMATTING ===== -->
+        <section class="section">
+          <div class="section-label">Formatting</div>
+
+          <div class="field">
+            <label class="field-label">Images</label>
+            <div class="segmented" role="radiogroup" aria-label="Image handling">
+              <input type="radio" id="imageMode-keep" name="imageMode" value="keep">
+              <label for="imageMode-keep">Keep</label>
+              <input type="radio" id="imageMode-alt" name="imageMode" value="alt">
+              <label for="imageMode-alt">Alt only</label>
+              <input type="radio" id="imageMode-strip" name="imageMode" value="strip">
+              <label for="imageMode-strip">Strip</label>
+              <input type="radio" id="imageMode-url-list" name="imageMode" value="url-list">
+              <label for="imageMode-url-list">URL list</label>
+            </div>
           </div>
-          <div class="setting-hint" id="imageModeHint"></div>
-        </div>
 
-        <div class="setting">
-          <span class="setting-label">Link handling</span>
-          <div class="segmented" role="radiogroup" aria-label="Link handling">
-            <input type="radio" id="linkMode-keep" name="linkMode" value="keep">
-            <label for="linkMode-keep">Keep links</label>
-            <input type="radio" id="linkMode-strip" name="linkMode" value="strip">
-            <label for="linkMode-strip">Text only</label>
-            <input type="radio" id="linkMode-bare" name="linkMode" value="bare">
-            <label for="linkMode-bare">Text + URL</label>
+          <div class="field">
+            <label class="field-label">Links</label>
+            <div class="segmented" role="radiogroup" aria-label="Link handling">
+              <input type="radio" id="linkMode-keep" name="linkMode" value="keep">
+              <label for="linkMode-keep">Keep links</label>
+              <input type="radio" id="linkMode-strip" name="linkMode" value="strip">
+              <label for="linkMode-strip">Text only</label>
+              <input type="radio" id="linkMode-bare" name="linkMode" value="bare">
+              <label for="linkMode-bare">Text + URL</label>
+            </div>
           </div>
-          <div class="setting-hint" id="linkModeHint"></div>
-        </div>
 
-        <div class="setting">
-          <span class="setting-label">Link style</span>
-          <div class="segmented" role="radiogroup" aria-label="Link style">
-            <input type="radio" id="linkStyle-inlined" name="linkStyle" value="inlined">
-            <label for="linkStyle-inlined">[text](url) Inlined</label>
-            <input type="radio" id="linkStyle-referenced" name="linkStyle" value="referenced">
-            <label for="linkStyle-referenced">[text][1] Referenced</label>
+          <div class="field">
+            <label class="checkbox-row" for="stripTrackingParams">
+              <input type="checkbox" id="stripTrackingParams">
+              <span class="checkbox-fauxbox" aria-hidden="true"></span>
+              <span class="checkbox-content">
+                <span class="checkbox-label">Strip tracking parameters</span>
+                <span class="checkbox-sub">Removes utm_*, fbclid, gclid, and similar from URLs.</span>
+              </span>
+            </label>
           </div>
-          <div class="setting-hint" id="linkHint"></div>
+        </section>
+
+        <!-- ===== ADVANCED ===== -->
+        <section class="section">
+          <button class="advanced-toggle" id="advancedToggle" type="button" aria-expanded="false" aria-controls="advancedContent">
+            <div class="advanced-label-wrap">
+              <span class="advanced-label">
+                <span class="disclosure-tri" aria-hidden="true">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+                Advanced — Markdown syntax
+              </span>
+              <span class="advanced-sub" id="advancedSub">Heading, bullet, code block, and link syntax</span>
+            </div>
+          </button>
+
+          <div class="advanced-content" id="advancedContent" hidden>
+            <div class="field">
+              <label class="field-label">Heading style</label>
+              <div class="segmented" role="radiogroup" aria-label="Heading style">
+                <input type="radio" id="headingStyle-atx" name="headingStyle" value="atx">
+                <label for="headingStyle-atx"># ATX</label>
+                <input type="radio" id="headingStyle-setext" name="headingStyle" value="setext">
+                <label for="headingStyle-setext">Setext (underline)</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label">Bullet list marker</label>
+              <div class="segmented" role="radiogroup" aria-label="Bullet list marker">
+                <input type="radio" id="bulletListMarker-dash" name="bulletListMarker" value="-">
+                <label for="bulletListMarker-dash">- Dash</label>
+                <input type="radio" id="bulletListMarker-asterisk" name="bulletListMarker" value="*">
+                <label for="bulletListMarker-asterisk">* Asterisk</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label">Code blocks</label>
+              <div class="segmented" role="radiogroup" aria-label="Code blocks">
+                <input type="radio" id="codeBlockStyle-fenced" name="codeBlockStyle" value="fenced">
+                <label for="codeBlockStyle-fenced">``` Fenced</label>
+                <input type="radio" id="codeBlockStyle-indented" name="codeBlockStyle" value="indented">
+                <label for="codeBlockStyle-indented">Indented</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label">Link style</label>
+              <div class="segmented" role="radiogroup" aria-label="Link style">
+                <input type="radio" id="linkStyle-inlined" name="linkStyle" value="inlined">
+                <label for="linkStyle-inlined">[text](url) Inline</label>
+                <input type="radio" id="linkStyle-referenced" name="linkStyle" value="referenced">
+                <label for="linkStyle-referenced">[text][1] Reference</label>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="preview-pane">
+        <div class="preview-pane-header">
+          <span class="preview-pane-label">Live preview</span>
+          <span class="preview-pane-tag"><span class="dot"></span>Updates as you edit</span>
         </div>
-
-        <div class="setting">
-          <label class="setting-label checkbox-label" for="stripTrackingParams">
-            <input type="checkbox" id="stripTrackingParams" checked>
-            <span>Strip tracking parameters from URLs (utm_*, fbclid, gclid, …)</span>
-          </label>
+        <div class="preview-filename">
+          <div class="preview-filename-label">Markdown file name</div>
+          <div class="preview-filename-value" id="previewFilename"></div>
         </div>
-      </section>
-
-      <section class="section section-actions">
-        <button id="resetBtn" class="btn btn-outline">Reset to defaults</button>
-      </section>
-
-      <div id="status" class="status hidden"></div>
-    </main>
+        <pre class="preview-content" id="previewContent"></pre>
+      </aside>
+    </div>
   </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="options.js"></script>
 </body>

@@ -17,7 +17,7 @@ Copy Page as Markdown converts web page content into clean, structured markdown 
 - Convert an entire page to markdown, or pick specific elements with a visual selector
 - Output as GitHub Flavored Markdown (GFM) -- tables, fenced code blocks, task lists, and strikethrough are all preserved
 - Copy to clipboard or save as a .md file
-- Add page info as a markdown header or as YAML frontmatter for Obsidian, Logseq, Hugo, Jekyll, and similar tools
+- Add page info as inline metadata or as YAML frontmatter for Obsidian, Logseq, Hugo, Jekyll, and similar tools
 - Choose how images and links are handled: keep them, replace with alt text, strip them, or collect image URLs at the end of the doc
 - Strip tracking parameters (utm_*, fbclid, gclid, etc.) from URLs automatically
 - Customize saved filenames with token-based templates ({title}, {date}, {domain}, {slug}, and more) and choose preserve / kebab-case / snake_case

@@ -7,7 +7,7 @@
   --border-tertiary: #e5e7eb;
   --border-secondary: #d1d5db;
   --row-border: #e0e3e7;
-  --row-hover: #fafbfc;
+  --row-hover: #eff1f4;
   --selected-bg: #e6f1fb;
   --selected-bg-hover: #dce9f8;
   --selected-border: #b5d4f4;
@@ -189,6 +189,7 @@ button { font-family: inherit; }
 
 .row:hover {
   background: var(--row-hover);
+  border-color: var(--border-secondary);
 }
 
 .row.selected {

@@ -3,15 +3,37 @@ const FilenameTemplate = require('../utils/filename-template');
 
 console.log('🔧 [options] Options page loaded');
 
-// Sample data used to render the filename preview as the user edits.
-const FILENAME_PREVIEW_SAMPLE = {
-  title: 'Example Article',
-  url: 'https://www.example.com/blog/post-name'
+// Sample doc context for the live preview pane and filename preview.
+// Static — every setting is reflected against the same canned page so users
+// can compare configurations side-by-side without needing a real tab.
+const PREVIEW_SAMPLE = {
+  title: 'The case for browser extensions',
+  url: 'https://www.example.com/blog/case-for-extensions',
+  date: new Date(2026, 3, 26, 14, 30, 45) // April 26 2026, 14:30:45 local
 };
 
 // Debounce window for saving the filename template input. Lets users
-// type without spamming chrome.storage.local.set + the saved-toast.
+// type without spamming chrome.storage.local.set.
 const TEMPLATE_SAVE_DEBOUNCE_MS = 400;
+
+// Two-step armed reset: how long the button stays in confirm-state.
+const RESET_ARM_TIMEOUT_MS = 4000;
+
+// Toast / preview-flash visibility.
+const TOAST_VISIBLE_MS = 2200;
+const PREVIEW_FLASH_MS = 400;
+
+// Tokens shown in the Available-tokens disclosure. Each row is click-to-insert.
+const TOKEN_ROWS = [
+  { label: '{title}',                  insert: '{title}',     example: 'Page title' },
+  { label: '{domain}',                 insert: '{domain}',    example: 'example.com' },
+  { label: '{host}',                   insert: '{host}',      example: 'www.example.com' },
+  { label: '{path}',                   insert: '{path}',      example: 'blog/case-for-extensions' },
+  { label: '{slug}',                   insert: '{slug}',      example: 'case-for-extensions' },
+  { label: '{date<fmt>[:fmt]</fmt>}',  insert: '{date}',      example: '2026-04-26' },
+  { label: '{time<fmt>[:fmt]</fmt>}',  insert: '{time}',      example: '14-30-45' },
+  { label: '{datetime<fmt>[:fmt]</fmt>}', insert: '{datetime}', example: '2026-04-26_14-30-45' }
+];
 
 // Wraps a radio-button group so it exposes the same .value / addEventListener
 // interface as a <select>, letting the controller treat both uniformly.
@@ -48,232 +70,668 @@ class RadioGroup {
 class OptionsController {
   constructor() {
     this.elements = {
+      // form controls
       outputMode: new RadioGroup('outputMode'),
       includeMetadata: document.getElementById('includeMetadata'),
       metadataFormat: new RadioGroup('metadataFormat'),
       autoClosePopup: document.getElementById('autoClosePopup'),
       filenameTemplate: document.getElementById('filenameTemplate'),
       filenameStyle: new RadioGroup('filenameStyle'),
-      filenamePreview: document.getElementById('filenamePreview'),
+      imageMode: new RadioGroup('imageMode'),
+      linkMode: new RadioGroup('linkMode'),
+      stripTrackingParams: document.getElementById('stripTrackingParams'),
       headingStyle: new RadioGroup('headingStyle'),
       bulletListMarker: new RadioGroup('bulletListMarker'),
       codeBlockStyle: new RadioGroup('codeBlockStyle'),
-      imageMode: new RadioGroup('imageMode'),
-      linkMode: new RadioGroup('linkMode'),
       linkStyle: new RadioGroup('linkStyle'),
-      stripTrackingParams: document.getElementById('stripTrackingParams'),
-      metadataFormatHint: document.getElementById('metadataFormatHint'),
-      headingHint: document.getElementById('headingHint'),
-      bulletHint: document.getElementById('bulletHint'),
-      codeHint: document.getElementById('codeHint'),
-      imageModeHint: document.getElementById('imageModeHint'),
-      linkModeHint: document.getElementById('linkModeHint'),
-      linkHint: document.getElementById('linkHint'),
+      // chrome
+      metadataFormatGroup: document.getElementById('metadataFormatGroup'),
+      tokensToggle: document.getElementById('tokensToggle'),
+      tokensPanel: document.getElementById('tokensPanel'),
+      tokensList: document.getElementById('tokensList'),
+      advancedToggle: document.getElementById('advancedToggle'),
+      advancedContent: document.getElementById('advancedContent'),
+      advancedSub: document.getElementById('advancedSub'),
+      previewContent: document.getElementById('previewContent'),
+      previewFilename: document.getElementById('previewFilename'),
       resetBtn: document.getElementById('resetBtn'),
-      status: document.getElementById('status')
+      toast: document.getElementById('toast')
     };
 
-    this.statusTimeout = null;
-    this.templateSaveTimeout = null;
+    this.prefs = { ...Preferences.DEFAULTS };
+    this.resetArmed = false;
+    this.resetTimer = null;
+    this.toastTimer = null;
+    this.flashTimer = null;
+    this.templateSaveTimer = null;
+
     this.init();
   }
 
   async init() {
     await this.loadPreferences();
-    this.setupEventListeners();
-    this.updateAllHints();
-    this.updateFilenamePreview();
+    this.renderTokensList();
+    this.applyDisclosureState();
+    this.applyMetadataFormatVisibility();
+    this.updatePreview();
+    this.attachListeners();
   }
 
+  // ---------------------------------------------------------------
+  // Load + write
+  // ---------------------------------------------------------------
   async loadPreferences() {
     const prefs = await Preferences.get();
+    this.prefs = { ...Preferences.DEFAULTS, ...prefs };
 
-    this.elements.outputMode.value = prefs.outputMode;
-    this.elements.includeMetadata.checked = prefs.includeMetadata;
-    this.elements.metadataFormat.value = prefs.metadataFormat;
-    this.elements.autoClosePopup.checked = prefs.autoClosePopup;
-    this.elements.filenameTemplate.value = prefs.filenameTemplate;
-    this.elements.filenameStyle.value = prefs.filenameStyle;
-    this.elements.headingStyle.value = prefs.headingStyle;
-    this.elements.bulletListMarker.value = prefs.bulletListMarker;
-    this.elements.codeBlockStyle.value = prefs.codeBlockStyle;
-    this.elements.imageMode.value = prefs.imageMode;
-    this.elements.linkMode.value = prefs.linkMode;
-    this.elements.linkStyle.value = prefs.linkStyle;
-    this.elements.stripTrackingParams.checked = prefs.stripTrackingParams !== false;
-  }
-
-  setupEventListeners() {
-    // Auto-save on any change
-    this.elements.outputMode.addEventListener('change', () => {
-      this.save({ outputMode: this.elements.outputMode.value });
-    });
-
-    this.elements.includeMetadata.addEventListener('change', () => {
-      this.save({ includeMetadata: this.elements.includeMetadata.checked });
-    });
-
-    this.elements.metadataFormat.addEventListener('change', () => {
-      this.save({ metadataFormat: this.elements.metadataFormat.value });
-      this.updateHint('metadataFormat');
-    });
-
-    this.elements.autoClosePopup.addEventListener('change', () => {
-      this.save({ autoClosePopup: this.elements.autoClosePopup.checked });
-    });
-
-    this.elements.headingStyle.addEventListener('change', () => {
-      this.save({ headingStyle: this.elements.headingStyle.value });
-      this.updateHint('heading');
-    });
-
-    this.elements.bulletListMarker.addEventListener('change', () => {
-      this.save({ bulletListMarker: this.elements.bulletListMarker.value });
-      this.updateHint('bullet');
-    });
-
-    this.elements.codeBlockStyle.addEventListener('change', () => {
-      this.save({ codeBlockStyle: this.elements.codeBlockStyle.value });
-      this.updateHint('code');
-    });
-
-    this.elements.imageMode.addEventListener('change', () => {
-      this.save({ imageMode: this.elements.imageMode.value });
-      this.updateHint('imageMode');
-    });
-
-    this.elements.linkMode.addEventListener('change', () => {
-      this.save({ linkMode: this.elements.linkMode.value });
-      this.updateHint('linkMode');
-    });
-
-    this.elements.linkStyle.addEventListener('change', () => {
-      this.save({ linkStyle: this.elements.linkStyle.value });
-      this.updateHint('link');
-    });
-
-    this.elements.stripTrackingParams.addEventListener('change', () => {
-      this.save({ stripTrackingParams: this.elements.stripTrackingParams.checked });
-    });
-
-    // Filename template: live preview on every keystroke, debounced save.
-    this.elements.filenameTemplate.addEventListener('input', () => {
-      this.updateFilenamePreview();
-      if (this.templateSaveTimeout) clearTimeout(this.templateSaveTimeout);
-      this.templateSaveTimeout = setTimeout(() => {
-        this.save({ filenameTemplate: this.elements.filenameTemplate.value });
-      }, TEMPLATE_SAVE_DEBOUNCE_MS);
-    });
-
-    this.elements.filenameStyle.addEventListener('change', () => {
-      this.save({ filenameStyle: this.elements.filenameStyle.value });
-      this.updateFilenamePreview();
-    });
-
-    this.elements.resetBtn.addEventListener('click', () => this.resetToDefaults());
+    this.elements.outputMode.value = this.prefs.outputMode;
+    this.elements.includeMetadata.checked = this.prefs.includeMetadata;
+    this.elements.metadataFormat.value = this.prefs.metadataFormat;
+    this.elements.autoClosePopup.checked = this.prefs.autoClosePopup !== false;
+    this.elements.filenameTemplate.value = this.prefs.filenameTemplate;
+    this.elements.filenameStyle.value = this.prefs.filenameStyle;
+    this.elements.imageMode.value = this.prefs.imageMode;
+    this.elements.linkMode.value = this.prefs.linkMode;
+    this.elements.stripTrackingParams.checked = this.prefs.stripTrackingParams !== false;
+    this.elements.headingStyle.value = this.prefs.headingStyle;
+    this.elements.bulletListMarker.value = this.prefs.bulletListMarker;
+    this.elements.codeBlockStyle.value = this.prefs.codeBlockStyle;
+    this.elements.linkStyle.value = this.prefs.linkStyle;
   }
 
   async save(partial) {
+    Object.assign(this.prefs, partial);
+    this.disarmReset();
     await Preferences.set(partial);
-    this.showStatus('Settings saved', 'saved');
+    this.flashPreview();
   }
 
-  async resetToDefaults() {
+  // ---------------------------------------------------------------
+  // Listener wiring
+  // ---------------------------------------------------------------
+  attachListeners() {
+    const e = this.elements;
+
+    e.outputMode.addEventListener('change', () => {
+      this.save({ outputMode: e.outputMode.value });
+      this.updatePreview();
+    });
+
+    e.includeMetadata.addEventListener('change', () => {
+      this.save({ includeMetadata: e.includeMetadata.checked });
+      this.applyMetadataFormatVisibility();
+      this.updatePreview();
+    });
+
+    e.metadataFormat.addEventListener('change', () => {
+      this.save({ metadataFormat: e.metadataFormat.value });
+      this.updatePreview();
+    });
+
+    e.autoClosePopup.addEventListener('change', () => {
+      this.save({ autoClosePopup: e.autoClosePopup.checked });
+    });
+
+    // Filename template: live preview every keystroke, debounced save.
+    e.filenameTemplate.addEventListener('input', () => {
+      this.prefs.filenameTemplate = e.filenameTemplate.value;
+      this.disarmReset();
+      this.updateFilenamePreview();
+      if (this.templateSaveTimer) clearTimeout(this.templateSaveTimer);
+      this.templateSaveTimer = setTimeout(() => {
+        Preferences.set({ filenameTemplate: e.filenameTemplate.value });
+      }, TEMPLATE_SAVE_DEBOUNCE_MS);
+    });
+
+    e.filenameStyle.addEventListener('change', () => {
+      this.save({ filenameStyle: e.filenameStyle.value });
+      this.updateFilenamePreview();
+    });
+
+    e.imageMode.addEventListener('change', () => {
+      this.save({ imageMode: e.imageMode.value });
+      this.updatePreview();
+    });
+
+    e.linkMode.addEventListener('change', () => {
+      this.save({ linkMode: e.linkMode.value });
+      this.updatePreview();
+    });
+
+    e.stripTrackingParams.addEventListener('change', () => {
+      this.save({ stripTrackingParams: e.stripTrackingParams.checked });
+      this.updatePreview();
+    });
+
+    e.headingStyle.addEventListener('change', () => {
+      this.save({ headingStyle: e.headingStyle.value });
+      this.updatePreview();
+    });
+
+    e.bulletListMarker.addEventListener('change', () => {
+      this.save({ bulletListMarker: e.bulletListMarker.value });
+      this.updatePreview();
+    });
+
+    e.codeBlockStyle.addEventListener('change', () => {
+      this.save({ codeBlockStyle: e.codeBlockStyle.value });
+      this.updatePreview();
+    });
+
+    e.linkStyle.addEventListener('change', () => {
+      this.save({ linkStyle: e.linkStyle.value });
+      this.updatePreview();
+    });
+
+    e.tokensToggle.addEventListener('click', () => this.toggleDisclosure('tokens'));
+    e.advancedToggle.addEventListener('click', () => this.toggleDisclosure('advanced'));
+
+    e.resetBtn.addEventListener('click', () => this.handleResetClick());
+
+    // Click-to-insert handlers are attached when the tokens list is rendered.
+  }
+
+  // ---------------------------------------------------------------
+  // Disclosures
+  // ---------------------------------------------------------------
+  applyDisclosureState() {
+    this.setDisclosure('tokens', !!this.prefs.uiTokensOpen);
+    this.setDisclosure('advanced', !!this.prefs.uiAdvancedOpen);
+  }
+
+  toggleDisclosure(which) {
+    const prefKey = which === 'tokens' ? 'uiTokensOpen' : 'uiAdvancedOpen';
+    const next = !this.prefs[prefKey];
+    this.setDisclosure(which, next);
+    this.save({ [prefKey]: next });
+  }
+
+  setDisclosure(which, open) {
+    this.prefs[which === 'tokens' ? 'uiTokensOpen' : 'uiAdvancedOpen'] = open;
+    if (which === 'tokens') {
+      this.elements.tokensToggle.setAttribute('aria-expanded', String(open));
+      this.elements.tokensPanel.hidden = !open;
+    } else {
+      this.elements.advancedToggle.setAttribute('aria-expanded', String(open));
+      this.elements.advancedContent.hidden = !open;
+      this.elements.advancedSub.textContent = open
+        ? 'Hide power-user syntax preferences'
+        : 'Heading, bullet, code block, and link syntax';
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Conditional sub-fields
+  // ---------------------------------------------------------------
+  applyMetadataFormatVisibility() {
+    this.elements.metadataFormatGroup.hidden = !this.elements.includeMetadata.checked;
+  }
+
+  // ---------------------------------------------------------------
+  // Tokens panel
+  // ---------------------------------------------------------------
+  renderTokensList() {
+    const html = TOKEN_ROWS.map(row =>
+      `<button class="token-row" type="button" data-insert-token="${escapeAttr(row.insert)}" title="Click to insert ${escapeAttr(row.insert)} at cursor">
+        <span class="token-name">${row.label.replace(/<fmt>/g, '<span class="token-fmt">').replace(/<\/fmt>/g, '</span>')}</span>
+        <span class="token-desc">${escapeHtml(row.example)}</span>
+      </button>`
+    ).join('');
+    this.elements.tokensList.innerHTML = html;
+
+    this.elements.tokensList.querySelectorAll('[data-insert-token]').forEach(btn => {
+      btn.addEventListener('click', () => this.insertToken(btn.dataset.insertToken));
+    });
+  }
+
+  insertToken(token) {
+    const input = this.elements.filenameTemplate;
+    const start = input.selectionStart != null ? input.selectionStart : input.value.length;
+    const end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+    const value = input.value;
+    input.value = value.substring(0, start) + token + value.substring(end);
+    // Trigger the input listener so save + preview update fire normally.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // Restore focus + cursor position after the token.
+    setTimeout(() => {
+      input.focus();
+      const pos = start + token.length;
+      input.selectionStart = input.selectionEnd = pos;
+    }, 0);
+  }
+
+  // ---------------------------------------------------------------
+  // Reset (two-step armed)
+  // ---------------------------------------------------------------
+  handleResetClick() {
+    if (this.resetArmed) {
+      this.confirmReset();
+    } else {
+      this.armReset();
+    }
+  }
+
+  armReset() {
+    this.resetArmed = true;
+    this.elements.resetBtn.textContent = 'Click to confirm reset';
+    this.elements.resetBtn.classList.add('armed');
+    if (this.resetTimer) clearTimeout(this.resetTimer);
+    this.resetTimer = setTimeout(() => this.disarmReset(), RESET_ARM_TIMEOUT_MS);
+  }
+
+  disarmReset() {
+    if (!this.resetArmed) return;
+    this.resetArmed = false;
+    this.elements.resetBtn.textContent = 'Reset to defaults';
+    this.elements.resetBtn.classList.remove('armed');
+    if (this.resetTimer) {
+      clearTimeout(this.resetTimer);
+      this.resetTimer = null;
+    }
+  }
+
+  async confirmReset() {
     const defaults = Preferences.DEFAULTS;
-    await Preferences.set(defaults);
+    // Preserve open/closed disclosure state — UI feel ≠ settings.
+    const preserved = {
+      uiAdvancedOpen: this.prefs.uiAdvancedOpen,
+      uiTokensOpen: this.prefs.uiTokensOpen
+    };
+    await Preferences.set({ ...defaults, ...preserved });
+    this.disarmReset();
     await this.loadPreferences();
-    this.updateAllHints();
+    this.applyMetadataFormatVisibility();
+    this.updatePreview();
+    this.flashPreview();
+    this.showToast('Settings reset to defaults');
+  }
+
+  // ---------------------------------------------------------------
+  // Toast
+  // ---------------------------------------------------------------
+  showToast(message) {
+    const t = this.elements.toast;
+    t.innerHTML = '<span class="check-circle">'
+      + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      + '</span><span>' + escapeHtml(message) + '</span>';
+    t.classList.add('visible');
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => t.classList.remove('visible'), TOAST_VISIBLE_MS);
+  }
+
+  flashPreview() {
+    const el = this.elements.previewContent;
+    if (!el) return;
+    el.classList.remove('flash');
+    // Force reflow so the class re-add animates.
+    void el.offsetWidth;
+    el.classList.add('flash');
+    if (this.flashTimer) clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => el.classList.remove('flash'), PREVIEW_FLASH_MS);
+  }
+
+  // ---------------------------------------------------------------
+  // Preview generation
+  // ---------------------------------------------------------------
+  updatePreview() {
+    this.elements.previewContent.innerHTML = highlightMarkdown(this.generatePreviewMarkdown());
     this.updateFilenamePreview();
-    this.showStatus('Reset to defaults', 'reset');
-  }
-
-  showStatus(message, type) {
-    if (this.statusTimeout) clearTimeout(this.statusTimeout);
-
-    this.elements.status.textContent = message;
-    this.elements.status.className = `status ${type}`;
-    this.elements.status.classList.remove('hidden');
-
-    this.statusTimeout = setTimeout(() => {
-      this.elements.status.classList.add('hidden');
-    }, 1500);
-  }
-
-  updateAllHints() {
-    this.updateHint('metadataFormat');
-    this.updateHint('heading');
-    this.updateHint('bullet');
-    this.updateHint('code');
-    this.updateHint('imageMode');
-    this.updateHint('linkMode');
-    this.updateHint('link');
   }
 
   updateFilenamePreview() {
-    const template = this.elements.filenameTemplate.value;
-    const style = this.elements.filenameStyle.value;
-    const result = FilenameTemplate.formatFilename(template, style, {
-      ...FILENAME_PREVIEW_SAMPLE,
-      date: new Date()
-    });
-    this.elements.filenamePreview.textContent = result;
+    const result = FilenameTemplate.formatFilename(
+      this.elements.filenameTemplate.value,
+      this.elements.filenameStyle.value,
+      PREVIEW_SAMPLE
+    );
+    this.elements.previewFilename.textContent = result;
   }
 
-  updateHint(type) {
-    switch (type) {
-      case 'metadataFormat':
-        this.elements.metadataFormatHint.textContent =
-          this.elements.metadataFormat.value === 'yaml'
-            ? '---\ntitle: "Example"\nurl: https://example.com\ndate: 2026-04-26\n---'
-            : '# Example\n\n**Source:** https://example.com';
-        break;
-      case 'heading':
-        this.elements.headingHint.textContent =
-          this.elements.headingStyle.value === 'atx'
-            ? '## Section Title'
-            : 'Section Title\n--------------';
-        break;
-      case 'bullet':
-        this.elements.bulletHint.textContent =
-          `${this.elements.bulletListMarker.value} First item\n${this.elements.bulletListMarker.value} Second item`;
-        break;
-      case 'code': {
-        this.elements.codeHint.textContent =
-          this.elements.codeBlockStyle.value === 'fenced'
-            ? '```\nconst x = 1;\n```'
-            : '    const x = 1;';
-        break;
+  generatePreviewMarkdown() {
+    const p = this.prefs;
+    // Read live values from form, since save() updates `this.prefs` first
+    // anyway — but checkboxes / radios are the canonical source of truth.
+    const includeMetadata = this.elements.includeMetadata.checked;
+    const metadataFormat = this.elements.metadataFormat.value;
+    const headingStyle = this.elements.headingStyle.value;
+    const imageMode = this.elements.imageMode.value;
+    const bullet = this.elements.bulletListMarker.value;
+    const codeBlockStyle = this.elements.codeBlockStyle.value;
+    const linkMode = this.elements.linkMode.value;
+    const linkStyle = this.elements.linkStyle.value;
+    const stripTracking = this.elements.stripTrackingParams.checked;
+
+    const lines = [];
+    const sourceUrl = PREVIEW_SAMPLE.url;
+    const title = PREVIEW_SAMPLE.title;
+
+    if (includeMetadata) {
+      if (metadataFormat === 'yaml') {
+        lines.push('---');
+        lines.push('title: "' + title + '"');
+        lines.push('url: ' + sourceUrl);
+        lines.push('date: 2026-04-26 14:30');
+        lines.push('---');
+        lines.push('');
+      } else {
+        // Inline header — bold key-value, mirrors YAML's keys exactly so
+        // both formats carry the same data shape.
+        lines.push('**Title:** ' + title + '  ');
+        lines.push('**URL:** ' + sourceUrl + '  ');
+        lines.push('**Date:** 2026-04-26 14:30');
+        lines.push('');
+        lines.push('---');
+        lines.push('');
       }
-      case 'imageMode': {
-        const mode = this.elements.imageMode.value;
-        this.elements.imageModeHint.textContent =
-          mode === 'alt'
-            ? 'A photo of a sunset'
-            : mode === 'strip'
-              ? '(no image output)'
-              : mode === 'url-list'
-                ? 'Images collected at end of doc'
-                : '![A photo of a sunset](photo.jpg)';
-        break;
-      }
-      case 'linkMode': {
-        const mode = this.elements.linkMode.value;
-        this.elements.linkModeHint.textContent =
-          mode === 'strip'
-            ? 'Example'
-            : mode === 'bare'
-              ? 'Example (https://example.com)'
-              : '[Example](https://example.com)';
-        break;
-      }
-      case 'link':
-        this.elements.linkHint.textContent =
-          this.elements.linkStyle.value === 'inlined'
-            ? '[Example](https://example.com)'
-            : '[Example][1]\n\n[1]: https://example.com';
-        break;
     }
+
+    if (headingStyle === 'atx') {
+      lines.push('# ' + title);
+    } else {
+      lines.push(title);
+      lines.push('='.repeat(title.length));
+    }
+    lines.push('');
+
+    lines.push('*By Jared Atchison · April 24, 2026 · 4 min read*');
+    lines.push('');
+
+    lines.push('*A short case for treating your browser less like a tool and more like a workshop.*');
+    lines.push('');
+
+    lines.push('The web browser has become the **operating system** for most of our work. Extensions are how we *make that environment ours*.');
+    lines.push('');
+
+    if (imageMode === 'keep') {
+      lines.push('![Toolbar screenshot](toolbar.png)');
+      lines.push('');
+    } else if (imageMode === 'alt') {
+      lines.push('Toolbar screenshot');
+      lines.push('');
+    } else if (imageMode === 'url-list') {
+      // url-list collects URLs into a section at the bottom — preview that.
+      // (handled later)
+    }
+
+    if (headingStyle === 'atx') {
+      lines.push('## What makes a great extension');
+    } else {
+      const h2 = 'What makes a great extension';
+      lines.push(h2);
+      lines.push('-'.repeat(h2.length));
+    }
+    lines.push('');
+
+    lines.push('### Core principles');
+    lines.push('');
+
+    lines.push(bullet + ' Solves one specific problem');
+    lines.push(bullet + ' Disappears when you don\'t need it');
+    lines.push(bullet + ' Respects keyboard navigation');
+    lines.push('');
+
+    lines.push('> The best tools are the ones you stop noticing.');
+    lines.push('');
+
+    lines.push('### Quick install');
+    lines.push('');
+    lines.push('1. Open the extensions page');
+    lines.push('2. Toggle developer mode');
+    lines.push('3. Load the unpacked folder');
+    lines.push('');
+
+    lines.push('Use `chrome.runtime.openOptionsPage()` to open settings from the popup.');
+    lines.push('');
+
+    if (codeBlockStyle === 'fenced') {
+      lines.push('```js');
+      lines.push('const x = 1;');
+      lines.push('```');
+    } else {
+      lines.push('    const x = 1;');
+    }
+    lines.push('');
+
+    let linkUrl = 'https://example.com/blog?utm_source=newsletter&fbclid=abc123';
+    if (stripTracking) {
+      linkUrl = 'https://example.com/blog';
+    }
+
+    if (linkMode === 'keep') {
+      if (linkStyle === 'inlined') {
+        lines.push('Read more in [our blog post](' + linkUrl + ').');
+      } else {
+        lines.push('Read more in [our blog post][1].');
+      }
+    } else if (linkMode === 'strip') {
+      lines.push('Read more in our blog post.');
+    } else if (linkMode === 'bare') {
+      lines.push('Read more in our blog post (' + linkUrl + ').');
+    }
+
+    if (linkMode === 'keep' && linkStyle === 'referenced') {
+      lines.push('');
+      lines.push('[1]: ' + linkUrl);
+    }
+
+    if (imageMode === 'url-list') {
+      lines.push('');
+      lines.push('## Images');
+      lines.push('');
+      lines.push('- toolbar.png');
+    }
+
+    void p; // p kept for clarity in case of future settings; currently we
+            // read from the DOM so the function stays consistent at any
+            // moment between save() updating prefs and the next render.
+    return lines.join('\n');
   }
+}
+
+// =================================================================
+// Markdown highlighter (lifted from prototype, preserved verbatim
+// in behavior). Renders HTML with classed spans for the preview pane.
+// =================================================================
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s);
+}
+
+function highlightInline(text) {
+  if (!text) return '';
+  let result = escapeHtml(text);
+
+  // Inline code — protect content from further inline-pattern replacement.
+  const codeBlocks = [];
+  result = result.replace(/`([^`\n]+)`/g, (_m, c) => {
+    codeBlocks.push(c);
+    return '\x00CODE' + (codeBlocks.length - 1) + '\x00';
+  });
+
+  // Image: ![alt](url)
+  result = result.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) =>
+    '<span class="md-marker">![</span>' +
+    '<span class="md-link-text">' + alt + '</span>' +
+    '<span class="md-marker">](</span>' +
+    '<span class="md-link-url">' + url + '</span>' +
+    '<span class="md-marker">)</span>'
+  );
+
+  // Inline link: [text](url)
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) =>
+    '<span class="md-marker">[</span>' +
+    '<span class="md-link-text">' + text + '</span>' +
+    '<span class="md-marker">](</span>' +
+    '<span class="md-link-url">' + url + '</span>' +
+    '<span class="md-marker">)</span>'
+  );
+
+  // Reference link: [text][1]
+  result = result.replace(/\[([^\]]+)\]\[(\d+)\]/g, (_m, text, ref) =>
+    '<span class="md-marker">[</span>' +
+    '<span class="md-link-text">' + text + '</span>' +
+    '<span class="md-marker">][</span>' +
+    '<span class="md-list-marker">' + ref + '</span>' +
+    '<span class="md-marker">]</span>'
+  );
+
+  // Autolink: <url>
+  result = result.replace(/&lt;(https?:\/\/[^&\s<>]+)&gt;/g, (_m, url) =>
+    '<span class="md-marker">&lt;</span>' +
+    '<span class="md-link-url">' + url + '</span>' +
+    '<span class="md-marker">&gt;</span>'
+  );
+
+  // Bold: **text**
+  result = result.replace(/\*\*([^*\n]+)\*\*/g,
+    '<span class="md-marker">**</span><span class="md-bold">$1</span><span class="md-marker">**</span>'
+  );
+
+  // Italic: *text*
+  result = result.replace(/(^|[^*\w])\*([^*\n]+?)\*(?!\*)/g,
+    '$1<span class="md-marker">*</span><span class="md-italic">$2</span><span class="md-marker">*</span>'
+  );
+
+  // Restore inline code
+  result = result.replace(/\x00CODE(\d+)\x00/g, (_m, idx) => {
+    const c = codeBlocks[parseInt(idx, 10)];
+    return '<span class="md-marker">`</span><span class="md-code">' + c + '</span><span class="md-marker">`</span>';
+  });
+
+  return result;
+}
+
+function highlightMarkdown(md) {
+  const lines = md.split('\n');
+  const out = [];
+  let inCodeBlock = false;
+  let inFrontmatter = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const next = i + 1 < lines.length ? lines[i + 1] : '';
+
+    // YAML frontmatter — only at very top
+    if (i === 0 && line === '---') {
+      inFrontmatter = true;
+      out.push('<span class="md-fence">' + line + '</span>');
+      continue;
+    }
+    if (inFrontmatter) {
+      if (line === '---') {
+        inFrontmatter = false;
+        out.push('<span class="md-fence">' + line + '</span>');
+        continue;
+      }
+      const colonIdx = line.indexOf(':');
+      if (colonIdx > 0) {
+        const key = line.substring(0, colonIdx);
+        const rest = line.substring(colonIdx + 1);
+        out.push('<span class="md-yaml-key">' + escapeHtml(key) + '</span>:<span class="md-yaml-val">' + escapeHtml(rest) + '</span>');
+      } else {
+        out.push(escapeHtml(line));
+      }
+      continue;
+    }
+
+    if (/^```/.test(line)) {
+      inCodeBlock = !inCodeBlock;
+      out.push('<span class="md-fence">' + escapeHtml(line) + '</span>');
+      continue;
+    }
+    if (inCodeBlock) {
+      out.push('<span class="md-code-block">' + escapeHtml(line) + '</span>');
+      continue;
+    }
+
+    if (/^ {4}\S/.test(line)) {
+      out.push('<span class="md-code-block">' + escapeHtml(line) + '</span>');
+      continue;
+    }
+
+    if (line === '') {
+      out.push('');
+      continue;
+    }
+
+    // Setext H1 — current line is plain text, next line is === (3+ chars)
+    if (line && !/^#/.test(line) && /^=+$/.test(next) && next.length >= 3) {
+      out.push('<span class="md-heading md-heading-1">' + highlightInline(line) + '</span>');
+      out.push('<span class="md-fence">' + next + '</span>');
+      i++;
+      continue;
+    }
+
+    // Setext H2 — current line plain text, next line is --- (3+ dashes).
+    // Skip if current line is itself only dashes (i.e. an HR before an HR).
+    if (line && !/^#/.test(line) && /^-{3,}$/.test(next) && !/^-{3,}$/.test(line)) {
+      out.push('<span class="md-heading md-heading-2">' + highlightInline(line) + '</span>');
+      out.push('<span class="md-fence">' + next + '</span>');
+      i++;
+      continue;
+    }
+
+    if (line === '---' || /^-{3,}$/.test(line) || /^=+$/.test(line)) {
+      out.push('<span class="md-fence">' + line + '</span>');
+      continue;
+    }
+
+    let m = line.match(/^(#{1,6})(\s+)(.*)$/);
+    if (m) {
+      const level = m[1].length;
+      out.push(
+        '<span class="md-heading-marker md-heading-marker-' + level + '">' + m[1] + '</span>' +
+        m[2] +
+        '<span class="md-heading md-heading-' + level + '">' + highlightInline(m[3]) + '</span>'
+      );
+      continue;
+    }
+
+    m = line.match(/^(>)(\s*)(.*)$/);
+    if (m) {
+      out.push(
+        '<span class="md-quote-marker">' + m[1] + '</span>' +
+        m[2] +
+        '<span class="md-quote">' + highlightInline(m[3]) + '</span>'
+      );
+      continue;
+    }
+
+    // Reference definition: [1]: url
+    m = line.match(/^(\[\d+\]):(\s+)(.*)$/);
+    if (m) {
+      out.push(
+        '<span class="md-list-marker">' + escapeHtml(m[1]) + '</span>:' +
+        m[2] +
+        '<span class="md-link-url">' + escapeHtml(m[3]) + '</span>'
+      );
+      continue;
+    }
+
+    m = line.match(/^(\d+\.)(\s+)(.*)$/);
+    if (m) {
+      out.push('<span class="md-list-marker">' + m[1] + '</span>' + m[2] + highlightInline(m[3]));
+      continue;
+    }
+
+    m = line.match(/^([-*])(\s+)(.*)$/);
+    if (m) {
+      out.push('<span class="md-list-marker">' + m[1] + '</span>' + m[2] + highlightInline(m[3]));
+      continue;
+    }
+
+    out.push(highlightInline(line));
+  }
+
+  return out.join('\n');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -282,4 +740,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = OptionsController;
+  module.exports.highlightMarkdown = highlightMarkdown;
 }
