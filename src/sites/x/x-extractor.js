@@ -33,8 +33,10 @@ class XExtractor {
     try {
       const path = new URL(url).pathname;
 
-      // X Articles: /i/article/...
-      if (/^\/i\/article\//i.test(path)) {
+      // X Articles: /i/article/... OR a /status/ page that contains an article body.
+      // (X Articles often live at /{user}/status/{id} URLs — only the DOM tells us.)
+      if (/^\/i\/article\//i.test(path)) return 'article';
+      if (doc && doc.querySelector && doc.querySelector('[data-testid="twitterArticleReadView"]')) {
         return 'article';
       }
 
@@ -119,39 +121,210 @@ class XExtractor {
    * @returns {ArticleData|null}
    */
   extractArticle(doc) {
-    // X Articles use article-specific DOM structure
-    const articleEl = this._query(doc,
-      '[data-testid="article"]',
+    // Page container: the tweet element that holds the author/timestamp chrome. Author and
+    // <time> live HERE (not inside the article read view). Fall back to the doc itself.
+    const pageContainer = this._query(doc,
       'article[role="article"]',
       'article'
+    ) || doc;
+
+    // Article read view: the X Article body container. Lives inside the page container.
+    // May be absent on non-X-Article pages — fallback paths below still run.
+    const readView = this._query(pageContainer,
+      '[data-testid="twitterArticleReadView"]',
+      '[data-testid="article"]'
     );
 
-    // Try to get title
-    const title = this._extractArticleTitle(doc);
-    // Try to get body HTML
-    const bodyHtml = this._extractArticleBody(doc, articleEl);
+    // Title: dedicated testid > og:title > h1 > document.title.
+    // The dedicated testid carries just the article title; the fallbacks all include
+    // the "Author on X: \"...\" / X" page-chrome wrapper.
+    const titleEl = readView ? this._query(readView, '[data-testid="twitter-article-title"]') : null;
+    const title = (titleEl && titleEl.textContent.trim()) || this._extractArticleTitle(doc);
+
+    // Body root: the rich text view excludes engagement chrome, avatar, and footer counts —
+    // all of which sit inside the broader page container. Scoping here wipes out ~all the
+    // noise the previous extraction was pulling in.
+    const bodyEl = readView ? this._query(readView, '[data-testid="twitterArticleRichTextView"]') : null;
+    const bodyHtml = bodyEl
+      ? this._sanitizeArticleBody(bodyEl)
+      : this._extractArticleBody(doc, readView || (pageContainer === doc ? null : pageContainer));
+
     if (!bodyHtml && !title) return null;
 
-    // Author from the article or page context
-    const authorEl = articleEl
-      ? this._query(articleEl, '[data-testid="User-Name"]')
-      : null;
+    // Author lives in the page container, OUTSIDE the read view.
+    const authorEl = this._query(pageContainer, '[data-testid="User-Name"]');
     const author = authorEl
       ? this._parseAuthorElement(authorEl)
       : this._extractAuthorFromMeta(doc);
 
-    // Published date
-    const timeEl = articleEl
-      ? articleEl.querySelector('time[datetime]')
+    // Published date — first <time> on the page container.
+    const timeEl = pageContainer.querySelector
+      ? pageContainer.querySelector('time[datetime]')
       : doc.querySelector('time[datetime]');
     const publishedDate = timeEl ? timeEl.getAttribute('datetime') : null;
+
+    // Cover image — the first tweetPhoto inside the read view but outside the body.
+    let coverImage = null;
+    if (readView && bodyEl) {
+      const photos = readView.querySelectorAll('[data-testid="tweetPhoto"] img');
+      for (const img of photos) {
+        if (bodyEl.contains(img)) continue;
+        const src = img.getAttribute('src');
+        if (src) { coverImage = src; break; }
+      }
+    }
 
     return {
       author: author || { handle: '', displayName: '' },
       title: title || '',
       bodyHtml: bodyHtml || '',
+      coverImage,
       publishedDate
     };
+  }
+
+  /**
+   * Clone the body element and prepare it for Turndown.
+   * Hangs all article-body normalization off this single chokepoint:
+   *   - flatten Draft.js heading wrappers (h1-h6 inner blocks)
+   *   - (later) sanitize markdown-code-block containers
+   *   - (later) clean mention URLs / unwrap media link wrappers / etc.
+   */
+  _sanitizeArticleBody(bodyEl) {
+    const clone = bodyEl.cloneNode(true);
+    this._flattenHeadings(clone);
+    this._sanitizeCodeBlocks(clone);
+    this._replaceVideoWithPoster(clone);
+    this._unwrapMediaLinks(clone);
+    this._stripVideoLabels(clone);
+    this._inlineMentionWrappers(clone);
+    this._cleanMentionUrls(clone);
+    return clone.innerHTML;
+  }
+
+  /**
+   * X article headings come wrapped in Draft.js scaffolding:
+   *   <h2><div><span style="font-weight: bold;"><span data-text="true">Text</span></span></div></h2>
+   * The block-level <div> child makes Turndown emit `##\n\nText` (an empty heading line
+   * followed by a paragraph). Replacing innerHTML with the plain text content collapses
+   * the wrapper so Turndown emits `## Text` on a single line.
+   * X article headings don't carry inline formatting, so dropping inline structure is safe.
+   */
+  _flattenHeadings(root) {
+    const headings = root.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const h of headings) {
+      h.textContent = h.textContent.trim();
+    }
+  }
+
+  /**
+   * X wraps each code block in a container with a visible language-label span and a
+   * "Copy to clipboard" button as siblings of the actual <pre>. Both leak into the
+   * markdown output as bare text. Strip everything inside the container down to the
+   * <pre> alone — the <code class="language-X"> survives, so the GFM fence keeps its
+   * language tag.
+   */
+  _sanitizeCodeBlocks(root) {
+    const blocks = root.querySelectorAll('[data-testid="markdown-code-block"]');
+    for (const block of blocks) {
+      const pre = block.querySelector('pre');
+      if (!pre) continue;
+      while (block.firstChild) block.removeChild(block.firstChild);
+      block.appendChild(pre);
+    }
+  }
+
+  /**
+   * Turndown has no default rule for HTML5 <video>, so embedded videos and GIFs in
+   * X articles drop out of the output entirely. Replace each <video> with an <img>
+   * of its poster frame so the visual at least survives. We label as "GIF" since X's
+   * embedded-video pattern in articles is overwhelmingly animated GIFs / short clips
+   * (the bare "GIF" label span — see _stripVideoLabels — is X's own UI signal).
+   */
+  _replaceVideoWithPoster(root) {
+    const videos = root.querySelectorAll('video');
+    for (const video of videos) {
+      const poster = video.getAttribute('poster');
+      if (!poster || !video.ownerDocument) continue;
+      const img = video.ownerDocument.createElement('img');
+      img.setAttribute('src', poster);
+      img.setAttribute('alt', 'GIF');
+      video.replaceWith(img);
+    }
+  }
+
+  /**
+   * X wraps inline tweet photos and video components in <a> links pointing at the
+   * in-app media viewer (`/{user}/article/{id}/media/{mediaId}`). The link adds no value
+   * for a saved markdown — it points at a UI route that only works inside x.com — and
+   * Turndown emits ugly `[ ![](url) ](mediaUrl)` image-in-link markdown. Unwrap the link
+   * so just the media survives.
+   */
+  _unwrapMediaLinks(root) {
+    const links = root.querySelectorAll('a[href*="/media/"], a[href*="/photo/"], a[href*="/video/"]');
+    for (const link of links) {
+      const hasMedia = !!link.querySelector('[data-testid="tweetPhoto"], [data-testid="videoComponent"], [data-testid="videoPlayer"], img');
+      if (!hasMedia || !link.parentNode) continue;
+      while (link.firstChild) link.parentNode.insertBefore(link.firstChild, link);
+      link.remove();
+    }
+  }
+
+  /**
+   * X renders a small "GIF" / "Video" badge inside its video components as a bare
+   * <span>. With the media itself rendered as an image (the poster), the badge ends
+   * up in markdown as a stray text line ("GIF") between paragraphs. Strip these
+   * label spans — the markdown reader can see the media URL and infer.
+   */
+  _stripVideoLabels(root) {
+    const videos = root.querySelectorAll('[data-testid="videoComponent"], [data-testid="videoPlayer"]');
+    for (const v of videos) {
+      v.querySelectorAll('span').forEach(span => {
+        const text = (span.textContent || '').trim();
+        if ((text === 'GIF' || text === 'Video') && span.children.length === 0) {
+          span.remove();
+        }
+      });
+    }
+  }
+
+  /**
+   * X mentions in article body are anchors wrapped in a block-level <div>:
+   *   …text… <div><a href="…">@user</a></div> …more text…
+   * The block <div> makes Turndown treat the mention as its own paragraph, breaking
+   * the surrounding sentence across three lines. Replacing the wrapper <div> with
+   * the anchor itself restores inline flow.
+   * Only applies when the wrapper has no other significant children — leaves
+   * legitimate block divs alone.
+   */
+  _inlineMentionWrappers(root) {
+    const anchors = root.querySelectorAll('a');
+    for (const a of anchors) {
+      const parent = a.parentElement;
+      if (!parent || parent.tagName !== 'DIV') continue;
+      const otherChildren = Array.from(parent.children).filter(c => c !== a);
+      if (otherChildren.length > 0) continue;
+      // Replace the wrapper div with just the anchor (preserves position in flow).
+      parent.replaceWith(a);
+    }
+  }
+
+  /**
+   * X mention links carry an extra `@` in their path: `/@mercury` instead of `/mercury`.
+   * Browsers tolerate the duplicate; markdown readers and link checkers don't.
+   * Strip just that `@` from the URL — the displayed text stays as `@mercury`.
+   */
+  _cleanMentionUrls(root) {
+    const anchors = root.querySelectorAll('a[href]');
+    for (const a of anchors) {
+      const href = a.getAttribute('href');
+      const match = href.match(/^(https?:\/\/[^/]+)?\/@(\w+)(\/.*)?$/);
+      if (match) {
+        const base = match[1] || '';
+        const trailing = match[3] || '';
+        a.setAttribute('href', `${base}/${match[2]}${trailing}`);
+      }
+    }
   }
 
   // ── Internal: Tweet element finders ──

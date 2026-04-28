@@ -167,6 +167,73 @@ const ARTICLE_HTML = `
 </html>
 `;
 
+// X Articles in the wild use a twitterArticleReadView container, the User-Name and
+// <time> sit OUTSIDE that container but inside the broader tweet, body lives in a
+// twitterArticleRichTextView, and headings/mentions/code blocks are wrapped in Draft.js
+// scaffolding. This fixture reproduces those structures.
+const X_ARTICLE_READVIEW_HTML = `
+<html>
+  <head>
+    <meta property="og:title" content="Author on X: &quot;Real Title&quot; / X" />
+    <title>Author on X: "Real Title" / X</title>
+  </head>
+  <body>
+    <article role="article" data-testid="tweet">
+      <div data-testid="User-Name">
+        <span>Real Author</span>
+        <span>@realauthor</span>
+      </div>
+      <time datetime="2026-04-15T16:09:43.000Z">Apr 15, 2026</time>
+      <button aria-label="20 replies"></button>
+      <button aria-label="135 reposts"></button>
+      <button aria-label="922 Likes"></button>
+      <div data-testid="twitterArticleReadView">
+        <div data-testid="twitter-article-title">Real Title</div>
+        <a href="/realauthor/article/1/media/cover">
+          <div data-testid="tweetPhoto">
+            <img src="https://pbs.twimg.com/media/cover.jpg" alt="Image" />
+          </div>
+        </a>
+        <div data-testid="twitterArticleRichTextView">
+          <h2 class="longform-header-two">
+            <div><span style="font-weight: bold;"><span data-text="true">Background</span></span></div>
+          </h2>
+          <div class="longform-unstyled" data-block="true">
+            <div>
+              <span><span data-text="true">Working with </span></span>
+              <div>
+                <a href="https://x.com/@mercury">
+                  <span><span data-text="true">@mercury</span></span>
+                </a>
+              </div>
+              <span><span data-text="true"> is fun.</span></span>
+            </div>
+          </div>
+          <div data-testid="markdown-code-block">
+            <div>
+              <div><span>js</span></div>
+              <div><button aria-label="Copy to clipboard">Copy</button></div>
+            </div>
+            <pre><code class="language-js">const x = 1;</code></pre>
+          </div>
+          <a href="/realauthor/article/1/media/inline">
+            <div data-testid="tweetPhoto">
+              <img src="https://pbs.twimg.com/media/inline.jpg" alt="Image" />
+            </div>
+          </a>
+          <div data-testid="videoPlayer">
+            <div data-testid="videoComponent">
+              <video poster="https://pbs.twimg.com/tweet_video_thumb/abc.jpg" src="https://video.twimg.com/abc.mp4"></video>
+              <span>GIF</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+</html>
+`;
+
 // ── Helpers ──
 
 function createDoc(html) {
@@ -201,6 +268,12 @@ describe('XExtractor', () => {
 
     test('detects article from /i/article/ URL', () => {
       expect(extractor.detectContentType('https://x.com/i/article/12345', document))
+        .toBe('article');
+    });
+
+    test('detects article on /status/ URL when twitterArticleReadView is present', () => {
+      document.documentElement.innerHTML = X_ARTICLE_READVIEW_HTML;
+      expect(extractor.detectContentType('https://x.com/realauthor/status/1', document))
         .toBe('article');
     });
 
@@ -416,6 +489,97 @@ describe('XExtractor', () => {
       document.title = '';
       const article = extractor.extractArticle(document);
       expect(article).toBeNull();
+    });
+  });
+
+  describe('extractArticle (X Article / twitterArticleReadView)', () => {
+    beforeEach(() => {
+      document.documentElement.innerHTML = X_ARTICLE_READVIEW_HTML;
+    });
+
+    test('uses twitter-article-title (not og:title) for clean title', () => {
+      const article = extractor.extractArticle(document);
+      expect(article.title).toBe('Real Title');
+      // og:title carries the noisy "Author on X: \"...\" / X" wrapper — must not leak through.
+      expect(article.title).not.toMatch(/on X:/);
+    });
+
+    test('extracts author and timestamp from outside the read view', () => {
+      const article = extractor.extractArticle(document);
+      expect(article.author.handle).toBe('realauthor');
+      expect(article.author.displayName).toBe('Real Author');
+      expect(article.publishedDate).toBe('2026-04-15T16:09:43.000Z');
+    });
+
+    test('cover image comes from outside the rich text view', () => {
+      const article = extractor.extractArticle(document);
+      expect(article.coverImage).toBe('https://pbs.twimg.com/media/cover.jpg');
+      // Inline image (inside body) must not be picked as the cover.
+      expect(article.coverImage).not.toMatch(/inline/);
+    });
+
+    test('body excludes engagement chrome and avatar', () => {
+      const article = extractor.extractArticle(document);
+      // Engagement aria-labels live OUTSIDE the rich text view, so the body should be free of them.
+      expect(article.bodyHtml).not.toMatch(/\b922\b/);
+      expect(article.bodyHtml).not.toMatch(/\b135\b/);
+      expect(article.bodyHtml).not.toMatch(/\b20 replies\b/);
+    });
+
+    test('flattens Draft.js heading wrappers', () => {
+      const article = extractor.extractArticle(document);
+      // Pre-flatten: <h2><div><span><span data-text>Background</span></span></div></h2>
+      // Post-flatten: <h2>Background</h2>
+      expect(article.bodyHtml).toMatch(/<h2[^>]*>Background<\/h2>/);
+      // No leftover Draft.js scaffolding inside headings.
+      expect(article.bodyHtml).not.toMatch(/<h2[^>]*>\s*<div/);
+    });
+
+    test('sanitizes code blocks: drops language label + copy button', () => {
+      const article = extractor.extractArticle(document);
+      // The <pre><code class="language-js"> survives intact.
+      expect(article.bodyHtml).toMatch(/<pre><code class="language-js">const x = 1;<\/code><\/pre>/);
+      // The "Copy to clipboard" button and bare "js" label span are gone.
+      expect(article.bodyHtml).not.toMatch(/Copy to clipboard/);
+      expect(article.bodyHtml).not.toMatch(/<span>js<\/span>/);
+    });
+
+    test('replaces <video> with <img> of the poster', () => {
+      const article = extractor.extractArticle(document);
+      // Turndown drops <video> entirely; we swap to <img> so the poster image survives.
+      expect(article.bodyHtml).toMatch(/<img[^>]*src="https:\/\/pbs\.twimg\.com\/tweet_video_thumb\/abc\.jpg"[^>]*alt="GIF"/);
+      expect(article.bodyHtml).not.toMatch(/<video/);
+    });
+
+    test('strips the bare "GIF" label span from video components', () => {
+      const article = extractor.extractArticle(document);
+      // The standalone <span>GIF</span> X renders as a video badge would otherwise show
+      // up as bare "GIF" text in the markdown output.
+      expect(article.bodyHtml).not.toMatch(/<span>GIF<\/span>/);
+    });
+
+    test('unwraps media-viewer link wrappers around photos', () => {
+      const article = extractor.extractArticle(document);
+      // Inline tweetPhotos in the body survive, but their wrapping <a href="/.../media/...">
+      // is gone — Turndown would otherwise emit ugly [![](url)](mediaUrl).
+      expect(article.bodyHtml).toMatch(/inline\.jpg/);
+      expect(article.bodyHtml).not.toMatch(/href="\/realauthor\/article\/1\/media\/inline"/);
+    });
+
+    test('inlines mention block-div wrappers so paragraphs flow', () => {
+      const article = extractor.extractArticle(document);
+      // Pre-unwrap: <div>…</div> <div><a href="…">@mercury</a></div> <div>…</div>
+      // Post-unwrap: <a href="…">@mercury</a> sits as a direct sibling of the
+      // surrounding text — Turndown then emits inline link, paragraph stays whole.
+      // The "<div><a href=...mercury" wrap pattern must be gone.
+      expect(article.bodyHtml).not.toMatch(/<div[^>]*>\s*<a href="https:\/\/x\.com\/mercury"/);
+    });
+
+    test('cleans @ from mention URLs', () => {
+      const article = extractor.extractArticle(document);
+      // /@mercury → /mercury (the displayed text @mercury is unchanged).
+      expect(article.bodyHtml).toMatch(/href="https:\/\/x\.com\/mercury"/);
+      expect(article.bodyHtml).not.toMatch(/href="https:\/\/x\.com\/@mercury"/);
     });
   });
 

@@ -119,6 +119,12 @@ class XFormatter {
     parts.push('---');
     parts.push('');
 
+    // Cover image (article header image — separate from inline body media)
+    if (article.coverImage) {
+      parts.push(`![Cover](${article.coverImage})`);
+      parts.push('');
+    }
+
     // Body
     if (article.bodyHtml) {
       if (converter && typeof converter.convertHtmlFragment === 'function') {
