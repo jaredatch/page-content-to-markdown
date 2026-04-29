@@ -205,6 +205,26 @@ class MyExtractor {
 - **Return `null` on any failure** — the content script falls back to the general Turndown conversion path if extraction returns null. Never throw.
 - **Return plain data objects** (no DOM nodes, no functions) — the formatter is a separate pure transform.
 
+### Optional: `detectAvailable(doc, url)` for popup-time DOM filtering
+
+If your site has multiple content types that share a URL pattern (e.g. X's `/{user}/status/{id}` can be a single tweet, a thread, or an article), implement this method on your Extractor to let the popup hide rows that don't apply on the current page. Returns a `{ contentTypeId: boolean, ... }` map keyed by your `contentType.id` values.
+
+```js
+detectAvailable(doc, url) {
+  const result = { 'single-tweet': false, thread: false, article: false };
+  if (!doc || typeof doc.querySelector !== 'function') return result;
+  // Check DOM + URL for each content type, set true/false accordingly.
+  // Be explicit about mutual exclusion if some types preempt others.
+  return result;
+}
+```
+
+The popup fires this through `probeContentTypes` on open, runs in parallel with the optimistic URL-applicable render, filters rows when the result lands. The same probe is used by the `quick-extract` keyboard command to pick the right action without a popup.
+
+**If you implement this, also add `host_permissions` to manifest.json for your site's hostnames** so the content script auto-injects on page load — without that, the popup's probe races a just-in-time content script injection on first popup open and gets nothing back. Add a privacy justification entry in `store/chrome-privacy-justifications.md`.
+
+**Conservative defaults:** the popup treats `null` (method not defined) and all-false maps as "inconclusive — keep URL-applicable rows" so a partially-loaded page can't strand the user without options. Filtering only happens when at least one value is `true`.
+
 ### Formatter contract
 
 ```js

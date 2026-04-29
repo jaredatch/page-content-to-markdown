@@ -301,6 +301,56 @@ describe('XExtractor', () => {
     });
   });
 
+  describe('detectAvailable', () => {
+    test('single tweet on /status/ → only single-tweet applies', () => {
+      createDoc(SINGLE_TWEET_HTML);
+      const result = extractor.detectAvailable(document, 'https://x.com/elonmusk/status/123456');
+      expect(result).toEqual({ 'single-tweet': true, thread: false, article: false });
+    });
+
+    test('thread on /status/ → both single-tweet and thread apply, article does not', () => {
+      createDoc(THREAD_HTML);
+      const result = extractor.detectAvailable(document, 'https://x.com/janedev/status/100');
+      expect(result).toEqual({ 'single-tweet': true, thread: true, article: false });
+    });
+
+    test('article body on /status/ → only article applies (mutually exclusive with tweet/thread)', () => {
+      document.documentElement.innerHTML = X_ARTICLE_READVIEW_HTML;
+      const result = extractor.detectAvailable(document, 'https://x.com/realauthor/status/1');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: true });
+    });
+
+    test('article URL /i/article/ → article applies regardless of DOM', () => {
+      const result = extractor.detectAvailable(document, 'https://x.com/i/article/12345');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: true });
+    });
+
+    test('article URL /{user}/article/{id} → article applies regardless of DOM', () => {
+      const result = extractor.detectAvailable(document, 'https://x.com/realauthor/article/2046876981711769720');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: true });
+    });
+
+    test('non-status, non-article URL → nothing applies', () => {
+      const result = extractor.detectAvailable(document, 'https://x.com/home');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: false });
+    });
+
+    test('/status/ URL with no tweet elements (page not loaded) → nothing applies', () => {
+      const result = extractor.detectAvailable(document, 'https://x.com/someone/status/999');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: false });
+    });
+
+    test('handles invalid URL gracefully', () => {
+      const result = extractor.detectAvailable(document, 'not-a-url');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: false });
+    });
+
+    test('handles missing document gracefully', () => {
+      const result = extractor.detectAvailable(null, 'https://x.com/elonmusk/status/123456');
+      expect(result).toEqual({ 'single-tweet': false, thread: false, article: false });
+    });
+  });
+
   describe('extractSingleTweet', () => {
     test('extracts complete tweet data', () => {
       createDoc(SINGLE_TWEET_HTML);

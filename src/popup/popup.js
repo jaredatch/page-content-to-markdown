@@ -52,7 +52,8 @@ class PopupController {
       selectedSiteId: null,
       view: 'main',                    // 'main' | 'selecting' | 'restricted'
       prefs: { ...Preferences.DEFAULTS },
-      busy: false
+      busy: false,
+      probeApplied: false              // true once a successful DOM probe has filtered applicableContentTypes
     };
 
     this._errorTimer = null;
@@ -69,6 +70,11 @@ class PopupController {
     this.restoreSelectionFromMemory();
     this.setupEventListeners();
     this.render();
+
+    // Fire DOM probe in parallel with the optimistic URL-only render. Result
+    // applies in 10-50ms typical, hiding rows that don't actually exist in
+    // the page DOM (e.g. Article option on a non-article /status/ URL).
+    this.runContentTypeProbe();
   }
 
   async loadPreferences() {
@@ -116,6 +122,86 @@ class PopupController {
     } catch (error) {
       console.log('📋 [popup] Could not check selection state:', error.message);
     }
+  }
+
+  /**
+   * Fire a DOM probe to the active tab's content script asking which content
+   * types are *actually present* in the live DOM. Result filters out rows
+   * that match the URL pattern but won't extract anything useful (e.g.
+   * Article option on a non-article /status/ URL). Runs in parallel with
+   * the initial URL-only render so the popup stays instant.
+   *
+   * No timeout — the popup is already showing URL-applicable rows from the
+   * synchronous render, so a slow probe doesn't block the UI. Letting late
+   * responses still apply is more correct than racing them away (Chrome MV3
+   * SW cold starts can push the round-trip past any reasonable timeout).
+   *
+   * Conservative on inconclusive results — if the probe returns `null` (site
+   * module exposes no probe) or an all-false map (page may not have rendered
+   * yet), we keep URL-applicable rows rather than hiding everything.
+   */
+  async runContentTypeProbe() {
+    if (this.state.view !== 'main') return;
+    const site = this.state.currentSite;
+    if (!site || this.state.applicableContentTypes.length === 0) return;
+
+    console.log(`🔍 [popup] Firing probe for site=${site.id}, URL-applicable=[${this.state.applicableContentTypes.map(c => c.id).join(', ')}]`);
+
+    let response;
+    try {
+      response = await this.sendMessageToBackground({ action: 'probeContentTypes', siteId: site.id });
+    } catch (error) {
+      console.log('🔍 [popup] Probe transmission failed, keeping URL-applicable rows:', error.message);
+      return;
+    }
+
+    console.log('🔍 [popup] Probe response:', response);
+
+    if (!response || !response.success) {
+      console.log('🔍 [popup] Probe unsuccessful, keeping URL-applicable rows');
+      return;
+    }
+    if (response.available === null || response.available === undefined) {
+      console.log('🔍 [popup] Probe returned null (no detector), keeping URL-applicable rows');
+      return;
+    }
+    this.applyProbeResult(response.available);
+  }
+
+  applyProbeResult(available) {
+    if (!available || typeof available !== 'object') return;
+
+    // All-false → probe was inconclusive (page may not have rendered yet).
+    // Keep URL-applicable rows rather than hiding everything.
+    const anyTrue = Object.values(available).some(Boolean);
+    if (!anyTrue) {
+      console.log('🔍 [popup] Probe returned all-false, treating as inconclusive — keeping URL-applicable rows');
+      return;
+    }
+
+    const before = this.state.applicableContentTypes.map(c => c.id);
+    this.state.applicableContentTypes = this.state.applicableContentTypes.filter(
+      ct => available[ct.id] === true
+    );
+    const after = this.state.applicableContentTypes.map(c => c.id);
+    this.state.probeApplied = true;
+    console.log(`🔍 [popup] Probe filtered rows: [${before.join(', ')}] → [${after.join(', ')}]`);
+
+    // Stale selection — drop to first applicable, or to page content.
+    const selected = this.state.selectedContentType;
+    if (selected !== 'page' && !this.state.applicableContentTypes.some(ct => ct.id === selected)) {
+      if (this.state.applicableContentTypes.length > 0 && this.state.currentSite) {
+        this.state.selectedContentType = this.state.applicableContentTypes[0].id;
+        this.state.selectedSiteId = this.state.currentSite.id;
+        console.log(`🔍 [popup] Selected "${selected}" no longer applicable, fell back to "${this.state.selectedContentType}"`);
+      } else {
+        this.state.selectedContentType = 'page';
+        this.state.selectedSiteId = null;
+        console.log(`🔍 [popup] Selected "${selected}" no longer applicable, no fallback — using Page content`);
+      }
+    }
+
+    this.renderRows();
   }
 
   /**

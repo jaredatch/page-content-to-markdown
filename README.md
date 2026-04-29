@@ -8,7 +8,7 @@ Firefox-first, with Chrome support.
 
 - **Content extraction.** Skips nav, ads, footers, comments, and other page chrome by default. [How it works](docs/content-extraction.md)
 - **Selective conversion.** Hover and click to pick specific elements, or right-click selected text.
-- **Site actions for X, Claude, and Grok.** Dedicated extractors that produce cleaner output than the general path. [Supported sites](docs/supported-sites.md)
+- **Site actions for X, Claude, and Grok.** Dedicated extractors that produce cleaner output than the general path. On X, the popup detects what's actually on the page and only shows the options that fit (single tweet, thread, or article). [Supported sites](docs/supported-sites.md)
 - **GFM output.** Tables, strikethrough, task lists.
 - **Clipboard or file.** Copy to clipboard or save as `.md`.
 - **Page info as inline metadata or YAML frontmatter.** Title, URL, and date/time at the top of every save — as bold key-value lines or as YAML for Obsidian, Logseq, Hugo, Jekyll, and similar tools.
@@ -16,7 +16,7 @@ Firefox-first, with Chrome support.
 - **Tracking-parameter strip.** `utm_*`, `fbclid`, `gclid`, and other analytics noise removed from URLs by default.
 - **Customizable filenames.** Template-based with tokens (`{title}`, `{date}`, `{domain}`, `{slug}`, etc.) and a choice of preserve / kebab-case / snake_case.
 - **Formatting preferences.** Heading style, bullet markers, code blocks, link style.
-- **Keyboard shortcut and context menus.** `Cmd+Shift+M` / `Ctrl+Shift+M` toggles selection mode; right-click to convert selected text or pick an element.
+- **Keyboard shortcuts and context menus.** `Cmd+Shift+M` / `Ctrl+Shift+M` toggles selection mode. A second shortcut (no default — bind it yourself in your browser's extension shortcut settings) runs your default Copy/Save action with the smart-detected content type, no popup needed. Right-click to convert selected text or pick an element.
 
 ## Install
 
@@ -56,7 +56,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and PR workflow. For de
 
 - Firefox (primary target): MV3 with `background.scripts`
 - Chrome: MV3 with `service_worker`
-- Keyboard shortcut: `Cmd+Shift+M` / `Ctrl+Shift+M` (avoids Firefox's `Cmd+Shift+S` screenshot conflict)
+- Keyboard shortcuts: `Cmd+Shift+M` / `Ctrl+Shift+M` for selection mode (avoids Firefox's `Cmd+Shift+S` screenshot conflict). Quick-extract has no default key — bind your own.
 
 ## Acknowledgments
 

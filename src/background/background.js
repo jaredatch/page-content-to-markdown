@@ -3,8 +3,22 @@
 
 const Preferences = require('../utils/preferences');
 const FilenameTemplate = require('../utils/filename-template');
+const SiteRegistry = require('../utils/site-registry');
 
 console.log('🚀 [background] Background script loaded');
+
+// Mirrors popup.js — URLs the extension can't extract from (browser chrome,
+// extension pages, local files). Used to short-circuit the quick-extract
+// keyboard shortcut with a clear notification instead of a cryptic
+// tabs.sendMessage error.
+const RESTRICTED_URL_PATTERNS = [
+  /^chrome:\/\//,
+  /^chrome-extension:\/\//,
+  /^moz-extension:\/\//,
+  /^edge:\/\//,
+  /^about:/,
+  /^file:\/\//
+];
 
 class BackgroundScript {
   constructor() {
@@ -53,6 +67,11 @@ class BackgroundScript {
         return true;
       }
 
+      if (request.action === 'probeContentTypes') {
+        this.handleProbeContentTypes(request.siteId, sendResponse);
+        return true;
+      }
+
       if (request.action === 'selectionComplete') {
         this.handleSelectionComplete(request.result, sender);
         return false;
@@ -72,6 +91,8 @@ class BackgroundScript {
         console.log('⌨️ [background] Command received:', command);
         if (command === 'toggle-selection-mode') {
           this.toggleSelectionMode();
+        } else if (command === 'quick-extract') {
+          this.handleQuickExtract();
         }
       });
     }
@@ -404,6 +425,131 @@ class BackgroundScript {
       sendResponse(result);
     } catch (error) {
       console.error(`🚨 [background] Error extracting site content (${siteId}/${contentType}):`, error);
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Quick-extract keyboard command: resolve the right action for the current
+   * tab and fire it without UI. Mirrors what would happen if the user opened
+   * the popup and clicked their preferred default button — uses URL detection
+   * + DOM probe + lastUsedPerSite memory to pick the smartest content type,
+   * then dispatches via the existing extract handlers using the outputMode
+   * preference (Copy vs Save). User feedback is via system notifications.
+   */
+  async handleQuickExtract() {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        this.showNotification('No active tab', 'No tab in focus to extract from', 'error');
+        return;
+      }
+      const tab = tabs[0];
+      const url = tab.url || '';
+
+      if (RESTRICTED_URL_PATTERNS.some(p => p.test(url))) {
+        this.showNotification("Can't extract", "This page can't be extracted", 'error');
+        return;
+      }
+
+      const prefs = await Preferences.get();
+      const mode = prefs.outputMode === 'file' ? 'file' : 'clipboard';
+
+      const site = SiteRegistry.detect(url);
+      const applicable = site ? SiteRegistry.applicableContentTypes(site, url) : [];
+
+      let resolvedSiteId = null;
+      let resolvedContentType = null;
+
+      if (site && applicable.length > 0) {
+        // DOM probe — same one the popup uses. Filters rows on URLs where
+        // multiple URL-applicable content types exist but only some are
+        // actually present (e.g. /status/ with no thread → drops Thread).
+        let filtered = applicable;
+        try {
+          const probe = await chrome.tabs.sendMessage(tab.id, {
+            action: 'probeContentTypes',
+            siteId: site.id
+          });
+          if (probe && probe.success && probe.available) {
+            const anyTrue = Object.values(probe.available).some(Boolean);
+            if (anyTrue) {
+              filtered = applicable.filter(ct => probe.available[ct.id] === true);
+            }
+          }
+        } catch (probeError) {
+          console.log('⌨️ [background] Quick-extract probe failed, using URL-applicable:', probeError.message);
+        }
+
+        if (filtered.length > 0) {
+          // Prefer last-used content type when it's still applicable. Falls
+          // back to the first applicable so a stale memory entry can't
+          // strand the user on Page content unnecessarily.
+          const lastUsed = (prefs.lastUsedPerSite || {})[site.id];
+          const useLastUsed = lastUsed && filtered.some(ct => ct.id === lastUsed);
+          resolvedSiteId = site.id;
+          resolvedContentType = useLastUsed ? lastUsed : filtered[0].id;
+        }
+      }
+
+      // handleExtractSiteContent already notifies on success (line shows
+      // contentType saved/copied). Our callback only handles the failure
+      // path so the user gets feedback either way.
+      const onSiteResult = (result) => {
+        if (!result || !result.success) {
+          this.showNotification('Quick-extract failed', (result && result.error) || 'Extract failed', 'error');
+        }
+      };
+
+      // handleExtractAndCopy doesn't notify on its own — we own both paths.
+      const onPageResult = (result) => {
+        if (result && result.success) {
+          const verb = (result.method === 'file') ? 'saved' : 'copied';
+          this.showNotification('Success', `Page content ${verb} as markdown`, 'success');
+        } else {
+          this.showNotification('Quick-extract failed', (result && result.error) || 'Extract failed', 'error');
+        }
+      };
+
+      if (resolvedSiteId && resolvedContentType) {
+        console.log(`⌨️ [background] Quick-extract: ${resolvedSiteId}/${resolvedContentType} → ${mode}`);
+        await this.handleExtractSiteContent(resolvedSiteId, resolvedContentType, onSiteResult, mode);
+      } else {
+        console.log(`⌨️ [background] Quick-extract: page content → ${mode}`);
+        await this.handleExtractAndCopy(onPageResult, mode);
+      }
+    } catch (error) {
+      console.error('🚨 [background] Error in handleQuickExtract:', error);
+      this.showNotification('Error', `Quick-extract failed: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Relay a content-type DOM probe to the active tab's content script. Used by
+   * the popup to filter rows on URLs where multiple content types match the
+   * URL pattern (e.g. /status/ on X) but only some apply in the current DOM.
+   * Returns `{ success: true, available: { 'single-tweet': bool, ... } | null }`.
+   * `null` = the site module doesn't expose a probe → popup falls back to URL-applicable rows.
+   * @param {string} siteId
+   * @param {function} sendResponse
+   */
+  async handleProbeContentTypes(siteId, sendResponse) {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        console.warn('🔍 [background] probeContentTypes: no active tab');
+        sendResponse({ success: false, error: 'No active tab' });
+        return;
+      }
+      console.log(`🔍 [background] Relaying probe to tab ${tabs[0].id} for siteId=${siteId}`);
+      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+        action: 'probeContentTypes',
+        siteId
+      });
+      console.log('🔍 [background] Probe response from content script:', response);
+      sendResponse(response || { success: true, available: null });
+    } catch (error) {
+      console.warn('🔍 [background] probeContentTypes failed:', error.message);
       sendResponse({ success: false, error: error.message });
     }
   }

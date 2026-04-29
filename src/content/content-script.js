@@ -572,6 +572,31 @@ class ContentScript {
         return true; // async response
       }
 
+      if (request.action === 'probeContentTypes') {
+        console.log(`🔍 [content-script] Probe request for siteId=${request.siteId}`);
+        try {
+          const site = SiteRegistry.getById(request.siteId);
+          if (!site || typeof site.Extractor !== 'function') {
+            console.log(`🔍 [content-script] No site or Extractor for siteId=${request.siteId}, returning null`);
+            sendResponse({ success: true, available: null });
+            return false;
+          }
+          const extractor = new site.Extractor();
+          if (typeof extractor.detectAvailable !== 'function') {
+            console.log(`🔍 [content-script] Extractor for ${request.siteId} has no detectAvailable, returning null`);
+            sendResponse({ success: true, available: null });
+            return false;
+          }
+          const available = extractor.detectAvailable(document, window.location.href);
+          console.log(`🔍 [content-script] Probe result for ${request.siteId}:`, available);
+          sendResponse({ success: true, available });
+        } catch (error) {
+          console.warn('🔍 [content-script] probeContentTypes failed:', error.message);
+          sendResponse({ success: false, error: error.message });
+        }
+        return false;
+      }
+
       if (request.action === 'startSelectionMode') {
         this.startSelectionMode();
         sendResponse({ success: true });

@@ -9,6 +9,10 @@
     "contextMenus",
     "storage"
   ],
+  "host_permissions": [
+    "*://x.com/*",
+    "*://*.x.com/*"
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -52,6 +56,9 @@
         "mac": "Command+Shift+M"
       },
       "description": "Toggle element selection mode"
+    },
+    "quick-extract": {
+      "description": "Run default action (Copy/Save) using last-used content type"
     }
   }
 }

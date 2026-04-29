@@ -4,6 +4,8 @@ For some sites, the extension provides **site actions**: dedicated extractors th
 
 When you're on a supported site, the popup picker shows the site's content options (under an "Available on …" divider) alongside the regular Page content option. Pick the one that matches what's on the page, then Copy or Save.
 
+On X, the popup goes a step further and detects what's actually on the page — so you only see the options that fit. On a single tweet you'll see "Tweet"; on a thread you'll see "Tweet" and "Thread"; on an X Article you'll see "Article" by itself (since extracting the wrapper tweet of an article isn't useful).
+
 | Site | Actions | Where it works |
 |---|---|---|
 | X / Twitter | Tweet, Thread, Article | `x.com`, `twitter.com` |
@@ -22,7 +24,7 @@ Three actions, depending on what's on the page:
 
 **Thread.** When the focal tweet is part of a chain by the same author, captures the whole chain in document order. Use this on the entry tweet of a thread to grab everything at once.
 
-**Article.** For X Articles (`/i/article/...`), captures the long-form post structure with headings, body, and images. The "Article" button only makes sense on these URLs.
+**Article.** For X Articles, captures the long-form post structure with headings, body, and images. Article URLs come in three shapes (`/i/article/...`, `/{user}/status/{id}` for X-Article-style status pages, and `/{user}/article/...`); detection looks at both the URL and the live DOM, and on a status page that's actually an article only the "Article" option appears (Tweet and Thread are hidden since extracting the bare wrapper tweet wouldn't include the body).
 
 ---
 

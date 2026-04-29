@@ -104,6 +104,60 @@ class XExtractor {
   }
 
   /**
+   * Detect which content types are *actually present* in the live DOM. Used
+   * by the popup to filter rows on /status/ URLs (where URL alone can't
+   * disambiguate single-tweet vs thread vs article).
+   *
+   * Article presence is mutually exclusive with tweet/thread display — on
+   * an article-bearing /status/ page the wrapper tweet element still exists
+   * but extracting "just the tweet" yields title + author with no body,
+   * which isn't useful. So when an article is detected we suppress the
+   * tweet/thread rows.
+   *
+   * Thread requires chain length >= 2 (focal + at least one DOM-adjacent
+   * same-author tweet) to filter out lone tweets where Thread would just
+   * re-extract the focal.
+   *
+   * @param {Document} doc
+   * @param {string} url - Current page URL
+   * @returns {{'single-tweet': boolean, thread: boolean, article: boolean}}
+   */
+  detectAvailable(doc, url) {
+    const result = { 'single-tweet': false, thread: false, article: false };
+    if (!doc || typeof doc.querySelector !== 'function') return result;
+
+    let path = '';
+    try { path = new URL(url || '').pathname; } catch { /* leave blank */ }
+
+    const articleByUrl =
+      /^\/i\/article\//i.test(path) ||
+      /^\/[^/]+\/article\/\d+/i.test(path);
+    const articleByDom = !!doc.querySelector('[data-testid="twitterArticleReadView"]');
+    if (articleByUrl || articleByDom) {
+      result.article = true;
+      return result;
+    }
+
+    if (!/^\/[^/]+\/status\/\d+/i.test(path)) return result;
+
+    const tweets = this._findTweetElements(doc);
+    if (tweets.length === 0) return result;
+
+    const focal = this._findFocalTweet(tweets, url) || tweets[0];
+    if (!focal) return result;
+
+    result['single-tweet'] = true;
+
+    const focalAuthor = this._extractAuthor(focal);
+    if (focalAuthor && focalAuthor.handle) {
+      const chain = this._collectThreadChain(tweets, focal, focalAuthor.handle);
+      if (chain.length >= 2) result.thread = true;
+    }
+
+    return result;
+  }
+
+  /**
    * Detect what type of X content is on the page.
    * @param {string} url - Current page URL
    * @param {Document} doc - The document

@@ -28,6 +28,21 @@ The extension uses chrome.storage.local to persist user preferences such as outp
 
 ---
 
+## Host Permissions
+
+### `*://x.com/*` and `*://*.x.com/*`
+
+**Justification:**
+X (formerly Twitter) is a supported site for which the extension provides specialized extraction (single tweets, threads, and X Articles). The extension needs to detect, on popup open, which of these content types is actually present in the page DOM so it can show only the applicable options to the user — for example, hiding the "Article" option on a regular tweet, or showing only "Article" on an X Article page.
+
+This DOM detection runs the moment the user opens the popup, before they can click anything. With `activeTab` alone, the content script is only injected after the user clicks the toolbar icon, which races the detection step and produces incorrect results on the first popup open.
+
+Pre-granting access to x.com via host permissions ensures the content script is already loaded when the user opens the popup, so detection works correctly the first time. The same as `<all_urls>` content scripts: no logic runs automatically on page load, no page content is transmitted anywhere, and no remote code is executed.
+
+This permission is scoped narrowly to x.com because that is the only supported site requiring popup-time DOM detection today. Other supported sites (Claude, Grok) are reachable through the existing user-click flow without a similar race.
+
+---
+
 ## Content Scripts - Host Permissions
 
 ### `<all_urls>` (content script match pattern)
