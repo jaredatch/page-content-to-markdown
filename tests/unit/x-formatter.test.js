@@ -11,14 +11,33 @@ describe('XFormatter', () => {
 
   // ── Test data factories ──
 
+  // ── Helpers for timezone-stable date assertions ──
+  // _formatDate now renders viewer-local time (matching what X displays), so
+  // we build expected strings against the same Date the formatter sees.
+  // Constructing via `new Date(year, month, day, hours, minutes)` uses the
+  // viewer's local TZ; .toISOString() then serializes to UTC. Round-trip stable.
+  function localISOAt(year, monthZeroIdx, day, hours, minutes) {
+    return new Date(year, monthZeroIdx, day, hours, minutes).toISOString();
+  }
+  function expectedDateString(year, monthZeroIdx, day, hours, minutes) {
+    const monthName = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ][monthZeroIdx];
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const h = hours % 12 || 12;
+    const m = String(minutes).padStart(2, '0');
+    return `${monthName} ${day}, ${year} at ${h}:${m} ${ampm}`;
+  }
+
   function makeTweet(overrides = {}) {
     return {
       author: { handle: 'testuser', displayName: 'Test User' },
-      timestamp: '2026-03-23T14:15:00.000Z',
+      timestamp: localISOAt(2026, 2, 23, 14, 15),
       text: 'Hello world!',
       media: [],
       quoteTweet: null,
-      engagement: { likes: 0, retweets: 0, replies: 0, views: 0 },
+      engagement: { replies: 0, retweets: 0, likes: 0, bookmarks: 0, views: 0 },
       ...overrides
     };
   }
@@ -26,16 +45,17 @@ describe('XFormatter', () => {
   describe('formatTweet', () => {
     test('formats a basic tweet with all fields', () => {
       const tweet = makeTweet({
-        engagement: { likes: 12500, retweets: 3200, replies: 1800, views: 450000 }
+        engagement: { replies: 1800, retweets: 3200, likes: 12500, bookmarks: 600, views: 450000 }
       });
       const md = formatter.formatTweet(tweet);
 
       expect(md).toContain('## @testuser (Test User)');
-      expect(md).toContain('*Posted: March 23, 2026 at 2:15 PM*');
+      expect(md).toContain(`*Posted: ${expectedDateString(2026, 2, 23, 14, 15)}*`);
       expect(md).toContain('Hello world!');
       expect(md).toContain('12.5K');
       expect(md).toContain('3.2K');
       expect(md).toContain('1.8K');
+      expect(md).toContain('600');
       expect(md).toContain('450K');
       expect(md).toContain('---');
     });
@@ -135,13 +155,13 @@ describe('XFormatter', () => {
         author: { handle: 'writer', displayName: 'Writer Name' },
         title: 'My Long Article',
         bodyHtml: '<p>First paragraph.</p><p>Second paragraph.</p>',
-        publishedDate: '2026-03-20T09:00:00.000Z'
+        publishedDate: localISOAt(2026, 2, 20, 9, 0)
       };
       const md = formatter.formatArticle(article);
 
       expect(md).toContain('# My Long Article');
       expect(md).toContain('## @writer (Writer Name)');
-      expect(md).toContain('*Published: March 20, 2026 at 9:00 AM*');
+      expect(md).toContain(`*Published: ${expectedDateString(2026, 2, 20, 9, 0)}*`);
       expect(md).toContain('---');
       // Body falls back to tag stripping without converter
       expect(md).toContain('First paragraph.');
@@ -246,18 +266,21 @@ describe('XFormatter', () => {
   });
 
   describe('_formatDate', () => {
+    // Inputs are constructed via local-time Date components so the assertion
+    // round-trips in any TZ. _formatDate now renders viewer-local time
+    // (matching X's on-page display).
     test('formats ISO date to readable string', () => {
-      expect(formatter._formatDate('2026-03-23T14:15:00.000Z'))
-        .toBe('March 23, 2026 at 2:15 PM');
+      expect(formatter._formatDate(localISOAt(2026, 2, 23, 14, 15)))
+        .toBe(expectedDateString(2026, 2, 23, 14, 15));
     });
 
     test('formats midnight correctly', () => {
-      expect(formatter._formatDate('2026-01-01T00:00:00.000Z'))
+      expect(formatter._formatDate(localISOAt(2026, 0, 1, 0, 0)))
         .toBe('January 1, 2026 at 12:00 AM');
     });
 
     test('formats noon correctly', () => {
-      expect(formatter._formatDate('2026-06-15T12:30:00.000Z'))
+      expect(formatter._formatDate(localISOAt(2026, 5, 15, 12, 30)))
         .toBe('June 15, 2026 at 12:30 PM');
     });
 
@@ -288,16 +311,36 @@ describe('XFormatter', () => {
   describe('_formatEngagement', () => {
     test('formats all engagement stats', () => {
       const line = formatter._formatEngagement({
-        likes: 12500, retweets: 3200, replies: 1800, views: 450000
+        replies: 1800, retweets: 3200, likes: 12500, bookmarks: 600, views: 450000
       });
       expect(line).toContain('12.5K');
       expect(line).toContain('3.2K');
       expect(line).toContain('1.8K');
+      expect(line).toContain('600');
       expect(line).toContain('450K');
     });
 
+    test('emits stats in X visual order: replies → reposts → likes → bookmarks → views', () => {
+      const line = formatter._formatEngagement({
+        replies: 3, retweets: 6, likes: 334, bookmarks: 741, views: 195828
+      });
+      // Each metric prefixed by its emoji; assert positions to lock the order.
+      const idx = (s) => line.indexOf(s);
+      expect(idx('💬')).toBeLessThan(idx('🔁'));
+      expect(idx('🔁')).toBeLessThan(idx('❤'));
+      expect(idx('❤')).toBeLessThan(idx('🔖'));
+      expect(idx('🔖')).toBeLessThan(idx('👁'));
+    });
+
+    test('renders bookmarks with 🔖 emoji', () => {
+      const line = formatter._formatEngagement({
+        replies: 0, retweets: 0, likes: 0, bookmarks: 741, views: 0
+      });
+      expect(line).toMatch(/🔖\s+741/);
+    });
+
     test('returns empty string when all zero', () => {
-      expect(formatter._formatEngagement({ likes: 0, retweets: 0, replies: 0, views: 0 }))
+      expect(formatter._formatEngagement({ replies: 0, retweets: 0, likes: 0, bookmarks: 0, views: 0 }))
         .toBe('');
     });
 
@@ -307,12 +350,85 @@ describe('XFormatter', () => {
 
     test('only includes non-zero stats', () => {
       const line = formatter._formatEngagement({
-        likes: 100, retweets: 0, replies: 0, views: 0
+        replies: 0, retweets: 0, likes: 100, bookmarks: 0, views: 0
       });
       expect(line).toContain('100');
-      // Should only have one stat (likes), not retweets/replies/views
-      const emojiCount = (line.match(/[❤🔁💬👁]/g) || []).length;
+      // Should only have one stat (likes).
+      const emojiCount = (line.match(/[❤🔁💬👁🔖]/g) || []).length;
       expect(emojiCount).toBe(1);
+    });
+
+    test('handles missing bookmarks/views fields gracefully (legacy shape)', () => {
+      // Old extractor output (pre-summary-parsing) had no bookmarks key —
+      // formatter must not emit a bare bookmarks emoji.
+      const line = formatter._formatEngagement({ replies: 1, retweets: 0, likes: 5 });
+      expect(line).not.toContain('🔖');
+      expect(line).toContain('💬');
+      expect(line).toContain('❤');
+    });
+  });
+
+  describe('community note rendering', () => {
+    test('renders note as labelled blockquote between content and engagement', () => {
+      const tweet = makeTweet({
+        text: 'Body of the post.',
+        communityNote: 'Note body with [source](https://example.com).',
+        engagement: { replies: 3, retweets: 0, likes: 0, bookmarks: 0, views: 0 }
+      });
+      const md = formatter.formatTweet(tweet);
+
+      // Note appears with label + body in blockquote form
+      expect(md).toContain('> 👥 **Community Note**');
+      expect(md).toContain('> Note body with [source](https://example.com).');
+
+      // Order: post body → note → engagement
+      const bodyIdx = md.indexOf('Body of the post.');
+      const noteIdx = md.indexOf('Community Note');
+      const engagementIdx = md.indexOf('💬');
+      expect(bodyIdx).toBeLessThan(noteIdx);
+      expect(noteIdx).toBeLessThan(engagementIdx);
+    });
+
+    test('omits note section when communityNote is null', () => {
+      const tweet = makeTweet({ communityNote: null });
+      const md = formatter.formatTweet(tweet);
+      expect(md).not.toContain('Community Note');
+      expect(md).not.toContain('👥');
+    });
+
+    test('omits note section when communityNote is missing (legacy shape)', () => {
+      const tweet = makeTweet();
+      delete tweet.communityNote;
+      const md = formatter.formatTweet(tweet);
+      expect(md).not.toContain('Community Note');
+    });
+  });
+
+  describe('verified author rendering', () => {
+    test('appends ✓ to display name when author.verified is true', () => {
+      const tweet = makeTweet({
+        author: { handle: 'aiwithmayank', displayName: 'Mayank Vora', verified: true }
+      });
+      const md = formatter.formatTweet(tweet);
+      expect(md).toContain('## @aiwithmayank (Mayank Vora ✓)');
+    });
+
+    test('omits ✓ when author.verified is false', () => {
+      const tweet = makeTweet({
+        author: { handle: 'plainuser', displayName: 'Plain User', verified: false }
+      });
+      const md = formatter.formatTweet(tweet);
+      expect(md).toContain('## @plainuser (Plain User)');
+      expect(md).not.toContain('✓');
+    });
+
+    test('omits ✓ when author.verified is missing (legacy shape)', () => {
+      const tweet = makeTweet({
+        author: { handle: 'legacy', displayName: 'Legacy User' }
+      });
+      const md = formatter.formatTweet(tweet);
+      expect(md).toContain('## @legacy (Legacy User)');
+      expect(md).not.toContain('✓');
     });
   });
 

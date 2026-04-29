@@ -119,7 +119,7 @@ class ContentScript {
     }
 
     // Emergency: return basic markdown with page info
-    const emergencyMarkdown = `**Title:** ${metadata.title}  \n**URL:** ${metadata.url}  \n**Date:** ${this._formatLocalDateTime(metadata.timestamp)}  \n**Method:** Emergency Fallback\n\n---\n\nContent extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.`;
+    const emergencyMarkdown = `**Title:** ${metadata.title}  \n**URL:** ${metadata.url}  \n**Date:** ${this._formatHumanDateTime(metadata.timestamp)}  \n**Method:** Emergency Fallback\n\n---\n\nContent extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.`;
 
     return {
       success: true,
@@ -208,10 +208,12 @@ class ContentScript {
     // Two-space line endings are markdown hard breaks — keeps each
     // key-value on its own line when the file is rendered. The last
     // line skips them since the blank line + `---` already separate.
+    // Date renders in the human-readable format used by tweet/article
+    // timestamps so the extension reads consistently across content types.
     return [
       `**Title:** ${metadata.title || ''}  `,
       `**URL:** ${metadata.url || ''}  `,
-      `**Date:** ${this._formatLocalDateTime(metadata.timestamp)}`,
+      `**Date:** ${this._formatHumanDateTime(metadata.timestamp)}`,
       '',
       '---',
       '',
@@ -223,6 +225,8 @@ class ContentScript {
    * Build a YAML frontmatter block from page metadata.
    * Title is double-quoted with backslash and quote escaping; URL/date
    * are emitted unquoted because their values are tame in standard form.
+   * Date stays in sortable `YYYY-MM-DD HH:mm` form here because note tools
+   * (Obsidian/Logseq/Hugo/Jekyll) parse YAML date scalars.
    */
   _buildYamlFrontmatter(metadata) {
     const safeTitle = String(metadata.title || '')
@@ -241,9 +245,10 @@ class ContentScript {
   }
 
   /**
-   * Format an ISO UTC timestamp as local `YYYY-MM-DD HH:mm`. Local time
-   * matches the user's mental model — the alternative (UTC date via
-   * timestamp.split('T')[0]) showed the wrong day for evenings west of
+   * Format an ISO UTC timestamp as sortable local `YYYY-MM-DD HH:mm` (24h,
+   * no seconds). Used by YAML frontmatter where machine-readability matters.
+   * Local time matches the user's mental model — the alternative (UTC date
+   * via timestamp.split('T')[0]) showed the wrong day for evenings west of
    * UTC. Falls back to "now" if the timestamp is missing or invalid.
    */
   _formatLocalDateTime(timestamp) {
@@ -251,6 +256,26 @@ class ContentScript {
     if (Number.isNaN(d.getTime())) d = new Date();
     const pad = n => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  /**
+   * Format an ISO UTC timestamp as human-readable local time —
+   * `April 29, 2026 at 11:01 AM`. Used in inline metadata headers and
+   * matches the format XFormatter uses for tweet/article timestamps so the
+   * extension reads consistently across content types.
+   */
+  _formatHumanDateTime(timestamp) {
+    let d = timestamp ? new Date(timestamp) : new Date();
+    if (Number.isNaN(d.getTime())) d = new Date();
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} at ${hours}:${minutes} ${ampm}`;
   }
 
   /**

@@ -89,6 +89,13 @@ class XFormatter {
       parts.push(this.formatQuoteTweet(tweet.quoteTweet));
     }
 
+    // Community Note — sits between content/media and the engagement footer,
+    // mirroring the on-page placement.
+    if (tweet.communityNote) {
+      parts.push('');
+      parts.push(this._formatCommunityNote(tweet.communityNote));
+    }
+
     // Engagement
     const engagementLine = this._formatEngagement(tweet.engagement);
     if (engagementLine) {
@@ -100,6 +107,19 @@ class XFormatter {
     parts.push('---');
 
     return parts.join('\n');
+  }
+
+  /**
+   * Format a Community Note as a blockquote with a labelled heading.
+   * Markdown blockquote is the closest analog to X's bordered visual block —
+   * renders as a distinct callout in note tools (Obsidian, GitHub, etc.).
+   */
+  _formatCommunityNote(note) {
+    return [
+      '> 👥 **Community Note**',
+      '>',
+      `> ${note}`
+    ].join('\n');
   }
 
   /**
@@ -224,7 +244,9 @@ class XFormatter {
   _formatAuthorHeading(author) {
     if (!author) return '';
     const handle = author.handle ? `@${author.handle}` : '';
-    const name = author.displayName || '';
+    const rawName = author.displayName || '';
+    // Verified badge sits next to the display name, mirroring how X renders it.
+    const name = rawName && author.verified ? `${rawName} \u2713` : rawName;
 
     if (handle && name) {
       return `## ${handle} (${name})`;
@@ -235,9 +257,10 @@ class XFormatter {
   }
 
   /**
-   * Format an ISO date string to human-readable format.
-   * @param {string} isoString
-   * @returns {string}
+   * Format an ISO date string in viewer-local time, matching how X displays
+   * the timestamp on the page. Uses local Date getters (not UTC) so a tweet
+   * stamped 2026-02-07T15:20:07Z renders as "9:20 AM" for a CST viewer, the
+   * same string X shows.
    */
   _formatDate(isoString) {
     try {
@@ -249,12 +272,12 @@ class XFormatter {
         'July', 'August', 'September', 'October', 'November', 'December'
       ];
 
-      const month = months[date.getUTCMonth()];
-      const day = date.getUTCDate();
-      const year = date.getUTCFullYear();
+      const month = months[date.getMonth()];
+      const day = date.getDate();
+      const year = date.getFullYear();
 
-      let hours = date.getUTCHours();
-      const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+      let hours = date.getHours();
+      const minutes = date.getMinutes().toString().padStart(2, '0');
       const ampm = hours >= 12 ? 'PM' : 'AM';
       hours = hours % 12 || 12;
 
@@ -265,16 +288,18 @@ class XFormatter {
   }
 
   /**
-   * Format engagement stats line.
+   * Format engagement stats line in the same order X displays them top-to-bottom:
+   * replies \u2192 reposts \u2192 likes \u2192 bookmarks \u2192 views.
    * @returns {string} Empty string if all counts are 0
    */
   _formatEngagement(engagement) {
     if (!engagement) return '';
 
     const parts = [];
-    if (engagement.likes > 0) parts.push(`\u2764\ufe0f ${this._formatNumber(engagement.likes)}`);
-    if (engagement.retweets > 0) parts.push(`\ud83d\udd01 ${this._formatNumber(engagement.retweets)}`);
     if (engagement.replies > 0) parts.push(`\ud83d\udcac ${this._formatNumber(engagement.replies)}`);
+    if (engagement.retweets > 0) parts.push(`\ud83d\udd01 ${this._formatNumber(engagement.retweets)}`);
+    if (engagement.likes > 0) parts.push(`\u2764\ufe0f ${this._formatNumber(engagement.likes)}`);
+    if (engagement.bookmarks > 0) parts.push(`\ud83d\udd16 ${this._formatNumber(engagement.bookmarks)}`);
     if (engagement.views > 0) parts.push(`\ud83d\udc41 ${this._formatNumber(engagement.views)}`);
 
     return parts.join('  ');

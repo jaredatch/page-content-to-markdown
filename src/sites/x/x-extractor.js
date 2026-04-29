@@ -336,17 +336,23 @@ class XExtractor {
   }
 
   /**
-   * X renders a small "GIF" / "Video" badge inside its video components as a bare
-   * <span>. With the media itself rendered as an image (the poster), the badge ends
-   * up in markdown as a stray text line ("GIF") between paragraphs. Strip these
-   * label spans — the markdown reader can see the media URL and infer.
+   * X renders a small badge inside its video components as a bare <span> —
+   * "GIF" in English, "Vídeo" in Spanish, "動画" in Japanese, etc. With the
+   * media itself rendered as an image (the poster), the badge ends up in
+   * markdown as a stray text line between paragraphs. Strip these label spans.
+   *
+   * Locale-stable rule: a label badge is a leaf <span> (no child elements)
+   * with short text content, scoped strictly to videoComponent/videoPlayer
+   * containers. The video components on X don't contain user-authored text,
+   * so any short-leaf-span inside them is chrome — safe to drop in any locale.
    */
   _stripVideoLabels(root) {
     const videos = root.querySelectorAll('[data-testid="videoComponent"], [data-testid="videoPlayer"]');
     for (const v of videos) {
       v.querySelectorAll('span').forEach(span => {
+        if (span.children.length > 0) return;
         const text = (span.textContent || '').trim();
-        if ((text === 'GIF' || text === 'Video') && span.children.length === 0) {
+        if (text.length > 0 && text.length <= 10) {
           span.remove();
         }
       });
@@ -443,6 +449,7 @@ class XExtractor {
     const media = this._extractMedia(tweetEl);
     const engagement = this._extractEngagement(tweetEl);
     const quoteTweet = this._extractQuoteTweet(tweetEl);
+    const communityNote = this._extractCommunityNote(tweetEl);
 
     if (!author && !text) return null;
 
@@ -452,6 +459,7 @@ class XExtractor {
       text: text || '',
       media,
       quoteTweet,
+      communityNote,
       engagement
     };
   }
@@ -490,11 +498,12 @@ class XExtractor {
     const handleMatch = text.match(/@(\w+)/);
     const handle = handleMatch ? handleMatch[1] : '';
 
-    // Display name is usually the text before the @handle
+    // Display name is usually the text before the @handle. Use the
+    // emoji-aware walker so display names with twemoji (e.g. "Foo 🦄") survive.
     let displayName = '';
     const spans = authorEl.querySelectorAll('span');
     for (const span of spans) {
-      const spanText = span.textContent.trim();
+      const spanText = this._textWithEmoji(span).trim();
       if (spanText && !spanText.startsWith('@') && !spanText.includes('·')) {
         displayName = spanText;
         break;
@@ -505,11 +514,18 @@ class XExtractor {
       displayName = handle;
     }
 
-    return handle || displayName ? { handle, displayName } : null;
+    // Verified badge: blue/gold/grey all share data-testid="icon-verified".
+    // Distinguishing tier is a future polish; for now a single boolean is enough.
+    const verified = !!authorEl.querySelector('[data-testid="icon-verified"]');
+
+    return handle || displayName ? { handle, displayName, verified } : null;
   }
 
   /**
-   * Extract tweet text content.
+   * Extract tweet text content. Twemoji renders as <img alt="🔥"> inside the
+   * text node; plain textContent skips those, dropping every emoji from the
+   * post. Mentions/hashtags/URLs render as <a> tags; plain textContent
+   * loses the link target. The walker preserves both.
    */
   _extractText(tweetEl) {
     const textEl = this._query(tweetEl,
@@ -517,7 +533,85 @@ class XExtractor {
       'div[lang]'
     );
     if (!textEl) return '';
-    return textEl.textContent.trim();
+    return this._textWithEmoji(textEl, { withLinks: true }).trim();
+  }
+
+  /**
+   * Walk a node's descendants, returning textContent but with twemoji <img>
+   * tags substituted for their `alt` (the actual emoji char). When
+   * `withLinks: true`, also converts <a> elements to markdown links via
+   * `_formatTweetLink` (mention/hashtag/URL handling).
+   *
+   * Twemoji src always sits under abs.twimg.com/emoji/v2/svg/. Also accepts
+   * any <img> with a 1–2 char alt as a safety net for variant CDN paths.
+   */
+  _textWithEmoji(root, options = {}) {
+    const withLinks = !!(options && options.withLinks);
+    if (!root) return '';
+    let out = '';
+    const walk = (node) => {
+      if (node.nodeType === 3) { // TEXT_NODE
+        out += node.nodeValue || '';
+        return;
+      }
+      if (node.nodeType !== 1) return; // not an element
+      if (node.tagName === 'IMG') {
+        const alt = node.getAttribute('alt') || '';
+        const src = node.getAttribute('src') || '';
+        if (alt && (src.includes('/emoji/') || alt.length <= 2)) {
+          out += alt;
+        }
+        return;
+      }
+      if (node.tagName === 'A' && withLinks) {
+        out += this._formatTweetLink(node);
+        return; // don't recurse — link content is rendered as the link label
+      }
+      for (const child of node.childNodes) walk(child);
+    };
+    walk(root);
+    return out;
+  }
+
+  /**
+   * Convert an <a> element inside a tweet body to a markdown link.
+   *
+   * Three link kinds, three policies:
+   * 1. Relative href (`/user`, `/hashtag/Foo`) — mention or hashtag — promoted
+   *    to absolute https://x.com URL. Strips a leading `@` from the path so
+   *    profile URLs are clean (X serves both /@user and /user; the latter is
+   *    canonical).
+   * 2. t.co masker href — display text is the real destination URL (X masks
+   *    every posted URL through t.co for analytics). Use the display text as
+   *    the link target. If the display is truncated (ends with … or three
+   *    dots), the real URL is unrecoverable — fall back to the t.co href so
+   *    the link at least round-trips through X's redirect.
+   * 3. Other absolute URL — pass through href unchanged.
+   *
+   * Returns the inner text unwrapped if href is missing, so we don't emit
+   * broken markdown like `[text]()`.
+   */
+  _formatTweetLink(anchor) {
+    const text = this._textWithEmoji(anchor, { withLinks: false });
+    const href = anchor.getAttribute('href') || '';
+    if (!href || !text.trim()) return text;
+
+    if (href.startsWith('/')) {
+      const cleanPath = href.replace(/^\/@/, '/');
+      return `[${text}](https://x.com${cleanPath})`;
+    }
+
+    if (/^https?:\/\/t\.co\//i.test(href)) {
+      const trimmed = text.trim();
+      const truncated = trimmed.includes('…') || /\.{3}$/.test(trimmed);
+      if (truncated) {
+        return `[${text}](${href})`;
+      }
+      const realUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+      return `[${text}](${realUrl})`;
+    }
+
+    return `[${text}](${href})`;
   }
 
   /**
@@ -568,33 +662,158 @@ class XExtractor {
   }
 
   /**
-   * Extract engagement stats from aria-labels on buttons.
-   * @returns {{ likes: number, retweets: number, replies: number, views: number }}
+   * Extract engagement stats. Two-tier strategy, designed to be locale-stable
+   * for non-English X viewers (whose aria-labels say "3 respuestas" / "6 republicaciones"
+   * / etc.).
+   *
+   * Tier 1 — testid-based per-button scan: each metric maps to a stable
+   * data-testid (reply, retweet|unretweet, like|unlike, bookmark|removeBookmark).
+   * Test-ids never localize; we just need the leading numeric count from the
+   * button's aria-label.
+   *
+   * Tier 2 — focal-tweet summary div: a single non-interactive `<div aria-label>`
+   * on the focal tweet of /status/ pages lists every metric in display order.
+   * The metric *words* are localized but the *order* (replies → reposts → likes
+   * → bookmarks → views) is stable, so we read by position. This is the only
+   * source for `views` (no individual button carries it) and fills in any
+   * metrics that Tier 1 missed.
+   *
+   * @returns {{ replies: number, retweets: number, likes: number, bookmarks: number, views: number }}
    */
   _extractEngagement(tweetEl) {
-    const engagement = { likes: 0, retweets: 0, replies: 0, views: 0 };
+    const engagement = { replies: 0, retweets: 0, likes: 0, bookmarks: 0, views: 0 };
 
-    // Strategy: find buttons/links with aria-labels containing counts
-    const interactives = tweetEl.querySelectorAll('[aria-label]');
-    for (const el of interactives) {
-      const label = (el.getAttribute('aria-label') || '').toLowerCase();
-      const countMatch = label.match(/^(\d[\d,]*)/);
-      if (!countMatch) continue;
-      const count = parseInt(countMatch[1].replace(/,/g, ''), 10);
-      if (isNaN(count)) continue;
+    // Tier 1: testid-based per-button extraction. Locale-stable.
+    const buttonMap = [
+      { key: 'replies', testids: ['reply'] },
+      { key: 'retweets', testids: ['retweet', 'unretweet'] },
+      { key: 'likes', testids: ['like', 'unlike'] },
+      { key: 'bookmarks', testids: ['bookmark', 'removeBookmark'] }
+    ];
+    for (const { key, testids } of buttonMap) {
+      for (const tid of testids) {
+        const el = tweetEl.querySelector(`[data-testid="${tid}"]`);
+        if (!el) continue;
+        // Prefer the aria-label (exact count) over button text (may be abbreviated as "1.2K").
+        const ariaLabel = el.getAttribute('aria-label') || '';
+        const count = this._parseCount(ariaLabel) || this._parseCount(el.textContent || '');
+        if (count > 0) {
+          engagement[key] = count;
+          break;
+        }
+      }
+    }
 
-      if (label.includes('like')) {
-        engagement.likes = count;
-      } else if (label.includes('repost') || label.includes('retweet')) {
-        engagement.retweets = count;
-      } else if (label.includes('repl') || label.includes('comment')) {
-        engagement.replies = count;
-      } else if (label.includes('view')) {
-        engagement.views = count;
+    // Tier 2: focal-tweet summary, read by position.
+    // Metric order is stable across locales: replies, reposts, likes, bookmarks, views.
+    const summary = this._findEngagementSummary(tweetEl);
+    if (summary) {
+      const numbers = this._extractOrderedNumbers(summary);
+      const keys = ['replies', 'retweets', 'likes', 'bookmarks', 'views'];
+      for (let i = 0; i < keys.length && i < numbers.length; i++) {
+        // Don't overwrite a Tier-1 testid value — testids are the more reliable
+        // signal. But fill in any zero (especially `views`, which has no testid).
+        if (engagement[keys[i]] === 0) {
+          engagement[keys[i]] = numbers[i];
+        }
       }
     }
 
     return engagement;
+  }
+
+  /**
+   * Find the focal-tweet engagement summary div by shape only. The summary is
+   * a `<div>` (not a button/link) whose aria-label contains 3+ numeric runs —
+   * the multi-metric list. Per-button labels have a single numeric prefix and
+   * are skipped. Locale-stable: we never look at the metric words themselves.
+   */
+  _findEngagementSummary(tweetEl) {
+    const candidates = tweetEl.querySelectorAll('div[aria-label]');
+    for (const el of candidates) {
+      const label = el.getAttribute('aria-label') || '';
+      const numbers = this._extractOrderedNumbers(label);
+      if (numbers.length >= 3) return label;
+    }
+    return null;
+  }
+
+  /**
+   * Parse the first numeric value from a string. Locale-stable: handles `,`,
+   * `.`, and whitespace as thousand separators (US: `1,234`, ES: `1.234`,
+   * FR: `1 234`). Stops at the first non-digit/non-separator. Returns 0 when
+   * no numeric value is present.
+   */
+  _parseCount(s) {
+    if (!s) return 0;
+    const match = String(s).match(/\d[\d.,\s ]*/);
+    if (!match) return 0;
+    const digits = match[0].replace(/[^\d]/g, '');
+    return digits ? parseInt(digits, 10) : 0;
+  }
+
+  /**
+   * Extract every numeric value from a string in left-to-right order.
+   * Used to read metric counts from the localized summary aria-label by
+   * position rather than phrase.
+   */
+  _extractOrderedNumbers(s) {
+    if (!s) return [];
+    const out = [];
+    const re = /\d[\d.,\s ]*\d|\d/g;
+    let match;
+    while ((match = re.exec(s)) !== null) {
+      const digits = match[0].replace(/[^\d]/g, '');
+      if (digits) out.push(parseInt(digits, 10));
+    }
+    return out;
+  }
+
+  /**
+   * Extract a Community Note (birdwatch-pivot block) attached to the tweet.
+   *
+   * X structure: a `[data-testid="birdwatch-pivot"]` div lives inside the
+   * focal tweet, with this child layout:
+   *   [first] header div  — heading icon + heading text
+   *   [...]    spacers/body — note body (text + t.co source links)
+   *   [last]   footer div  — "rate it" UI (contains a tappable role=link)
+   *
+   * Strategy is structural, not phrase-based, so it works in any X locale:
+   *   • Skip the FIRST non-empty child as the header.
+   *   • Skip the LAST non-empty child if it contains a tappable
+   *     (`[role="link"]` or `<button>`) — that's the "Rate it" UI, which is
+   *     interactive in every locale.
+   *   • Everything in between is the body. Run through the link-aware walker
+   *     so t.co URLs get unmasked the same way as tweet bodies.
+   *
+   * @returns {string|null} The note body, or null if no note is present.
+   */
+  _extractCommunityNote(tweetEl) {
+    const noteEl = tweetEl.querySelector('[data-testid="birdwatch-pivot"]');
+    if (!noteEl) return null;
+
+    const nonEmpty = Array.from(noteEl.children).filter(c =>
+      (c.textContent || '').trim().length > 0
+    );
+    if (nonEmpty.length === 0) return null;
+
+    // Last child is footer when it has interactive descendants ("Rate it" UI).
+    const last = nonEmpty[nonEmpty.length - 1];
+    const lastIsFooter = !!last.querySelector('[role="link"], button');
+
+    const bodyChildren = nonEmpty.slice(
+      1,
+      lastIsFooter ? nonEmpty.length - 1 : nonEmpty.length
+    );
+
+    const parts = [];
+    for (const child of bodyChildren) {
+      const rendered = this._textWithEmoji(child, { withLinks: true }).trim();
+      if (rendered) parts.push(rendered);
+    }
+
+    const body = parts.join(' ').trim();
+    return body || null;
   }
 
   /**

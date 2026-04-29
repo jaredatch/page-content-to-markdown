@@ -50,6 +50,12 @@ class GrokExtractor {
    * page-context suffix Grok appends:
    *   - share pages: " | Shared Grok Conversation"
    *   - active chat: " - Grok" (also handles en/em-dash variants)
+   *
+   * i18n note: this matcher is English-specific. Non-English Grok shares
+   * likely append a localized suffix (e.g. "Conversación compartida de Grok").
+   * The ` - Grok` brand suffix is locale-stable. When a real non-English
+   * Grok page surfaces, capture the share-page suffix shape and add it
+   * here — or read from a structural title element if Grok exposes one.
    */
   _extractTitle(doc) {
     const raw = (doc.title || '').trim();

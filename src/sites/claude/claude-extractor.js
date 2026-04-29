@@ -59,6 +59,12 @@ class ClaudeExtractor {
 
   /**
    * Extract the conversation title from the page header.
+   *
+   * i18n note: the "Shared by" filter is English-specific. Non-English
+   * locales serve a localized phrase (e.g. "Compartido por"). For now we
+   * accept that the "shared by" line may slip in as the title in those
+   * locales — the impact is cosmetic, and the page-header testid itself is
+   * locale-stable.
    */
   _extractTitle(doc) {
     const header = doc.querySelector('[data-testid="page-header"]');
@@ -84,6 +90,11 @@ class ClaudeExtractor {
 
   /**
    * Extract who shared the conversation.
+   *
+   * i18n note: regex is English-specific. In non-English locales this will
+   * silently return ''; the share-by line just won't appear in the markdown.
+   * Non-blocking — when a localized share page surfaces, capture the local
+   * phrase shape and add it here.
    */
   _extractSharedBy(doc) {
     const header = doc.querySelector('[data-testid="page-header"]');
@@ -144,6 +155,11 @@ class ClaudeExtractor {
 
     // Remove "Searched the web" buttons and their row, but keep sibling content rows.
     // Structure: grid container > row-start-1 (search button) + row-start-2 (actual content)
+    //
+    // i18n note: phrase matcher is English-specific. When a non-English Claude
+    // share page surfaces, prefer a structural signal (e.g. a search-result
+    // testid or icon class) over text matching. Until then this is best-effort
+    // for non-English locales.
     clone.querySelectorAll('button').forEach(btn => {
       const text = btn.textContent.trim();
       if (text.includes('Searched the web') || text.includes('Searched')) {

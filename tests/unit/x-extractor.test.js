@@ -20,10 +20,10 @@ const SINGLE_TWEET_HTML = `
   <div data-testid="tweetPhoto">
     <img src="https://pbs.twimg.com/media/example.jpg" />
   </div>
-  <button aria-label="1800 replies. Reply"></button>
-  <button aria-label="3200 reposts. Repost"></button>
-  <button aria-label="12500 Likes. Like"></button>
-  <button aria-label="450000 Views. View post analytics"></button>
+  <button data-testid="reply" aria-label="1800 replies. Reply"></button>
+  <button data-testid="retweet" aria-label="3200 reposts. Repost"></button>
+  <button data-testid="like" aria-label="12500 Likes. Like"></button>
+  <div aria-label="1800 replies, 3200 reposts, 12500 likes, 0 bookmarks, 450000 views"></div>
 </article>
 `;
 
@@ -88,9 +88,9 @@ const TWEET_WITH_QUOTE_HTML = `
     </div>
     <time datetime="2026-03-22T08:00:00.000Z">Mar 22</time>
   </div>
-  <button aria-label="50 replies. Reply"></button>
-  <button aria-label="200 reposts. Repost"></button>
-  <button aria-label="1500 Likes. Like"></button>
+  <button data-testid="reply" aria-label="50 replies. Reply"></button>
+  <button data-testid="retweet" aria-label="200 reposts. Repost"></button>
+  <button data-testid="like" aria-label="1500 Likes. Like"></button>
 </article>
 `;
 
@@ -184,9 +184,9 @@ const X_ARTICLE_READVIEW_HTML = `
         <span>@realauthor</span>
       </div>
       <time datetime="2026-04-15T16:09:43.000Z">Apr 15, 2026</time>
-      <button aria-label="20 replies"></button>
-      <button aria-label="135 reposts"></button>
-      <button aria-label="922 Likes"></button>
+      <button data-testid="reply" aria-label="20 replies"></button>
+      <button data-testid="retweet" aria-label="135 reposts"></button>
+      <button data-testid="like" aria-label="922 Likes"></button>
       <div data-testid="twitterArticleReadView">
         <div data-testid="twitter-article-title">Real Title</div>
         <a href="/realauthor/article/1/media/cover">
@@ -401,7 +401,7 @@ describe('XExtractor', () => {
         </article>
       `);
       const tweet = extractor.extractSingleTweet(document);
-      expect(tweet.engagement).toEqual({ likes: 0, retweets: 0, replies: 0, views: 0 });
+      expect(tweet.engagement).toEqual({ replies: 0, retweets: 0, likes: 0, bookmarks: 0, views: 0 });
     });
   });
 
@@ -727,8 +727,8 @@ describe('XExtractor', () => {
         <article data-testid="tweet">
           <div data-testid="User-Name"><span>User</span><span>@user</span></div>
           <div data-testid="tweetText" lang="en"><span>Popular tweet.</span></div>
-          <button aria-label="1,234 Likes. Like"></button>
-          <button aria-label="5,678 reposts. Repost"></button>
+          <button data-testid="like" aria-label="1,234 Likes. Like"></button>
+          <button data-testid="retweet" aria-label="5,678 reposts. Repost"></button>
         </article>
       `);
       const tweet = extractor.extractSingleTweet(document);
@@ -748,6 +748,416 @@ describe('XExtractor', () => {
       const tweet = extractor.extractSingleTweet(document);
       expect(tweet.media).toHaveLength(1);
       expect(tweet.media[0].url).toContain('content.jpg');
+    });
+  });
+
+  describe('engagement extraction — locale-stable signals', () => {
+    // Tier 1 (primary): testid-based per-button scan. Tier 2 (fallback):
+    // summary div, parsed positionally so it works in any X locale.
+
+    test('Tier 1: per-button testid scan extracts replies/reposts/likes/bookmarks', () => {
+      // No summary div on this fixture — only individual action buttons.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="en"><span>Timeline tweet.</span></div>
+          <button data-testid="reply" aria-label="3 replies. Reply"></button>
+          <button data-testid="retweet" aria-label="6 reposts. Repost"></button>
+          <button data-testid="like" aria-label="334 Likes. Like"></button>
+          <button data-testid="bookmark" aria-label="741 Bookmarks. Bookmark"></button>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.engagement.replies).toBe(3);
+      expect(tweet.engagement.retweets).toBe(6);
+      expect(tweet.engagement.likes).toBe(334);
+      expect(tweet.engagement.bookmarks).toBe(741);
+      expect(tweet.engagement.views).toBe(0); // no individual views signal
+    });
+
+    test('Tier 1: handles flipped testids (unlike/unretweet/removeBookmark)', () => {
+      // When the viewer has already liked/reposted/bookmarked, X flips the testid.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="en"><span>Tweet.</span></div>
+          <button data-testid="reply" aria-label="3 replies. Reply"></button>
+          <button data-testid="unretweet" aria-label="6 reposts. Undo repost"></button>
+          <button data-testid="unlike" aria-label="334 Likes. Liked"></button>
+          <button data-testid="removeBookmark" aria-label="741 Bookmarks. Bookmarked"></button>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.engagement.replies).toBe(3);
+      expect(tweet.engagement.retweets).toBe(6);
+      expect(tweet.engagement.likes).toBe(334);
+      expect(tweet.engagement.bookmarks).toBe(741);
+    });
+
+    test('Tier 2: summary fills views (no testid carries view count)', () => {
+      // Buttons supply replies/reposts/likes/bookmarks; summary div supplies views.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="en"><span>Focal tweet.</span></div>
+          <button data-testid="reply" aria-label="3 replies. Reply"></button>
+          <button data-testid="retweet" aria-label="6 reposts. Repost"></button>
+          <button data-testid="like" aria-label="334 Likes. Like"></button>
+          <button data-testid="removeBookmark" aria-label="741 Bookmarks. Bookmarked"></button>
+          <div aria-label="3 replies, 6 reposts, 334 likes, 741 bookmarks, 195828 views"></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.engagement.views).toBe(195828);
+    });
+
+    test('Tier 2: summary works in non-English locale (Spanish)', () => {
+      // Even with Spanish metric words, position-based parsing recovers
+      // every count. No buttons → only summary is the source.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="es"><span>Tweet en español.</span></div>
+          <div aria-label="3 respuestas, 6 republicaciones, 334 Me gusta, 741 marcadores, 195828 vistas"></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.engagement).toEqual({
+        replies: 3, retweets: 6, likes: 334, bookmarks: 741, views: 195828
+      });
+    });
+
+    test('Tier 2: summary works in non-English locale (French) with space-separated thousands', () => {
+      // FR uses a thin space as thousand separator: "1 234".
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="fr"><span>Tweet en français.</span></div>
+          <div aria-label="1 800 réponses, 3 200 republications, 12 500 J'aime, 600 signets, 450 000 vues"></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.engagement.replies).toBe(1800);
+      expect(tweet.engagement.retweets).toBe(3200);
+      expect(tweet.engagement.likes).toBe(12500);
+      expect(tweet.engagement.bookmarks).toBe(600);
+      expect(tweet.engagement.views).toBe(450000);
+    });
+
+    test('Tier 2: summary works in non-English locale (Spanish) with period-separated thousands', () => {
+      // ES uses period as thousand separator: "1.234".
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="es"><span>Tweet.</span></div>
+          <div aria-label="1.800 respuestas, 3.200 republicaciones, 12.500 Me gusta, 600 marcadores, 450.000 vistas"></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.engagement.likes).toBe(12500);
+      expect(tweet.engagement.views).toBe(450000);
+    });
+
+    test('Tier 2: timestamp aria-label does not get mistaken for engagement summary', () => {
+      // Timestamp is on an <a>, summary is on a <div>. The detector filters
+      // to div[aria-label] specifically.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>User</span><span>@user</span></div>
+          <div data-testid="tweetText" lang="en"><span>Tweet.</span></div>
+          <a aria-label="9:20 AM · Feb 7, 2026"><time datetime="2026-02-07T15:20:07.000Z">9:20 AM</time></a>
+          <button data-testid="reply" aria-label="5 replies. Reply"></button>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      // Should NOT pull "9", "20", "7", "2026" from the timestamp aria-label.
+      expect(tweet.engagement.replies).toBe(5);
+      expect(tweet.engagement.retweets).toBe(0);
+      expect(tweet.engagement.likes).toBe(0);
+    });
+  });
+
+  describe('emoji-aware text extraction', () => {
+    // X renders emojis as <img alt="🔥" src=".../emoji/v2/svg/...">. Plain
+    // textContent skips img nodes, dropping every emoji from the post body
+    // and from display names. _textWithEmoji walks children and substitutes alt.
+    test('preserves emojis in tweet body', () => {
+      // Real X DOM has no inter-element whitespace between emoji <img> and the
+      // adjacent text spans, so the fixture is written compact (matching the
+      // structure captured from x.com/aiwithmayank/status/...).
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<img alt="❌" src="https://abs.twimg.com/emoji/v2/svg/274c.svg">' +
+            '<span> INSTRUCTION:</span>' +
+            '<img alt="✅" src="https://abs.twimg.com/emoji/v2/svg/2705.svg">' +
+            '<span> SOCRATIC</span>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('❌ INSTRUCTION:✅ SOCRATIC');
+    });
+
+    test('preserves emojis in display name', () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span><span>Sparkle <img alt="✨" src="https://abs.twimg.com/emoji/v2/svg/2728.svg"> User</span></span>
+            <span>@sparkle</span>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Hi.</span></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.author.displayName).toBe('Sparkle ✨ User');
+    });
+  });
+
+  describe('tweet body links (mentions, hashtags, URLs)', () => {
+    // Tweet bodies in the real X DOM have <a href="/user"> for mentions,
+    // <a href="/hashtag/Foo"> for hashtags, and <a href="https://t.co/..."
+    // with display-text URL> for posted URLs. Plain textContent strips the
+    // hrefs entirely; the link-aware walker preserves them as markdown.
+    test('mention becomes [@user](https://x.com/user)', () => {
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<span>Hi </span>' +
+            '<a href="/elonmusk" role="link">@elonmusk</a>' +
+            '<span>!</span>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('Hi [@elonmusk](https://x.com/elonmusk)!');
+    });
+
+    test('mention href with leading @ is normalized to canonical /user path', () => {
+      // X serves both /user and /@user — the canonical profile URL has no @.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="/@bob" role="link">@bob</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('[@bob](https://x.com/bob)');
+    });
+
+    test('hashtag becomes [#Tag](https://x.com/hashtag/Tag)', () => {
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<span>Loving </span>' +
+            '<a href="/hashtag/AI?src=hashtag_click">#AI</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('Loving [#AI](https://x.com/hashtag/AI?src=hashtag_click)');
+    });
+
+    test('posted URL: display text used as real link target (t.co bypassed)', () => {
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<span>Read: </span>' +
+            '<a href="https://t.co/abc123">example.com/article</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('Read: [example.com/article](https://example.com/article)');
+    });
+
+    test('truncated posted URL falls back to t.co href', () => {
+      // X truncates long URLs in the visible text (e.g., "example.com/very-lon…").
+      // The real URL is unrecoverable from the display, so route through t.co.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="https://t.co/xyz789">example.com/very-long-pa…</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('[example.com/very-long-pa…](https://t.co/xyz789)');
+    });
+
+    test('mixed body: text + emoji + mention + hashtag preserved together', () => {
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<img alt="🔥" src="https://abs.twimg.com/emoji/v2/svg/1f525.svg">' +
+            '<span> shoutout to </span>' +
+            '<a href="/coolperson">@coolperson</a>' +
+            '<span> on </span>' +
+            '<a href="/hashtag/Friday">#Friday</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe(
+        '🔥 shoutout to [@coolperson](https://x.com/coolperson) on [#Friday](https://x.com/hashtag/Friday)'
+      );
+    });
+
+    test('absolute non-t.co URL passes through unchanged', () => {
+      // Older/edge cases where X embeds a direct link without the t.co masker.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="https://example.com/page">example.com/page</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('[example.com/page](https://example.com/page)');
+    });
+
+    test('display name extraction is link-free even when name span contains an <a>', () => {
+      // Defensive: if X ever auto-linkifies an @mention inside a display name,
+      // we don't want a markdown link inside the author heading.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name">' +
+            '<span><span>Sponsored by <a href="/brand">@brand</a></span></span>' +
+            '<span>@account</span>' +
+          '</div>' +
+          '<div data-testid="tweetText" lang="en"><span>Hi.</span></div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.author.displayName).not.toContain('](https://x.com');
+      expect(tweet.author.displayName).toContain('Sponsored by @brand');
+    });
+  });
+
+  describe('community note extraction', () => {
+    // The birdwatch-pivot block lives inside [data-testid="tweet"] and has
+    // a fixed structure: header phrase, body (text + t.co source links),
+    // footer chrome ("Do you find this helpful? / Rate it"). Header + footer
+    // are skipped; body is preserved with link-aware text walking.
+    test('extracts note body with t.co source links unmasked', () => {
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en"><span>Tweet body.</span></div>' +
+          '<div data-testid="birdwatch-pivot" role="link">' +
+            '<div><span>Readers added context they thought people might want to know</span></div>' +
+            '<span></span>' +
+            '<div></div>' +
+            '<div>' +
+              '<span>Uploading palm photos to AI tools shares biometric data. </span>' +
+              '<a href="https://t.co/abc">edition.cnn.com/2021/05/25/uk/…</a>' +
+              '<span> </span>' +
+              '<a href="https://t.co/def">ftc.gov/news-events/ne…</a>' +
+            '</div>' +
+            '<span></span>' +
+            '<div><span>Do you find this helpful?</span><div role="link"><span>Rate it</span></div></div>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      // Both source links truncated (display ends in …), so they round-trip
+      // through t.co per the link-walker policy.
+      expect(tweet.communityNote).toBe(
+        'Uploading palm photos to AI tools shares biometric data. ' +
+        '[edition.cnn.com/2021/05/25/uk/…](https://t.co/abc) ' +
+        '[ftc.gov/news-events/ne…](https://t.co/def)'
+      );
+    });
+
+    test('returns null when no community note present', () => {
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en"><span>Plain tweet.</span></div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.communityNote).toBeNull();
+    });
+
+    test('skips header (first child) and footer (last child with tappable role=link)', () => {
+      // Position-based detection — works in any locale because we don't
+      // match the heading/footer phrases. Footer is identified by the
+      // tappable role=link "Rate it" UI present in every locale.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en"><span>Tweet.</span></div>' +
+          '<div data-testid="birdwatch-pivot">' +
+            '<div>Heading text in any locale</div>' +
+            '<div>The actual note body.</div>' +
+            '<div><span>Helpfulness prompt</span><div role="link"><span>Rate it</span></div></div>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.communityNote).toBe('The actual note body.');
+      expect(tweet.communityNote).not.toContain('Heading text');
+      expect(tweet.communityNote).not.toContain('Rate it');
+      expect(tweet.communityNote).not.toContain('Helpfulness');
+    });
+
+    test('community note works in non-English locale', () => {
+      // Spanish UI: header phrase, body, and footer ("Califícalo") are all
+      // localized. Position-based detection still works.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="es"><span>Tweet.</span></div>' +
+          '<div data-testid="birdwatch-pivot">' +
+            '<div>Los lectores agregaron contexto</div>' +
+            '<div>Cuerpo de la nota en español.</div>' +
+            '<div><span>¿Te resulta útil?</span><div role="link"><span>Califícalo</span></div></div>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.communityNote).toBe('Cuerpo de la nota en español.');
+    });
+  });
+
+  describe('verified author indicator', () => {
+    test('detects icon-verified inside User-Name', () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span><span>Mayank Vora</span></span>
+            <span>@aiwithmayank</span>
+            <svg data-testid="icon-verified" aria-label="Verified account"></svg>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Hi.</span></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.author.verified).toBe(true);
+    });
+
+    test('verified is false when no icon present', () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span><span>Plain User</span></span>
+            <span>@plainuser</span>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Hi.</span></div>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.author.verified).toBe(false);
     });
   });
 

@@ -186,8 +186,11 @@ describe('ContentScript', () => {
       expect(result.markdown).toContain('**Title:** Test Page');
       expect(result.markdown).toContain('**URL:**');
       expect(result.markdown).toContain('**Date:**');
-      // Date format: YYYY-MM-DD HH:mm (local), e.g. "2026-04-26 14:30"
-      expect(result.markdown).toMatch(/\*\*Date:\*\* \d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+      // Inline header date is human-readable: "April 29, 2026 at 11:01 AM".
+      // Frontmatter still uses sortable YYYY-MM-DD HH:mm — see YAML test below.
+      expect(result.markdown).toMatch(
+        /\*\*Date:\*\* (?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4} at \d{1,2}:\d{2} (?:AM|PM)/
+      );
       expect(result.markdown).not.toContain('**Domain:**');
       expect(result.markdown).toContain('---');
     });
