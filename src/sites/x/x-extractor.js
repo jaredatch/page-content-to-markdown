@@ -443,12 +443,19 @@ class XExtractor {
   _parseTweet(tweetEl) {
     if (!tweetEl) return null;
 
-    const author = this._extractAuthor(tweetEl);
-    const text = this._extractText(tweetEl);
-    const timestamp = this._extractTimestamp(tweetEl);
-    const media = this._extractMedia(tweetEl);
+    // Detect the quoted/embedded tweet container first, then exclude it from the
+    // outer tweet's field extraction. Without this, quote tweets bleed: the outer
+    // text/timestamp/media silently take on the quoted tweet's values when the
+    // quote's DOM nodes appear first (as `<time>` always does — the quote is
+    // rendered above the focal tweet's footer timestamp).
+    const quoteContainer = this._findQuoteContainer(tweetEl);
+
+    const author = this._extractAuthor(tweetEl, quoteContainer);
+    const text = this._extractText(tweetEl, quoteContainer);
+    const timestamp = this._extractTimestamp(tweetEl, quoteContainer);
+    const media = this._extractMedia(tweetEl, quoteContainer);
     const engagement = this._extractEngagement(tweetEl);
-    const quoteTweet = this._extractQuoteTweet(tweetEl);
+    const quoteTweet = quoteContainer ? this._parseQuoteContainer(quoteContainer) : null;
     const communityNote = this._extractCommunityNote(tweetEl);
 
     if (!author && !text) return null;
@@ -465,18 +472,73 @@ class XExtractor {
   }
 
   /**
+   * Find the quoted/embedded tweet container, if any.
+   *
+   * X wraps quoted tweets in `<div role="link" tabindex="0">` (the whole block
+   * is a tappable card linking to the quoted tweet's permalink). Other
+   * `[role="link"][tabindex="0"]` elements appear in tweet chrome (small icons,
+   * subscribe affordances), so we filter to ones that contain a nested
+   * `[data-testid="User-Name"]` — User-Name only renders inside tweet bodies, so
+   * its presence inside a role=link wrapper uniquely identifies the embedded
+   * tweet. Locale-stable: role + testid, no phrase matching.
+   *
+   * Returns the first match. Quote-of-quote chains aren't rendered by X
+   * (only the immediate quote is shown), so first-match is correct.
+   */
+  _findQuoteContainer(tweetEl) {
+    const candidates = tweetEl.querySelectorAll('[role="link"][tabindex="0"]');
+    for (const c of candidates) {
+      if (c.querySelector('[data-testid="User-Name"]')) return c;
+    }
+    return null;
+  }
+
+  /**
+   * Parse the quote-tweet container into a TweetData-shaped object.
+   * Mirrors `_parseTweet` but skips quote-of-quote detection (X doesn't
+   * render nested quotes) and zero-fills engagement (the quoted card has
+   * no engagement chrome).
+   */
+  _parseQuoteContainer(container) {
+    if (!container) return null;
+
+    const author = this._extractAuthor(container);
+    const text = this._extractText(container);
+    const timestamp = this._extractTimestamp(container);
+    const media = this._extractMedia(container);
+
+    if (!author && !text) return null;
+
+    return {
+      author: author || { handle: '', displayName: '' },
+      timestamp,
+      text: text || '',
+      media,
+      quoteTweet: null,
+      engagement: { replies: 0, retweets: 0, likes: 0, bookmarks: 0, views: 0 }
+    };
+  }
+
+  /**
    * Extract author info from a tweet element.
+   * @param {Element} tweetEl
+   * @param {Element} [excludeSubtree] - Optional subtree to skip (e.g., the
+   *   quoted-tweet container, so the outer tweet doesn't pick up the quoted
+   *   author when the outer's User-Name is missing).
    * @returns {{ handle: string, displayName: string } | null}
    */
-  _extractAuthor(tweetEl) {
-    const authorEl = this._query(tweetEl, '[data-testid="User-Name"]');
-    if (authorEl) {
-      return this._parseAuthorElement(authorEl);
+  _extractAuthor(tweetEl, excludeSubtree) {
+    const userNames = tweetEl.querySelectorAll('[data-testid="User-Name"]');
+    for (const el of userNames) {
+      if (excludeSubtree && excludeSubtree.contains(el)) continue;
+      return this._parseAuthorElement(el);
     }
 
-    // Fallback: look for link to user profile
+    // Fallback: look for link to user profile (skipping anything inside the
+    // excluded subtree).
     const profileLinks = tweetEl.querySelectorAll('a[href^="/"]');
     for (const link of profileLinks) {
+      if (excludeSubtree && excludeSubtree.contains(link)) continue;
       const href = link.getAttribute('href');
       if (href && /^\/\w+$/.test(href) && !href.includes('/status/')) {
         const handle = href.slice(1);
@@ -526,12 +588,20 @@ class XExtractor {
    * text node; plain textContent skips those, dropping every emoji from the
    * post. Mentions/hashtags/URLs render as <a> tags; plain textContent
    * loses the link target. The walker preserves both.
+   *
+   * @param {Element} tweetEl
+   * @param {Element} [excludeSubtree] - Skip any tweetText nodes inside this
+   *   subtree (used to avoid pulling the quoted tweet's text into the outer
+   *   tweet when the outer has no comment).
    */
-  _extractText(tweetEl) {
-    const textEl = this._query(tweetEl,
-      '[data-testid="tweetText"]',
-      'div[lang]'
-    );
+  _extractText(tweetEl, excludeSubtree) {
+    const candidates = tweetEl.querySelectorAll('[data-testid="tweetText"], div[lang]');
+    let textEl = null;
+    for (const el of candidates) {
+      if (excludeSubtree && excludeSubtree.contains(el)) continue;
+      textEl = el;
+      break;
+    }
     if (!textEl) return '';
     return this._textWithEmoji(textEl, { withLinks: true }).trim();
   }
@@ -616,22 +686,39 @@ class XExtractor {
 
   /**
    * Extract timestamp as ISO string.
+   *
+   * @param {Element} tweetEl
+   * @param {Element} [excludeSubtree] - Skip times inside this subtree. Critical
+   *   for quote tweets: the quoted tweet's `<time>` appears BEFORE the outer
+   *   focal tweet's footer `<time>` in DOM order, so without exclusion the outer
+   *   tweet silently inherits the quoted tweet's timestamp.
    */
-  _extractTimestamp(tweetEl) {
-    const timeEl = tweetEl.querySelector('time[datetime]');
-    return timeEl ? timeEl.getAttribute('datetime') : null;
+  _extractTimestamp(tweetEl, excludeSubtree) {
+    const times = tweetEl.querySelectorAll('time[datetime]');
+    for (const t of times) {
+      if (excludeSubtree && excludeSubtree.contains(t)) continue;
+      return t.getAttribute('datetime');
+    }
+    return null;
   }
 
   /**
    * Extract media items (images, videos).
+   *
+   * @param {Element} tweetEl
+   * @param {Element} [excludeSubtree] - Skip media inside this subtree (the
+   *   quoted tweet, whose own media gets attached to its TweetData object so
+   *   the outer tweet shouldn't double-list it).
    * @returns {Array<{ type: 'image' | 'video', url: string }>}
    */
-  _extractMedia(tweetEl) {
+  _extractMedia(tweetEl, excludeSubtree) {
     const media = [];
+    const isExcluded = (el) => excludeSubtree && excludeSubtree.contains(el);
 
     // Images
     const photoContainers = tweetEl.querySelectorAll('[data-testid="tweetPhoto"]');
     for (const container of photoContainers) {
+      if (isExcluded(container)) continue;
       const img = container.querySelector('img');
       if (img) {
         const url = img.getAttribute('src') || '';
@@ -643,6 +730,7 @@ class XExtractor {
     if (media.length === 0) {
       const imgs = tweetEl.querySelectorAll('img[src*="pbs.twimg.com"]');
       for (const img of imgs) {
+        if (isExcluded(img)) continue;
         const url = img.getAttribute('src') || '';
         // Skip profile pictures (small, in avatar containers)
         if (url && !url.includes('profile_images')) {
@@ -654,6 +742,7 @@ class XExtractor {
     // Videos
     const videoEls = tweetEl.querySelectorAll('video');
     for (const video of videoEls) {
+      if (isExcluded(video)) continue;
       const url = video.getAttribute('src') || video.getAttribute('poster') || '';
       if (url) media.push({ type: 'video', url });
     }
@@ -814,37 +903,6 @@ class XExtractor {
 
     const body = parts.join(' ').trim();
     return body || null;
-  }
-
-  /**
-   * Extract a quote tweet if present.
-   * @returns {TweetData|null}
-   */
-  _extractQuoteTweet(tweetEl) {
-    // Quote tweets are nested — look for an inner tweet-like structure
-    // that is NOT the main tweet itself
-    const quoteContainer = this._query(tweetEl,
-      '[data-testid="quoteTweet"]',
-      '[role="link"][tabindex="0"]'
-    );
-    if (!quoteContainer) return null;
-
-    // Extract quote tweet data from the container
-    const author = this._extractAuthor(quoteContainer);
-    const text = this._extractText(quoteContainer);
-    const timestamp = this._extractTimestamp(quoteContainer);
-    const media = this._extractMedia(quoteContainer);
-
-    if (!author && !text) return null;
-
-    return {
-      author: author || { handle: '', displayName: '' },
-      timestamp,
-      text: text || '',
-      media,
-      quoteTweet: null, // No recursive nesting
-      engagement: { likes: 0, retweets: 0, replies: 0, views: 0 }
-    };
   }
 
   // ── Internal: Article extraction helpers ──

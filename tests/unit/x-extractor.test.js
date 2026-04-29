@@ -66,6 +66,10 @@ const THREAD_HTML = `
 </article>
 `;
 
+// Real X DOM: quote tweets are wrapped in `<div role="link" tabindex="0">`,
+// and the quoted tweet's `<time>` appears BEFORE the focal tweet's footer
+// `<time>` in DOM order. The fixture mirrors that ordering so the
+// outer-vs-quote separation gets exercised.
 const TWEET_WITH_QUOTE_HTML = `
 <article data-testid="tweet">
   <div data-testid="User-Name">
@@ -75,10 +79,7 @@ const TWEET_WITH_QUOTE_HTML = `
   <div data-testid="tweetText" lang="en">
     <span>Totally agree with this take!</span>
   </div>
-  <a href="/alice/status/200">
-    <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
-  </a>
-  <div data-testid="quoteTweet">
+  <div role="link" tabindex="0">
     <div data-testid="User-Name">
       <span>Bob</span>
       <span>@bob</span>
@@ -88,6 +89,9 @@ const TWEET_WITH_QUOTE_HTML = `
     </div>
     <time datetime="2026-03-22T08:00:00.000Z">Mar 22</time>
   </div>
+  <a href="/alice/status/200">
+    <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
+  </a>
   <button data-testid="reply" aria-label="50 replies. Reply"></button>
   <button data-testid="retweet" aria-label="200 reposts. Repost"></button>
   <button data-testid="like" aria-label="1500 Likes. Like"></button>
@@ -348,8 +352,91 @@ describe('XExtractor', () => {
       expect(tweet.quoteTweet).not.toBeNull();
       expect(tweet.quoteTweet.author.handle).toBe('bob');
       expect(tweet.quoteTweet.text).toBe('Hot take: tabs are better than spaces.');
+      expect(tweet.quoteTweet.timestamp).toBe('2026-03-22T08:00:00.000Z');
       // Quote tweets should not nest further
       expect(tweet.quoteTweet.quoteTweet).toBeNull();
+    });
+
+    test('outer tweet fields ignore the quoted tweet subtree', () => {
+      createDoc(TWEET_WITH_QUOTE_HTML);
+      const tweet = extractor.extractSingleTweet(document, 'https://x.com/alice/status/200');
+
+      // Author, text, and timestamp belong to the outer tweet — not the quote,
+      // even though the quote appears between the outer header and footer in DOM.
+      expect(tweet.author.handle).toBe('alice');
+      expect(tweet.text).toBe('Totally agree with this take!');
+      expect(tweet.timestamp).toBe('2026-03-23T12:00:00.000Z');
+    });
+
+    test('quote tweet survives even when the outer post has no comment', () => {
+      // Pure repost: no outer text, just a wrapper around the quoted tweet.
+      // The outer text/timestamp must still be empty/correct, and the quote
+      // must come through fully — this is the exact failure mode users see
+      // on X reposts that lack added commentary.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span>Alice</span>
+            <span>@alice</span>
+          </div>
+          <div role="link" tabindex="0">
+            <div data-testid="User-Name">
+              <span>Bob</span>
+              <span>@bob</span>
+            </div>
+            <div data-testid="tweetText" lang="en">
+              <span>Hot take: tabs are better than spaces.</span>
+            </div>
+            <time datetime="2026-03-22T08:00:00.000Z">Mar 22</time>
+          </div>
+          <a href="/alice/status/201">
+            <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
+          </a>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document, 'https://x.com/alice/status/201');
+
+      expect(tweet.text).toBe('');
+      expect(tweet.timestamp).toBe('2026-03-23T12:00:00.000Z');
+      expect(tweet.quoteTweet).not.toBeNull();
+      expect(tweet.quoteTweet.author.handle).toBe('bob');
+      expect(tweet.quoteTweet.text).toBe('Hot take: tabs are better than spaces.');
+    });
+
+    test('outer media excludes media from the quoted tweet', () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span>Alice</span>
+            <span>@alice</span>
+          </div>
+          <div data-testid="tweetText" lang="en">
+            <span>Worth a read.</span>
+          </div>
+          <div role="link" tabindex="0">
+            <div data-testid="User-Name">
+              <span>Bob</span>
+              <span>@bob</span>
+            </div>
+            <div data-testid="tweetText" lang="en">
+              <span>Quoted content</span>
+            </div>
+            <div data-testid="tweetPhoto">
+              <img src="https://pbs.twimg.com/media/quoted.jpg" />
+            </div>
+            <time datetime="2026-03-22T08:00:00.000Z">Mar 22</time>
+          </div>
+          <a href="/alice/status/202">
+            <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
+          </a>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document, 'https://x.com/alice/status/202');
+
+      expect(tweet.media).toEqual([]);
+      expect(tweet.quoteTweet.media).toEqual([
+        { type: 'image', url: 'https://pbs.twimg.com/media/quoted.jpg' }
+      ]);
     });
 
     test('returns null when no tweets found', () => {

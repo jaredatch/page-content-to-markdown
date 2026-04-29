@@ -113,13 +113,15 @@ class XFormatter {
    * Format a Community Note as a blockquote with a labelled heading.
    * Markdown blockquote is the closest analog to X's bordered visual block —
    * renders as a distinct callout in note tools (Obsidian, GitHub, etc.).
+   *
+   * Note bodies often span multiple lines (separator + source links sit on
+   * their own line at the end). Each line — content or blank — needs the
+   * `>` prefix or the trailing lines escape the blockquote.
    */
   _formatCommunityNote(note) {
-    return [
-      '> 👥 **Community Note**',
-      '>',
-      `> ${note}`
-    ].join('\n');
+    const lines = ['👥 **Community Note**', ''];
+    for (const l of String(note).split('\n')) lines.push(l);
+    return lines.map(line => line ? `> ${line}` : '>').join('\n');
   }
 
   /**
@@ -199,43 +201,61 @@ class XFormatter {
 
   /**
    * Format a quote tweet as a blockquote.
+   *
+   * Quoted tweet bodies often span multiple paragraphs (separated by \n\n
+   * inside a single tweetText). Each line — including blank ones — must be
+   * prefixed with `> ` or the second-and-onward paragraphs render as plain
+   * text outside the blockquote. We expand any multi-line entries before
+   * prefixing.
+   *
    * @param {TweetData} tweet
    * @returns {string}
    */
   formatQuoteTweet(tweet) {
-    const lines = [];
+    const entries = [];
 
     const author = tweet.author;
     if (author && (author.handle || author.displayName)) {
       const handle = author.handle ? `@${author.handle}` : '';
       const name = author.displayName || '';
       if (handle && name) {
-        lines.push(`**${handle}** (${name})`);
+        entries.push(`**${handle}** (${name})`);
       } else {
-        lines.push(`**${handle || name}**`);
+        entries.push(`**${handle || name}**`);
       }
     }
 
     if (tweet.timestamp) {
-      lines.push(`*${this._formatDate(tweet.timestamp)}*`);
+      entries.push(`*${this._formatDate(tweet.timestamp)}*`);
     }
 
-    lines.push('');
+    entries.push('');
 
     if (tweet.text) {
-      lines.push(tweet.text);
+      entries.push(tweet.text);
     }
 
     for (const item of tweet.media || []) {
-      lines.push('');
+      entries.push('');
       if (item.type === 'video') {
-        lines.push(`[Video](${item.url})`);
+        entries.push(`[Video](${item.url})`);
       } else {
-        lines.push(`![Image](${item.url})`);
+        entries.push(`![Image](${item.url})`);
       }
     }
 
-    // Prefix all lines with >
+    // Flatten multi-line entries (e.g., a multi-paragraph quoted tweet body)
+    // into individual lines so the `>` prefix gets applied to every line.
+    const lines = [];
+    for (const entry of entries) {
+      if (entry === '') {
+        lines.push('');
+        continue;
+      }
+      const split = String(entry).split('\n');
+      for (const l of split) lines.push(l);
+    }
+
     return lines.map(line => line ? `> ${line}` : '>').join('\n');
   }
 

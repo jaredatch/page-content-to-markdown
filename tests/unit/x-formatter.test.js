@@ -263,6 +263,25 @@ describe('XFormatter', () => {
       const md = formatter.formatQuoteTweet(quote);
       expect(md).toContain('> ![Image](https://pbs.twimg.com/quote.jpg)');
     });
+
+    test('prefixes every line of a multi-paragraph quote body', () => {
+      // Real X tweets often pack multiple paragraphs into a single tweetText,
+      // separated by \n\n. Without per-line prefixing the second-and-onward
+      // paragraphs leak out of the blockquote.
+      const quote = makeTweet({
+        author: { handle: 'bob', displayName: 'Bob' },
+        text: 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.'
+      });
+      const md = formatter.formatQuoteTweet(quote);
+
+      expect(md).toContain('> First paragraph.');
+      expect(md).toContain('> Second paragraph.');
+      expect(md).toContain('> Third paragraph.');
+      // Every line — content or blank — must begin with `>`.
+      md.split('\n').forEach(line => {
+        expect(line).toMatch(/^>/);
+      });
+    });
   });
 
   describe('_formatDate', () => {
@@ -394,6 +413,34 @@ describe('XFormatter', () => {
       const md = formatter.formatTweet(tweet);
       expect(md).not.toContain('Community Note');
       expect(md).not.toContain('👥');
+    });
+
+    test('prefixes every line of a multi-line note body (links stay inside blockquote)', () => {
+      // Real notes often have a separator + source link on its own line at the
+      // end. Without per-line prefixing the link escapes the blockquote.
+      const tweet = makeTweet({
+        text: 'Body of the post.',
+        communityNote: 'Caution\nMore detail on the issue.\n\n[source](https://example.com/study)',
+        engagement: { replies: 3, retweets: 0, likes: 0, bookmarks: 0, views: 0 }
+      });
+      const md = formatter.formatTweet(tweet);
+
+      // Slice out just the note section: from the heading line to the next
+      // blank `\n\n` paragraph break (which separates note from engagement).
+      const headingIdx = md.indexOf('> 👥 **Community Note**');
+      expect(headingIdx).toBeGreaterThan(-1);
+      const tail = md.slice(headingIdx);
+      const blockEnd = tail.indexOf('\n\n');
+      const noteBlock = blockEnd === -1 ? tail : tail.slice(0, blockEnd);
+
+      // Every line of the note block — heading, body, blank separator, source —
+      // must begin with `>`.
+      noteBlock.split('\n').forEach(line => {
+        expect(line).toMatch(/^>/);
+      });
+      expect(noteBlock).toContain('> Caution');
+      expect(noteBlock).toContain('> More detail on the issue.');
+      expect(noteBlock).toContain('> [source](https://example.com/study)');
     });
 
     test('omits note section when communityNote is missing (legacy shape)', () => {
