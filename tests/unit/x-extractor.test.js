@@ -403,6 +403,96 @@ describe('XExtractor', () => {
       expect(tweet.quoteTweet.text).toBe('Hot take: tabs are better than spaces.');
     });
 
+    test('extracts a link-preview card with title, url, domain, image', () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span>Alice</span>
+            <span>@alice</span>
+          </div>
+          <div data-testid="tweetText" lang="en">
+            <span>Worth a read.</span>
+          </div>
+          <div>
+            <div data-testid="card.wrapper">
+              <a href="https://t.co/ABC123" role="link">
+                <img src="https://pbs.twimg.com/card_img/1/foo.jpg" alt="" />
+                <div>Inside My Head | Linus Ekenstam | Substack</div>
+              </a>
+            </div>
+            <div>From insidemyhead.ai</div>
+          </div>
+          <a href="/alice/status/300">
+            <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
+          </a>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document, 'https://x.com/alice/status/300');
+
+      expect(tweet.card).not.toBeNull();
+      expect(tweet.card.url).toBe('https://t.co/ABC123');
+      expect(tweet.card.title).toBe('Inside My Head | Linus Ekenstam | Substack');
+      expect(tweet.card.domain).toBe('insidemyhead.ai');
+      expect(tweet.card.imageUrl).toBe('https://pbs.twimg.com/card_img/1/foo.jpg');
+    });
+
+    test('card image is excluded from outer media list', () => {
+      // The card's <img> shouldn't double up as a regular tweet photo.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span>Alice</span>
+            <span>@alice</span>
+          </div>
+          <div data-testid="tweetText" lang="en">
+            <span>Worth a read.</span>
+          </div>
+          <div>
+            <div data-testid="card.wrapper">
+              <a href="https://t.co/ABC123" role="link">
+                <img src="https://pbs.twimg.com/card_img/1/foo.jpg" alt="" />
+                <div>Some Card Title</div>
+              </a>
+            </div>
+            <div>From example.com</div>
+          </div>
+          <a href="/alice/status/301">
+            <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
+          </a>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document, 'https://x.com/alice/status/301');
+      expect(tweet.media).toEqual([]);
+      expect(tweet.card).not.toBeNull();
+    });
+
+    test('card extraction tolerates missing domain sibling', () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span>Alice</span>
+            <span>@alice</span>
+          </div>
+          <div data-testid="tweetText" lang="en">
+            <span>Just a link.</span>
+          </div>
+          <div data-testid="card.wrapper">
+            <a href="https://t.co/XYZ" role="link">
+              <div>Some Title</div>
+            </a>
+          </div>
+          <a href="/alice/status/302">
+            <time datetime="2026-03-23T12:00:00.000Z">Mar 23</time>
+          </a>
+        </article>
+      `);
+      const tweet = extractor.extractSingleTweet(document, 'https://x.com/alice/status/302');
+      expect(tweet.card.url).toBe('https://t.co/XYZ');
+      expect(tweet.card.title).toBe('Some Title');
+      expect(tweet.card.domain).toBe('');
+      expect(tweet.card.imageUrl).toBe('');
+    });
+
     test('outer media excludes media from the quoted tweet', () => {
       createDoc(`
         <article data-testid="tweet">
@@ -519,30 +609,90 @@ describe('XExtractor', () => {
       expect(extractor.extractThread(document)).toBeNull();
     });
 
-    test('excludes tweets from different authors in thread', () => {
+    test('thread chain stops at first different-author tweet', () => {
+      // Simulates X's reply-page layout: thread chain on top, then a different
+      // user's comment, then the author's reply to that comment. Only the
+      // contiguous chain above the boundary belongs to the thread — the
+      // author's later reply is part of the replies-to-commenters section.
       createDoc(`
         <article data-testid="tweet">
           <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
-          <div data-testid="tweetText" lang="en"><span>My thread starts here.</span></div>
+          <div data-testid="tweetText" lang="en"><span>Thread post 1.</span></div>
           <a href="/author/status/1"><time datetime="2026-01-01T00:00:00.000Z">Jan 1</time></a>
         </article>
         <article data-testid="tweet">
-          <div data-testid="User-Name"><span>Other Person</span><span>@other</span></div>
-          <div data-testid="tweetText" lang="en"><span>Nice thread!</span></div>
-          <a href="/other/status/2"><time datetime="2026-01-01T00:01:00.000Z">Jan 1</time></a>
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText" lang="en"><span>Thread post 2.</span></div>
+          <a href="/author/status/2"><time datetime="2026-01-01T00:01:00.000Z">Jan 1</time></a>
+        </article>
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Other</span><span>@other</span></div>
+          <div data-testid="tweetText" lang="en"><span>A commenter chiming in.</span></div>
+          <a href="/other/status/3"><time datetime="2026-01-01T00:02:00.000Z">Jan 1</time></a>
         </article>
         <article data-testid="tweet">
           <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
-          <div data-testid="tweetText" lang="en"><span>Continuing my thread.</span></div>
-          <a href="/author/status/3"><time datetime="2026-01-01T00:02:00.000Z">Jan 1</time></a>
+          <div data-testid="tweetText" lang="en"><span>Author replying to the commenter.</span></div>
+          <a href="/author/status/4"><time datetime="2026-01-01T00:03:00.000Z">Jan 1</time></a>
         </article>
       `);
       const thread = extractor.extractThread(document, 'https://x.com/author/status/1');
 
       expect(thread.mainTweet.author.handle).toBe('author');
-      // Only same-author tweets: first + third (skips @other)
+      expect(thread.mainTweet.text).toContain('Thread post 1.');
+      // Chain is just posts 1 and 2 — stops at the @other tweet, never
+      // recovers the author's later reply-to-commenter.
       expect(thread.replies).toHaveLength(1);
-      expect(thread.replies[0].text).toContain('Continuing');
+      expect(thread.replies[0].text).toContain('Thread post 2.');
+    });
+
+    test('skips empty article wrappers (X reply-composer chrome) without breaking the chain', () => {
+      // X inserts an empty article-wrapper between thread tweets and the
+      // replies section (the reply composer divider). It has no User-Name
+      // and isn't a real tweet — the chain should step over it.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText" lang="en"><span>Thread post 1.</span></div>
+          <a href="/author/status/1"><time datetime="2026-01-01T00:00:00.000Z">Jan 1</time></a>
+        </article>
+        <article role="article">
+          <!-- Empty wrapper: no User-Name, no tweetText -->
+        </article>
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText" lang="en"><span>Thread post 2.</span></div>
+          <a href="/author/status/2"><time datetime="2026-01-01T00:01:00.000Z">Jan 1</time></a>
+        </article>
+      `);
+      const thread = extractor.extractThread(document, 'https://x.com/author/status/1');
+      expect(thread.replies).toHaveLength(1);
+      expect(thread.replies[0].text).toContain('Thread post 2.');
+    });
+
+    test('thread chain extends backward when focal is a non-first tweet', () => {
+      // User clicked on the 2nd tweet; chain should still include tweet 1
+      // above plus tweet 3 below — same shape as if they'd clicked the first.
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText" lang="en"><span>Tweet 1.</span></div>
+          <a href="/author/status/1"><time datetime="2026-01-01T00:00:00.000Z">Jan 1</time></a>
+        </article>
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText" lang="en"><span>Tweet 2.</span></div>
+          <a href="/author/status/2"><time datetime="2026-01-01T00:01:00.000Z">Jan 1</time></a>
+        </article>
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText" lang="en"><span>Tweet 3.</span></div>
+          <a href="/author/status/3"><time datetime="2026-01-01T00:02:00.000Z">Jan 1</time></a>
+        </article>
+      `);
+      const thread = extractor.extractThread(document, 'https://x.com/author/status/2');
+      expect(thread.mainTweet.text).toContain('Tweet 1.');
+      expect(thread.replies.map(r => r.text)).toEqual(['Tweet 2.', 'Tweet 3.']);
     });
   });
 
@@ -1112,6 +1262,68 @@ describe('XExtractor', () => {
       expect(tweet.text).toBe('[example.com/page](https://example.com/page)');
     });
 
+    test('strips trailing ellipsis from URL-shaped label on relative-href links', () => {
+      // X auto-renders quoted-tweet/article URLs with `<a href="/path">https://x.com/path…</a>`
+      // — the visible label has a trailing `…` that's purely visual chrome since
+      // the href IS the full URL. Strip it so the markdown reads cleanly.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="/ashen_one/status/2048778522337108295?s=46">https://x.com/ashen_one/status/2048778522337108295?s=46…</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe(
+        '[https://x.com/ashen_one/status/2048778522337108295?s=46](https://x.com/ashen_one/status/2048778522337108295?s=46)'
+      );
+    });
+
+    test('strips trailing three-dot ellipsis from URL labels', () => {
+      // Some browsers/X variants render `...` instead of `…`.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="https://example.com/full-path">https://example.com/full-path...</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('[https://example.com/full-path](https://example.com/full-path)');
+    });
+
+    test('does not strip ellipsis from non-URL display text (mentions, hashtags)', () => {
+      // Trailing `…` on a non-URL label is user content, not visual truncation.
+      // Mentions and hashtags shouldn't lose trailing characters.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="/coolperson">@coolperson</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('[@coolperson](https://x.com/coolperson)');
+    });
+
+    test('keeps trailing ellipsis on t.co truncated label (signal that real URL is unrecoverable)', () => {
+      // The t.co fallback path uses the `…` as a meaningful chrome cue —
+      // stripping it would obscure that the URL was visually truncated.
+      createDoc(
+        '<article data-testid="tweet">' +
+          '<div data-testid="User-Name"><span>User</span><span>@user</span></div>' +
+          '<div data-testid="tweetText" lang="en">' +
+            '<a href="https://t.co/xyz789">example.com/very-long-pa…</a>' +
+          '</div>' +
+        '</article>'
+      );
+      const tweet = extractor.extractSingleTweet(document);
+      expect(tweet.text).toBe('[example.com/very-long-pa…](https://t.co/xyz789)');
+    });
+
     test('display name extraction is link-free even when name span contains an <a>', () => {
       // Defensive: if X ever auto-linkifies an @mention inside a display name,
       // we don't want a markdown link inside the author heading.
@@ -1276,6 +1488,115 @@ describe('XExtractor', () => {
       createDoc(SINGLE_TWEET_HTML);
       const result = extractor.extract('unknown-type', document);
       expect(result).toBeNull();
+    });
+  });
+
+  describe('prepareForExtraction (Show more expansion)', () => {
+    test('clicks all show-more buttons in the focal tweet for single-tweet', async () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name">
+            <span>Author</span>
+            <span>@author</span>
+          </div>
+          <div data-testid="tweetText" lang="en"><span>Truncated body…</span></div>
+          <button data-testid="tweet-text-show-more-link">Show more</button>
+          <a href="/author/status/1"><time datetime="2026-04-29T10:00:00.000Z">10:00</time></a>
+        </article>
+      `);
+
+      const btn = document.querySelector('[data-testid="tweet-text-show-more-link"]');
+      let clicks = 0;
+      btn.click = () => {
+        clicks++;
+        // Simulate X inlining the full body and removing the button.
+        btn.remove();
+      };
+
+      await extractor.prepareForExtraction('single-tweet', document, 'https://x.com/author/status/1');
+      expect(clicks).toBe(1);
+      expect(document.querySelector('[data-testid="tweet-text-show-more-link"]')).toBeNull();
+    });
+
+    test('expands show-more across all same-author tweets in a thread', async () => {
+      // Three tweets — first by author (focal), second by same author (truncated),
+      // third by a different author (also truncated, should be skipped).
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText"><span>Focal body</span></div>
+          <a href="/author/status/100"><time datetime="2026-04-29T09:00:00.000Z">9:00</time></a>
+        </article>
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText"><span>Reply truncated…</span></div>
+          <button data-testid="tweet-text-show-more-link">Show more</button>
+          <a href="/author/status/101"><time datetime="2026-04-29T09:01:00.000Z">9:01</time></a>
+        </article>
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Other</span><span>@other</span></div>
+          <div data-testid="tweetText"><span>Different author truncated…</span></div>
+          <button data-testid="tweet-text-show-more-link">Show more</button>
+          <a href="/other/status/200"><time datetime="2026-04-29T09:02:00.000Z">9:02</time></a>
+        </article>
+      `);
+
+      const buttons = Array.from(document.querySelectorAll('[data-testid="tweet-text-show-more-link"]'));
+      const clicked = [];
+      for (const btn of buttons) {
+        btn.click = () => {
+          clicked.push(btn.parentElement.querySelector('[data-testid="tweetText"]').textContent);
+          btn.remove();
+        };
+      }
+
+      await extractor.prepareForExtraction('thread', document, 'https://x.com/author/status/100');
+      // Only the same-author truncated reply should have been clicked.
+      expect(clicked).toEqual(['Reply truncated…']);
+    });
+
+    test('no-op when there are no show-more buttons', async () => {
+      createDoc(SINGLE_TWEET_HTML);
+      // Should resolve cleanly without doing anything.
+      await expect(
+        extractor.prepareForExtraction('single-tweet', document, 'https://x.com/elonmusk/status/123456')
+      ).resolves.toBeUndefined();
+    });
+
+    test('no-op for content types other than tweet/thread', async () => {
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="tweetText"><span>Body</span></div>
+          <button data-testid="tweet-text-show-more-link">Show more</button>
+        </article>
+      `);
+      const btn = document.querySelector('[data-testid="tweet-text-show-more-link"]');
+      let clicks = 0;
+      btn.click = () => { clicks++; btn.remove(); };
+
+      await extractor.prepareForExtraction('article', document);
+      expect(clicks).toBe(0);
+    });
+
+    test('times out gracefully when the button never disappears', async () => {
+      // Speed up the test by patching _waitForRemoval's timeout via mock.
+      jest.useFakeTimers();
+      createDoc(`
+        <article data-testid="tweet">
+          <div data-testid="User-Name"><span>Author</span><span>@author</span></div>
+          <div data-testid="tweetText"><span>Body</span></div>
+          <button data-testid="tweet-text-show-more-link">Show more</button>
+          <a href="/author/status/1"><time datetime="2026-04-29T10:00:00.000Z">10:00</time></a>
+        </article>
+      `);
+      const btn = document.querySelector('[data-testid="tweet-text-show-more-link"]');
+      btn.click = () => { /* simulate click that never expands */ };
+
+      const promise = extractor.prepareForExtraction('single-tweet', document, 'https://x.com/author/status/1');
+      // Advance well past the 5s timeout
+      await jest.advanceTimersByTimeAsync(6000);
+      await expect(promise).resolves.toBeUndefined();
+      jest.useRealTimers();
     });
   });
 });

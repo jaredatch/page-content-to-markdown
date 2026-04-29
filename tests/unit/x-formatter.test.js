@@ -239,6 +239,62 @@ describe('XFormatter', () => {
     });
   });
 
+  describe('link-preview card rendering', () => {
+    test('renders card with title, url, domain, and image', () => {
+      const tweet = makeTweet({
+        text: 'Worth a read.',
+        card: {
+          url: 'https://t.co/ABC',
+          title: 'Inside My Head | Substack',
+          domain: 'insidemyhead.ai',
+          imageUrl: 'https://pbs.twimg.com/card_img/1/foo.jpg'
+        }
+      });
+      const md = formatter.formatTweet(tweet);
+      expect(md).toContain('🔗 [**Inside My Head | Substack**](https://t.co/ABC) — insidemyhead.ai');
+      expect(md).toContain('![Inside My Head | Substack](https://pbs.twimg.com/card_img/1/foo.jpg)');
+    });
+
+    test('omits domain segment when domain is empty', () => {
+      const tweet = makeTweet({
+        card: {
+          url: 'https://t.co/X',
+          title: 'Untagged Card',
+          domain: '',
+          imageUrl: ''
+        }
+      });
+      const md = formatter.formatTweet(tweet);
+      expect(md).toContain('🔗 [**Untagged Card**](https://t.co/X)');
+      expect(md).not.toContain(' — ');
+    });
+
+    test('omits card section when card is null', () => {
+      const tweet = makeTweet({ card: null });
+      const md = formatter.formatTweet(tweet);
+      expect(md).not.toContain('🔗');
+    });
+
+    test('places card between body/media and engagement', () => {
+      const tweet = makeTweet({
+        text: 'Body of the post.',
+        card: {
+          url: 'https://t.co/X',
+          title: 'Card title',
+          domain: 'example.com',
+          imageUrl: ''
+        },
+        engagement: { replies: 3, retweets: 0, likes: 0, bookmarks: 0, views: 0 }
+      });
+      const md = formatter.formatTweet(tweet);
+      const bodyIdx = md.indexOf('Body of the post.');
+      const cardIdx = md.indexOf('🔗');
+      const engagementIdx = md.indexOf('💬');
+      expect(bodyIdx).toBeLessThan(cardIdx);
+      expect(cardIdx).toBeLessThan(engagementIdx);
+    });
+  });
+
   describe('formatQuoteTweet', () => {
     test('formats as blockquote', () => {
       const quote = makeTweet({

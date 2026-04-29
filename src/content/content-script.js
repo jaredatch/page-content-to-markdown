@@ -397,6 +397,17 @@ class ContentScript {
       const extractor = new site.Extractor();
       const formatter = new site.Formatter();
 
+      // Optional async pre-extraction hook — used by X to expand "Show more"
+      // truncation in long tweets. Best-effort: a failure here doesn't block
+      // extraction (we just capture whatever the DOM currently has).
+      if (typeof extractor.prepareForExtraction === 'function') {
+        try {
+          await extractor.prepareForExtraction(contentType, document, window.location.href);
+        } catch (e) {
+          console.warn('🔧 [content-script] prepareForExtraction failed, continuing:', e);
+        }
+      }
+
       const data = extractor.extract(contentType, document, window.location.href);
       if (!data) throw new Error(`Could not extract ${contentType} from this page`);
 

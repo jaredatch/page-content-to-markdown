@@ -8,6 +8,86 @@
  */
 class XExtractor {
   /**
+   * Optional async pre-extraction hook — called by the content script before
+   * `extract()`. Used here to expand "Show more" truncation in long tweets:
+   * tweets over ~280 chars render with a `[data-testid="tweet-text-show-more-link"]`
+   * button and the full body is fetched on click. Without this hook, extraction
+   * silently captures only the truncated prefix.
+   *
+   * Scope is limited to the tweets we'll actually serialize — the focal tweet
+   * for `single-tweet`, all same-author tweets for `thread`. We don't expand
+   * unrelated replies in the timeline below.
+   *
+   * Best-effort: each click triggers an API call; if it fails or times out
+   * (5s budget) we proceed with whatever's present rather than blocking.
+   *
+   * @param {string} contentType
+   * @param {Document} doc
+   * @param {string} [url]
+   */
+  async prepareForExtraction(contentType, doc, url) {
+    if (contentType !== 'single-tweet' && contentType !== 'thread') return;
+
+    const tweets = this._findTweetElements(doc);
+    if (tweets.length === 0) return;
+    const pageUrl = url || (doc.location ? doc.location.href : '');
+    const focal = this._findFocalTweet(tweets, pageUrl);
+    if (!focal) return;
+
+    let toExpand;
+    if (contentType === 'single-tweet') {
+      toExpand = [focal];
+    } else {
+      const focalAuthor = this._extractAuthor(focal);
+      toExpand = focalAuthor
+        ? this._collectThreadChain(tweets, focal, focalAuthor.handle)
+        : [focal];
+    }
+
+    await this._expandShowMore(toExpand);
+  }
+
+  /**
+   * Click every "Show more" button inside the given tweet elements and wait
+   * for each to disappear (the button is removed from the DOM once X inlines
+   * the full body). Resolves when all buttons are gone, or after a 5s
+   * timeout — whichever comes first.
+   */
+  async _expandShowMore(tweetEls) {
+    const buttons = [];
+    for (const tweetEl of tweetEls) {
+      const btns = tweetEl.querySelectorAll
+        ? tweetEl.querySelectorAll('[data-testid="tweet-text-show-more-link"]')
+        : [];
+      for (const b of btns) buttons.push(b);
+    }
+    if (buttons.length === 0) return;
+
+    for (const b of buttons) {
+      try { b.click(); } catch { /* synthetic click failed; continue */ }
+    }
+
+    await Promise.all(buttons.map(b => this._waitForRemoval(b, 5000)));
+  }
+
+  /**
+   * Resolve when the element is detached from the document (or after the
+   * given timeout). Polling-based — no MutationObserver needed for this
+   * narrow case.
+   */
+  _waitForRemoval(el, timeoutMs) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const tick = () => {
+        if (!el.isConnected) return resolve();
+        if (Date.now() - start > timeoutMs) return resolve();
+        setTimeout(tick, 100);
+      };
+      tick();
+    });
+  }
+
+  /**
    * Unified extraction dispatch — called by the site registry system.
    * @param {string} contentType - 'single-tweet', 'thread', or 'article'
    * @param {Document} doc - The document
@@ -83,7 +163,15 @@ class XExtractor {
   }
 
   /**
-   * Extract a thread (main tweet + same-author replies).
+   * Extract a thread (the focal tweet + same-author self-reply chain).
+   *
+   * A thread is a contiguous run of same-author tweets adjacent to the focal,
+   * NOT every same-author tweet on the page. The previous broader rule swept
+   * up author replies-to-commenters from the replies section, which aren't
+   * part of the original thread chain. The chain ends at the first
+   * different-author tweet in either direction (typically the first
+   * commenter, just below the last thread tweet).
+   *
    * @param {Document} doc - The document
    * @param {string} [url] - Current page URL (used to identify focal tweet)
    * @returns {ThreadData|null}
@@ -97,15 +185,8 @@ class XExtractor {
     const focalData = this._parseTweet(focal);
     if (!focalData) return null;
 
-    // Collect all tweets from the same author
-    const threadTweets = [];
-    for (const tweetEl of tweets) {
-      const author = this._extractAuthor(tweetEl);
-      if (author && author.handle === focalData.author.handle) {
-        const parsed = this._parseTweet(tweetEl);
-        if (parsed) threadTweets.push(parsed);
-      }
-    }
+    const chainEls = this._collectThreadChain(tweets, focal, focalData.author.handle);
+    const threadTweets = chainEls.map(el => this._parseTweet(el)).filter(Boolean);
 
     if (threadTweets.length === 0) return null;
 
@@ -113,6 +194,44 @@ class XExtractor {
       mainTweet: threadTweets[0],
       replies: threadTweets.slice(1)
     };
+  }
+
+  /**
+   * Walk forward and backward from the focal to gather the contiguous
+   * same-author thread chain. Skips empty article wrappers (X uses these
+   * for the reply composer divider and similar chrome — they have no
+   * `User-Name` and shouldn't break the chain). Stops at the first real
+   * tweet whose author differs from the focal's.
+   *
+   * Returns chain elements in DOM order (earliest first).
+   */
+  _collectThreadChain(tweets, focal, focalHandle) {
+    const focalIdx = tweets.indexOf(focal);
+    if (focalIdx < 0 || !focalHandle) return [focal];
+
+    const chain = [focal];
+
+    const isRealTweet = (el) => !!el.querySelector('[data-testid="User-Name"]');
+
+    // Walk backward.
+    for (let i = focalIdx - 1; i >= 0; i--) {
+      const el = tweets[i];
+      if (!isRealTweet(el)) continue;
+      const author = this._extractAuthor(el);
+      if (!author || author.handle !== focalHandle) break;
+      chain.unshift(el);
+    }
+
+    // Walk forward.
+    for (let i = focalIdx + 1; i < tweets.length; i++) {
+      const el = tweets[i];
+      if (!isRealTweet(el)) continue;
+      const author = this._extractAuthor(el);
+      if (!author || author.handle !== focalHandle) break;
+      chain.push(el);
+    }
+
+    return chain;
   }
 
   /**
@@ -449,11 +568,18 @@ class XExtractor {
     // quote's DOM nodes appear first (as `<time>` always does — the quote is
     // rendered above the focal tweet's footer timestamp).
     const quoteContainer = this._findQuoteContainer(tweetEl);
+    // Card extraction looks outside the quote subtree so a quoted tweet's own
+    // card doesn't get attached to the outer tweet — the quote will pick up
+    // its own card via _parseQuoteContainer.
+    const card = this._extractCard(tweetEl, quoteContainer);
 
     const author = this._extractAuthor(tweetEl, quoteContainer);
     const text = this._extractText(tweetEl, quoteContainer);
     const timestamp = this._extractTimestamp(tweetEl, quoteContainer);
-    const media = this._extractMedia(tweetEl, quoteContainer);
+    const media = this._extractMedia(
+      tweetEl,
+      [quoteContainer, card && card.containerEl].filter(Boolean)
+    );
     const engagement = this._extractEngagement(tweetEl);
     const quoteTweet = quoteContainer ? this._parseQuoteContainer(quoteContainer) : null;
     const communityNote = this._extractCommunityNote(tweetEl);
@@ -465,6 +591,7 @@ class XExtractor {
       timestamp,
       text: text || '',
       media,
+      card: card ? this._cardToData(card) : null,
       quoteTweet,
       communityNote,
       engagement
@@ -494,6 +621,90 @@ class XExtractor {
   }
 
   /**
+   * Extract a link-preview card ("unfurled" link card) attached to a tweet.
+   *
+   * X's structure:
+   *   [data-testid="card.wrapper"]    — the card container
+   *     <a href="https://t.co/...">    — single anchor wraps title + image
+   *       <img src="…card_img…">       — OG image (alt is empty)
+   *       text node                    — the OG title
+   *   [sibling div]                    — text "From {domain}" (localized prefix)
+   *
+   * The destination URL is *only* available as the t.co masker — X never puts
+   * the canonical URL in the DOM. We get the canonical *domain* from the
+   * sibling "From X" line; the full URL is unrecoverable, so the markdown
+   * link points at the t.co URL (X redirects on click) with the domain
+   * surfaced as visible context.
+   *
+   * Locale-stable: testid + structural sibling lookup. Domain is parsed from
+   * the sibling text via a domain-shaped regex, so it works regardless of
+   * what word X uses for "From" in the viewer's locale.
+   *
+   * @param {Element} tweetEl
+   * @param {Element} [excludeSubtree] - Skip cards inside this subtree (the
+   *   quoted tweet, which gets its own card via _parseQuoteContainer).
+   * @returns {{
+   *   containerEl: Element,
+   *   url: string,
+   *   title: string,
+   *   domain: string,
+   *   imageUrl: string
+   * } | null}
+   */
+  _extractCard(tweetEl, excludeSubtree) {
+    const wrappers = tweetEl.querySelectorAll('[data-testid="card.wrapper"]');
+    let wrapper = null;
+    for (const w of wrappers) {
+      if (excludeSubtree && excludeSubtree.contains(w)) continue;
+      wrapper = w;
+      break;
+    }
+    if (!wrapper) return null;
+
+    const anchor = wrapper.querySelector('a[href]');
+    const url = anchor ? anchor.getAttribute('href') || '' : '';
+    if (!url) return null; // Without a target URL the card has no useful payload
+
+    // Title: anchor's text (the OG title). Falls back to the wrapper's
+    // textContent if the anchor is empty for some reason.
+    const titleSource = anchor && anchor.textContent.trim()
+      ? anchor.textContent
+      : wrapper.textContent;
+    const title = (titleSource || '').trim();
+
+    // OG image — first <img> inside the wrapper.
+    const imgEl = wrapper.querySelector('img');
+    const imageUrl = imgEl ? imgEl.getAttribute('src') || '' : '';
+
+    // Canonical domain — parse from the next sibling that contains a
+    // domain-shaped token. Locale-agnostic: we don't match the localized
+    // "From " prefix word, just the domain pattern.
+    let domain = '';
+    let probe = wrapper.nextElementSibling;
+    while (probe && !domain) {
+      const text = (probe.textContent || '').trim();
+      const match = text.match(/[\w-]+(?:\.[\w-]+)+/);
+      if (match) domain = match[0];
+      probe = probe.nextElementSibling;
+    }
+
+    return { containerEl: wrapper, url, title, domain, imageUrl };
+  }
+
+  /**
+   * Strip the internal `containerEl` reference before exposing card data
+   * to the formatter (the DOM node has no role in markdown output).
+   */
+  _cardToData(card) {
+    return {
+      url: card.url,
+      title: card.title,
+      domain: card.domain,
+      imageUrl: card.imageUrl
+    };
+  }
+
+  /**
    * Parse the quote-tweet container into a TweetData-shaped object.
    * Mirrors `_parseTweet` but skips quote-of-quote detection (X doesn't
    * render nested quotes) and zero-fills engagement (the quoted card has
@@ -502,10 +713,11 @@ class XExtractor {
   _parseQuoteContainer(container) {
     if (!container) return null;
 
+    const card = this._extractCard(container);
     const author = this._extractAuthor(container);
     const text = this._extractText(container);
     const timestamp = this._extractTimestamp(container);
-    const media = this._extractMedia(container);
+    const media = this._extractMedia(container, card && card.containerEl);
 
     if (!author && !text) return null;
 
@@ -514,6 +726,7 @@ class XExtractor {
       timestamp,
       text: text || '',
       media,
+      card: card ? this._cardToData(card) : null,
       quoteTweet: null,
       engagement: { replies: 0, retweets: 0, likes: 0, bookmarks: 0, views: 0 }
     };
@@ -668,20 +881,38 @@ class XExtractor {
 
     if (href.startsWith('/')) {
       const cleanPath = href.replace(/^\/@/, '/');
-      return `[${text}](https://x.com${cleanPath})`;
+      return `[${this._stripUrlEllipsis(text)}](https://x.com${cleanPath})`;
     }
 
     if (/^https?:\/\/t\.co\//i.test(href)) {
       const trimmed = text.trim();
       const truncated = trimmed.includes('…') || /\.{3}$/.test(trimmed);
       if (truncated) {
+        // Keep the `…` here — the t.co fallback signals the real URL is
+        // unrecoverable, so the ellipsis is meaningful chrome (not just
+        // visual truncation we can safely drop).
         return `[${text}](${href})`;
       }
       const realUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
       return `[${text}](${realUrl})`;
     }
 
-    return `[${text}](${href})`;
+    return `[${this._stripUrlEllipsis(text)}](${href})`;
+  }
+
+  /**
+   * Strip a trailing `…` or `...` from a URL-shaped label. X displays long
+   * URLs with a visual truncation indicator (`https://example.com/long…`)
+   * even when the underlying anchor href is intact — the ellipsis bleeds
+   * into the markdown label and looks like punctuation. Only strip when
+   * the label is recognizably a URL (starts with http) so we don't mangle
+   * user-authored "..." inside mention/hashtag/post text.
+   */
+  _stripUrlEllipsis(label) {
+    if (!label) return label;
+    const trimmed = label.trim();
+    if (!/^https?:\/\//i.test(trimmed)) return label;
+    return trimmed.replace(/(?:…|\.{3})+$/, '');
   }
 
   /**
@@ -706,14 +937,15 @@ class XExtractor {
    * Extract media items (images, videos).
    *
    * @param {Element} tweetEl
-   * @param {Element} [excludeSubtree] - Skip media inside this subtree (the
-   *   quoted tweet, whose own media gets attached to its TweetData object so
-   *   the outer tweet shouldn't double-list it).
+   * @param {Element|Element[]} [exclude] - Skip media inside any of these
+   *   subtrees. Used to keep the outer tweet from double-counting media that
+   *   already belongs to the quoted tweet or to a link-preview card.
    * @returns {Array<{ type: 'image' | 'video', url: string }>}
    */
-  _extractMedia(tweetEl, excludeSubtree) {
+  _extractMedia(tweetEl, exclude) {
     const media = [];
-    const isExcluded = (el) => excludeSubtree && excludeSubtree.contains(el);
+    const subtrees = !exclude ? [] : (Array.isArray(exclude) ? exclude : [exclude]);
+    const isExcluded = (el) => subtrees.some(s => s && s.contains(el));
 
     // Images
     const photoContainers = tweetEl.querySelectorAll('[data-testid="tweetPhoto"]');

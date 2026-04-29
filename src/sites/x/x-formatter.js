@@ -83,6 +83,17 @@ class XFormatter {
       }
     }
 
+    // Link-preview card — "unfurled" link block X renders below tweets.
+    // Sits between the tweet body/media and any quote/note/engagement so it
+    // mirrors the on-page placement.
+    if (tweet.card) {
+      const cardMd = this._formatCard(tweet.card);
+      if (cardMd) {
+        parts.push('');
+        parts.push(cardMd);
+      }
+    }
+
     // Quote tweet
     if (tweet.quoteTweet) {
       parts.push('');
@@ -107,6 +118,37 @@ class XFormatter {
     parts.push('---');
 
     return parts.join('\n');
+  }
+
+  /**
+   * Format a link-preview card.
+   *
+   * Format:
+   *   🔗 [**{title}**]({url}) — {domain}
+   *
+   *   ![{title}]({imageUrl})
+   *
+   * Title and image use the same alt/label so the visual cue lines up.
+   * Domain is omitted when not extractable; image line is omitted when the
+   * card has no image. Returns empty string when there's no URL (the link is
+   * the load-bearing payload).
+   */
+  _formatCard(card) {
+    if (!card || !card.url) return '';
+
+    const title = (card.title || '').trim();
+    const linkLabel = title ? `[**${title}**](${card.url})` : `[**Linked card**](${card.url})`;
+
+    const headLine = card.domain
+      ? `🔗 ${linkLabel} — ${card.domain}`
+      : `🔗 ${linkLabel}`;
+
+    const lines = [headLine];
+    if (card.imageUrl) {
+      lines.push('');
+      lines.push(`![${title || 'Card image'}](${card.imageUrl})`);
+    }
+    return lines.join('\n');
   }
 
   /**
@@ -241,6 +283,14 @@ class XFormatter {
         entries.push(`[Video](${item.url})`);
       } else {
         entries.push(`![Image](${item.url})`);
+      }
+    }
+
+    if (tweet.card) {
+      const cardMd = this._formatCard(tweet.card);
+      if (cardMd) {
+        entries.push('');
+        entries.push(cardMd);
       }
     }
 
