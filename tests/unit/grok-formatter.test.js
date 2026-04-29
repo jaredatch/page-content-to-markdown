@@ -129,4 +129,20 @@ describe('GrokFormatter', () => {
       expect(md).toMatch(/config snippet:\n\n```json/);
     });
   });
+
+  describe('filenameTitle', () => {
+    test('uses "Grok — {title}" when conversation has a title', () => {
+      const data = { title: 'Math homework help', turns: [] };
+      expect(formatter.filenameTitle('conversation', data)).toBe('Grok — Math homework help');
+    });
+
+    test('falls back to "Grok Conversation" when no title', () => {
+      const data = { title: '', turns: [] };
+      expect(formatter.filenameTitle('conversation', data)).toBe('Grok Conversation');
+    });
+
+    test('returns null for unknown content type', () => {
+      expect(formatter.filenameTitle('unknown', { title: 'X' })).toBeNull();
+    });
+  });
 });

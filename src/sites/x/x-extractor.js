@@ -174,12 +174,18 @@ class XExtractor {
       }
     }
 
+    // Engagement (replies, reposts, likes, views) lives on the page container,
+    // outside the read view. Same shape as a tweet's engagement so the formatter
+    // can render them with the matching emoji-row convention.
+    const engagement = this._extractEngagement(pageContainer);
+
     return {
       author: author || { handle: '', displayName: '' },
       title: title || '',
       bodyHtml: bodyHtml || '',
       coverImage,
-      publishedDate
+      publishedDate,
+      engagement
     };
   }
 
@@ -192,6 +198,8 @@ class XExtractor {
    */
   _sanitizeArticleBody(bodyEl) {
     const clone = bodyEl.cloneNode(true);
+    this._promoteInlineBold(clone);
+    this._promoteInlineItalic(clone);
     this._flattenHeadings(clone);
     this._sanitizeCodeBlocks(clone);
     this._replaceVideoWithPoster(clone);
@@ -200,6 +208,51 @@ class XExtractor {
     this._inlineMentionWrappers(clone);
     this._cleanMentionUrls(clone);
     return clone.innerHTML;
+  }
+
+  /**
+   * X article bodies use `<span style="font-weight: bold;">…</span>` for inline bold
+   * instead of `<strong>` / `<b>`. Turndown only honors the semantic tags, so without
+   * this step every bold passage in an article silently drops to plain text.
+   * We wrap each such element's children in `<strong>` so Turndown's default rule
+   * picks them up. Skip nodes already inside a heading (those get flattened to
+   * plain text anyway) or inside an existing strong/b ancestor.
+   */
+  _promoteInlineBold(root) {
+    const candidates = root.querySelectorAll('[style*="font-weight"]');
+    for (const el of candidates) {
+      const fw = el.style && el.style.fontWeight;
+      if (!fw) continue;
+      const isBold = fw === 'bold' || fw === 'bolder' || parseInt(fw, 10) >= 600;
+      if (!isBold) continue;
+      if (el.closest && el.closest('h1, h2, h3, h4, h5, h6, strong, b')) continue;
+      if (!el.firstChild) continue;
+
+      const doc = el.ownerDocument;
+      const strong = doc.createElement('strong');
+      while (el.firstChild) strong.appendChild(el.firstChild);
+      el.appendChild(strong);
+    }
+  }
+
+  /**
+   * Mirror of _promoteInlineBold for italic. X article bodies use
+   * `<span style="font-style: italic;">…</span>` instead of `<em>` / `<i>`,
+   * so without promotion every italic passage drops to plain text.
+   */
+  _promoteInlineItalic(root) {
+    const candidates = root.querySelectorAll('[style*="font-style"]');
+    for (const el of candidates) {
+      const fs = el.style && el.style.fontStyle;
+      if (fs !== 'italic' && fs !== 'oblique') continue;
+      if (el.closest && el.closest('h1, h2, h3, h4, h5, h6, em, i')) continue;
+      if (!el.firstChild) continue;
+
+      const doc = el.ownerDocument;
+      const em = doc.createElement('em');
+      while (el.firstChild) em.appendChild(el.firstChild);
+      el.appendChild(em);
+    }
   }
 
   /**
@@ -246,6 +299,18 @@ class XExtractor {
     for (const video of videos) {
       const poster = video.getAttribute('poster');
       if (!poster || !video.ownerDocument) continue;
+
+      // X renders GIFs/videos as both an <img> still preview AND a <video poster=...>
+      // pointing at the same URL. Without this, the poster shows up twice in the
+      // markdown (once with alt="GIF" from the swap below, once with alt="" from
+      // the surviving preview img).
+      const container = (video.closest && video.closest('[data-testid="videoComponent"], [data-testid="videoPlayer"]')) || video.parentElement;
+      if (container) {
+        container.querySelectorAll('img').forEach(img => {
+          if (img.getAttribute('src') === poster) img.remove();
+        });
+      }
+
       const img = video.ownerDocument.createElement('img');
       img.setAttribute('src', poster);
       img.setAttribute('alt', 'GIF');

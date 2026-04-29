@@ -159,4 +159,20 @@ describe('ClaudeFormatter', () => {
       expect(md).toContain('Hi');
     });
   });
+
+  describe('filenameTitle', () => {
+    test('uses "Claude — {title}" when conversation has a title', () => {
+      const data = { title: 'Debugging a tricky regex', sharedBy: '', turns: [] };
+      expect(formatter.filenameTitle('conversation', data)).toBe('Claude — Debugging a tricky regex');
+    });
+
+    test('falls back to "Claude Conversation" when no title', () => {
+      const data = { title: '', sharedBy: '', turns: [] };
+      expect(formatter.filenameTitle('conversation', data)).toBe('Claude Conversation');
+    });
+
+    test('returns null for unknown content type', () => {
+      expect(formatter.filenameTitle('unknown', { title: 'X' })).toBeNull();
+    });
+  });
 });

@@ -20,6 +20,17 @@ class GrokFormatter {
   }
 
   /**
+   * Compute a filename-friendly title for an extracted conversation.
+   * `Grok — {title}` when we have a real title; falls back to a static
+   * label so the file is still grouped with other Grok exports.
+   */
+  filenameTitle(contentType, data) {
+    if (contentType !== 'conversation' || !data) return null;
+    const title = data.title && data.title.trim();
+    return title ? `Grok — ${title}` : 'Grok Conversation';
+  }
+
+  /**
    * Format a full conversation as markdown.
    * @param {ConversationData} conversation
    * @param {object} [converter] - MarkdownConverter for HTML→markdown on Grok responses

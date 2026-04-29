@@ -107,4 +107,63 @@ describe('SiteRegistry', () => {
       }
     });
   });
+
+  describe('applicableContentTypes', () => {
+    const xSite = SiteRegistry.getById('x');
+    const claudeSite = SiteRegistry.getById('claude');
+    const grokSite = SiteRegistry.getById('grok');
+
+    test('X home/feed/profile returns nothing applicable', () => {
+      expect(SiteRegistry.applicableContentTypes(xSite, 'https://x.com/home')).toHaveLength(0);
+      expect(SiteRegistry.applicableContentTypes(xSite, 'https://x.com/explore')).toHaveLength(0);
+      expect(SiteRegistry.applicableContentTypes(xSite, 'https://x.com/notifications')).toHaveLength(0);
+      expect(SiteRegistry.applicableContentTypes(xSite, 'https://x.com/somebody')).toHaveLength(0);
+      expect(SiteRegistry.applicableContentTypes(xSite, 'https://x.com')).toHaveLength(0);
+    });
+
+    test('X /status/ URL offers all three content types (DOM disambiguates)', () => {
+      const types = SiteRegistry.applicableContentTypes(xSite, 'https://x.com/elonmusk/status/12345');
+      const ids = types.map(t => t.id).sort();
+      expect(ids).toEqual(['article', 'single-tweet', 'thread']);
+    });
+
+    test('X /i/article/ URL offers only article', () => {
+      const types = SiteRegistry.applicableContentTypes(xSite, 'https://x.com/i/article/12345');
+      expect(types.map(t => t.id)).toEqual(['article']);
+    });
+
+    test('X /{user}/article/{id} URL offers only article', () => {
+      const types = SiteRegistry.applicableContentTypes(xSite, 'https://x.com/garrytan/article/2046876981711769720');
+      expect(types.map(t => t.id)).toEqual(['article']);
+    });
+
+    test('Claude /share/ offers conversation; non-share paths offer nothing', () => {
+      expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/share/abc')).toHaveLength(1);
+      expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/new')).toHaveLength(0);
+      expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/chat/xyz')).toHaveLength(0);
+      expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/')).toHaveLength(0);
+    });
+
+    test('Grok /share/ and /c/ offer conversation; bare hostname does not', () => {
+      expect(SiteRegistry.applicableContentTypes(grokSite, 'https://grok.com/share/foo')).toHaveLength(1);
+      expect(SiteRegistry.applicableContentTypes(grokSite, 'https://grok.com/c/abc123')).toHaveLength(1);
+      expect(SiteRegistry.applicableContentTypes(grokSite, 'https://grok.com/')).toHaveLength(0);
+    });
+
+    test('returns empty for null site or invalid URL', () => {
+      expect(SiteRegistry.applicableContentTypes(null, 'https://x.com')).toEqual([]);
+      expect(SiteRegistry.applicableContentTypes(xSite, 'not-a-url')).toEqual([]);
+    });
+
+    test('content types without pathPatterns are treated as always-applicable', () => {
+      const fakeSite = {
+        contentTypes: [
+          { id: 'always', label: 'Always', icon: '' }, // no pathPatterns
+          { id: 'restricted', label: 'Restricted', icon: '', pathPatterns: [/\/match\//] }
+        ]
+      };
+      const types = SiteRegistry.applicableContentTypes(fakeSite, 'https://example.com/anywhere');
+      expect(types.map(t => t.id)).toEqual(['always']);
+    });
+  });
 });

@@ -176,6 +176,47 @@ describe('XFormatter', () => {
       expect(md).not.toMatch(/^# [^#]/m);
       expect(md).toContain('Content only.');
     });
+
+    test('appends engagement footer when counts are present', () => {
+      const article = {
+        author: { handle: 'writer', displayName: 'Writer' },
+        title: 'Article',
+        bodyHtml: '<p>Body.</p>',
+        publishedDate: null,
+        engagement: { likes: 922, retweets: 135, replies: 20, views: 0 }
+      };
+      const md = formatter.formatArticle(article);
+      // Should appear once, after a horizontal rule, at the end.
+      expect(md).toMatch(/Body[\s\S]*\n---\n/);
+      expect(md).toMatch(/922/);
+      expect(md).toMatch(/135/);
+      expect(md).toMatch(/20/);
+    });
+
+    test('skips engagement footer when all counts are zero', () => {
+      const article = {
+        author: { handle: 'writer', displayName: 'Writer' },
+        title: 'Article',
+        bodyHtml: '<p>Body.</p>',
+        publishedDate: null,
+        engagement: { likes: 0, retweets: 0, replies: 0, views: 0 }
+      };
+      const md = formatter.formatArticle(article);
+      // Header rule still appears (between metadata and body) but no footer rule.
+      const ruleCount = (md.match(/^---$/gm) || []).length;
+      expect(ruleCount).toBe(1);
+    });
+
+    test('omits engagement footer when engagement is missing', () => {
+      const article = {
+        author: { handle: 'writer', displayName: 'Writer' },
+        title: 'Article',
+        bodyHtml: '<p>Body.</p>',
+        publishedDate: null
+        // no engagement key — backwards-compatible with old extractor output
+      };
+      expect(() => formatter.formatArticle(article)).not.toThrow();
+    });
   });
 
   describe('formatQuoteTweet', () => {
@@ -308,6 +349,50 @@ describe('XFormatter', () => {
     test('returns empty string for unknown content type', () => {
       const md = formatter.format('unknown', {});
       expect(md).toBe('');
+    });
+  });
+
+  describe('filenameTitle', () => {
+    test('single-tweet → "X Post by @{handle}"', () => {
+      const tweet = makeTweet({ author: { handle: 'jaredatch', displayName: 'Jared' } });
+      expect(formatter.filenameTitle('single-tweet', tweet)).toBe('X Post by @jaredatch');
+    });
+
+    test('single-tweet without handle falls back to "X Post"', () => {
+      const tweet = makeTweet({ author: { handle: '', displayName: '' } });
+      expect(formatter.filenameTitle('single-tweet', tweet)).toBe('X Post');
+    });
+
+    test('thread → "X Thread by @{handle}" (uses mainTweet author)', () => {
+      const thread = {
+        mainTweet: makeTweet({ author: { handle: 'naval', displayName: 'Naval' } }),
+        replies: []
+      };
+      expect(formatter.filenameTitle('thread', thread)).toBe('X Thread by @naval');
+    });
+
+    test('thread without handle falls back to "X Thread"', () => {
+      const thread = { mainTweet: makeTweet({ author: { handle: '', displayName: '' } }), replies: [] };
+      expect(formatter.filenameTitle('thread', thread)).toBe('X Thread');
+    });
+
+    test('article → uses data.title as-is', () => {
+      const article = { title: 'Creating a Second Brain with Claude Code' };
+      expect(formatter.filenameTitle('article', article))
+        .toBe('Creating a Second Brain with Claude Code');
+    });
+
+    test('article without title falls back to "X Article"', () => {
+      expect(formatter.filenameTitle('article', { title: '' })).toBe('X Article');
+      expect(formatter.filenameTitle('article', { title: '   ' })).toBe('X Article');
+    });
+
+    test('returns null for unknown content type', () => {
+      expect(formatter.filenameTitle('unknown', {})).toBeNull();
+    });
+
+    test('returns null for missing data', () => {
+      expect(formatter.filenameTitle('single-tweet', null)).toBeNull();
     });
   });
 });

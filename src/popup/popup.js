@@ -47,6 +47,7 @@ class PopupController {
     this.state = {
       currentTab: null,
       currentSite: null,
+      applicableContentTypes: [],      // subset of currentSite.contentTypes whose pathPatterns match the URL
       selectedContentType: 'page',
       selectedSiteId: null,
       view: 'main',                    // 'main' | 'selecting' | 'restricted'
@@ -96,6 +97,9 @@ class PopupController {
       }
 
       this.state.currentSite = SiteRegistry.detect(url);
+      this.state.applicableContentTypes = this.state.currentSite
+        ? SiteRegistry.applicableContentTypes(this.state.currentSite, url)
+        : [];
     } catch (error) {
       console.error('🚨 [popup] Error checking current tab:', error);
       this.state.view = 'restricted';
@@ -120,12 +124,15 @@ class PopupController {
    */
   restoreSelectionFromMemory() {
     const site = this.state.currentSite;
+    const applicable = this.state.applicableContentTypes;
     const lastUsed = this.state.prefs.lastUsedPerSite || {};
 
-    if (site && lastUsed[site.id]) {
+    // Only restore the remembered type if it's still applicable on the current
+    // URL — otherwise (e.g. last picked "Article" on a /status/ page, now on
+    // /home) fall back to "Page content" so the action button does the right thing.
+    if (site && lastUsed[site.id] && applicable.length > 0) {
       const remembered = lastUsed[site.id];
-      const valid = site.contentTypes.some(ct => ct.id === remembered);
-      if (valid) {
+      if (applicable.some(ct => ct.id === remembered)) {
         this.state.selectedContentType = remembered;
         this.state.selectedSiteId = site.id;
         return;
@@ -215,8 +222,13 @@ class PopupController {
 
   renderRows() {
     const site = this.state.currentSite;
+    const applicable = this.state.applicableContentTypes;
 
-    if (!site) {
+    // Hide the entire "Available on X" section when:
+    //   - we're on a non-supported site, OR
+    //   - we're on a supported site but the URL has no extractable content type
+    //     (e.g. x.com/home, claude.ai/new — the user can still use Page content).
+    if (!site || applicable.length === 0) {
       this.elements.siteDivider.classList.add('hidden');
       this.elements.siteRows.innerHTML = '';
       this.applySelectionClasses();
@@ -229,7 +241,7 @@ class PopupController {
     this.elements.siteDivider.classList.remove('hidden');
 
     this.elements.siteRows.innerHTML = '';
-    for (const ct of site.contentTypes) {
+    for (const ct of applicable) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'row';

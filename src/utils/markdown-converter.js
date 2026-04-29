@@ -144,6 +144,40 @@ class MarkdownConverter {
     });
   }
 
+  /**
+   * Custom listItem rule replacing Turndown's default. Two changes:
+   *   1. Single space after the marker (`- text`, `1. text`) instead of Turndown's
+   *      3-space `-   ` / 2-space `1.  ` padding.
+   *   2. Tight by default — single-paragraph items emit no trailing blank line.
+   *      Turndown's default emits a 4-space-indented blank line between every
+   *      item when an `<li>` wraps a `<p>` (X articles, Notion exports, GitHub
+   *      issue bodies, etc.), making every list look "loose". Multi-paragraph
+   *      items still keep a paragraph break, indented to align under the marker.
+   */
+  _registerListItemRule(service) {
+    service.addRule('tightListItem', {
+      filter: 'li',
+      replacement: function (content, node, options) {
+        // Strip leading newlines from <p> wrap; collapse trailing whitespace
+        // (including the indent spaces a nested rule may have added).
+        content = content
+          .replace(/^\n+/, '')
+          .replace(/\s+$/, '')
+          .replace(/\n/g, '\n  ');
+
+        let prefix = (options.bulletListMarker || '-') + ' ';
+        const parent = node.parentNode;
+        if (parent && parent.nodeName === 'OL') {
+          const start = parent.getAttribute('start');
+          const index = Array.prototype.indexOf.call(parent.children, node);
+          prefix = (start ? Number(start) + index : index + 1) + '. ';
+        }
+
+        return prefix + content + (node.nextSibling ? '\n' : '');
+      }
+    });
+  }
+
   setupCustomRules() {
     // Remove script and style elements
     this.turndownService.remove(['script', 'style', 'iframe', 'object', 'embed', 'noscript']);
@@ -194,6 +228,7 @@ class MarkdownConverter {
     });
 
     this._registerLinkModeRule(this.turndownService);
+    this._registerListItemRule(this.turndownService);
   }
 
   /**
@@ -263,6 +298,7 @@ class MarkdownConverter {
         });
 
         this._registerLinkModeRule(this._fragmentService);
+        this._registerListItemRule(this._fragmentService);
       }
 
       this._resetConversionState();
@@ -678,30 +714,18 @@ class MarkdownConverter {
   cleanupMarkdown(markdown) {
     if (!markdown) return '';
 
-    // Use the configured bullet marker for list normalization
     const bullet = this.turndownService.options.bulletListMarker || '-';
     const escapedBullet = bullet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Normalize list markers to the configured bullet
-    const otherBullet = bullet === '-' ? '\\*' : '-';
-    const bulletNormalize = new RegExp(`^${otherBullet} `, 'gm');
     const emptyListItem = new RegExp(`\\n(?:${escapedBullet} \\s*|> \\s*)\\n`, 'g');
-    const listSpacing = new RegExp(`(\\n${escapedBullet} .+?)(\\n{2,})(${escapedBullet} )`, 'g');
 
     let result = markdown
-      // Normalize list markers to configured bullet
-      .replace(bulletNormalize, `${bullet} `)
       // Remove empty list items and empty blockquotes
       .replace(emptyListItem, '\n')
-      // Ensure single line breaks between list items
-      .replace(listSpacing, '$1\n$3')
       // Clean up around headings
       .replace(/\n{2,}(#{1,6} )/g, '\n\n$1')
       .replace(/(#{1,6} .+?)\n{3,}/g, '$1\n\n')
       // Clean up around blockquotes
       .replace(/\n{2,}(> )/g, '\n\n$1')
-      // Clean up code blocks
-      .replace(/```\n\n/g, '```\n')
-      .replace(/\n\n```/g, '\n```')
       // Final cleanup: collapse excess newlines, strip trailing spaces
       .replace(/\n{3,}/g, '\n\n')
       .replace(/ +$/gm, '')

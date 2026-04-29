@@ -377,6 +377,16 @@ class ContentScript {
 
       let markdown = formatter.format(contentType, data, this.converter);
 
+      // Override metadata.title with a clean, filename-safe title from the
+      // formatter. Without this, X tweet pages save as "Riley Brown on X-
+      // {280 chars of post text} - 2026-04-29.md" because document.title
+      // stuffs the post body into the OG title. Each formatter knows what
+      // a sensible title looks like for its content type.
+      if (typeof formatter.filenameTitle === 'function') {
+        const cleanTitle = formatter.filenameTitle(contentType, data);
+        if (cleanTitle) metadata.title = cleanTitle;
+      }
+
       if (includeMetadata) {
         markdown = this.addMetadataHeader(markdown, metadata, options.metadataFormat);
       }

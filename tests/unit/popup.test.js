@@ -10,7 +10,12 @@ jest.mock('../../src/utils/preferences', () => ({
 }));
 
 jest.mock('../../src/utils/site-registry', () => ({
-  detect: jest.fn().mockReturnValue(null)
+  detect: jest.fn().mockReturnValue(null),
+  // Default mock: pass through all of the site's content types. Individual tests
+  // can override for path-applicability scenarios.
+  applicableContentTypes: jest.fn((site) =>
+    site && Array.isArray(site.contentTypes) ? site.contentTypes : []
+  )
 }));
 
 let Preferences, SiteRegistry;
@@ -143,6 +148,9 @@ describe('PopupController', () => {
     Preferences.get.mockResolvedValue(DEFAULT_PREFS);
     Preferences.set.mockResolvedValue();
     SiteRegistry.detect.mockReturnValue(null);
+    SiteRegistry.applicableContentTypes.mockImplementation((site) =>
+      site && Array.isArray(site.contentTypes) ? site.contentTypes : []
+    );
 
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -274,6 +282,41 @@ describe('PopupController', () => {
       expect(popup.elements.dividerText.textContent).toBe('Available on Claude');
       expect(popup.elements.dividerBadge.textContent).toBe('C');
       expect(popup.elements.siteRows.children).toHaveLength(1);
+    });
+
+    test('hides site divider when no content types are applicable on this URL', async () => {
+      // E.g. on x.com/home — site is detected by hostname but no contentTypes
+      // match the path, so the "Available on X" section should not render.
+      SiteRegistry.applicableContentTypes.mockReturnValueOnce([]);
+      const popup = await createPopup({ tabUrl: 'https://x.com/home', site: X_SITE });
+      expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(true);
+      expect(popup.elements.siteRows.children).toHaveLength(0);
+      // Page content should be selected as the default action
+      expect(popup.state.selectedContentType).toBe('page');
+    });
+
+    test('renders only the applicable subset when path matches some content types', async () => {
+      // Imagine a future site where /article/ paths only show "article", not "tweet".
+      SiteRegistry.applicableContentTypes.mockReturnValueOnce([
+        X_SITE.contentTypes[2] // just article
+      ]);
+      const popup = await createPopup({ tabUrl: 'https://x.com/u/article/1', site: X_SITE });
+      expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(false);
+      expect(popup.elements.siteRows.children).toHaveLength(1);
+      expect(popup.elements.siteRows.children[0].dataset.contentType).toBe('article');
+    });
+
+    test('does not restore remembered content type when none are applicable on this URL', async () => {
+      // User last picked 'thread' on a /status/ page; now they're on /home where
+      // nothing applies. The remembered type must NOT carry over — Page content wins.
+      SiteRegistry.applicableContentTypes.mockReturnValueOnce([]);
+      const popup = await createPopup({
+        tabUrl: 'https://x.com/home',
+        site: X_SITE,
+        prefs: { lastUsedPerSite: { x: 'thread' } }
+      });
+      expect(popup.state.selectedContentType).toBe('page');
+      expect(popup.state.selectedSiteId).toBeNull();
     });
   });
 

@@ -46,6 +46,28 @@ class SiteRegistry {
   static all() {
     return _sites;
   }
+
+  /**
+   * Filter a site's content types to those whose pathPatterns match the URL.
+   * Content types without pathPatterns are treated as always-applicable
+   * (backwards-compatible default — useful while a site module is being built out).
+   * @param {object} site - Site module
+   * @param {string} url - Current page URL
+   * @returns {Array<object>} Subset of site.contentTypes that apply on this URL
+   */
+  static applicableContentTypes(site, url) {
+    if (!site || !Array.isArray(site.contentTypes)) return [];
+    let path;
+    try {
+      path = new URL(url).pathname;
+    } catch {
+      return [];
+    }
+    return site.contentTypes.filter(ct => {
+      if (!ct.pathPatterns || ct.pathPatterns.length === 0) return true;
+      return ct.pathPatterns.some(p => p.test(path));
+    });
+  }
 }
 
 module.exports = SiteRegistry;

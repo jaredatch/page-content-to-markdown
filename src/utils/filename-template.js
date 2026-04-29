@@ -13,6 +13,13 @@ const MAX_FILENAME_LENGTH = 200;
 const EXTENSION = '.md';
 const FALLBACK_FILENAME = 'page' + EXTENSION;
 
+// Sanity cap for the {title} token. A page's <title> can be hundreds of
+// characters (X tweet pages stuff the entire post text in there), and
+// without an opt-out cap we end up with filenames that overflow the
+// MAX_FILENAME_LENGTH cap and chop off the user's date/suffix tokens.
+// Users who want a wider title can override with `{title|max:N}`.
+const DEFAULT_TITLE_MAX = 100;
+
 const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD';
 const DEFAULT_TIME_FORMAT = 'HHmmss';
 const DEFAULT_DATETIME_FORMAT = 'YYYY-MM-DD_HHmmss';
@@ -32,10 +39,14 @@ const DAY_NAMES_SHORT = DAY_NAMES_FULL.map(d => d.substring(0, 3));
 // `[literal]` lets users embed letters that would otherwise be tokens.
 const DATE_TOKEN_RE = /\[([^\]]+)\]|YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|HH|H|hh|h|mm|m|ss|s|A|a|ZZ|Z/g;
 
-// Template tokens look like {name} or {name:format}. The format part may
-// contain anything but `}` (so brackets, colons-other-than-the-first, etc.
-// in date format strings work).
-const TEMPLATE_TOKEN_RE = /\{(\w+)(?::([^}]+))?\}/g;
+// Template tokens look like:
+//   {name}                          — bare token
+//   {name:format}                   — colon shortcut (date format string only — kept
+//                                     for back-compat: `{date:YYYY-MM-DD}`)
+//   {name|filter:arg|filter:arg}    — pipe-style filter chain
+//   {name:format|filter:arg}        — combine: legacy date format then filters
+// We capture the entire interior and let the parser split on `|` and `:`.
+const TEMPLATE_TOKEN_RE = /\{([^}]+)\}/g;
 
 const FS_ILLEGAL_RE = /[/\\:*?"<>|]/g;
 // eslint-disable-next-line no-control-regex
@@ -119,25 +130,117 @@ function resolveContext(context) {
 }
 
 /**
- * Expand `{token}` and `{token:format}` placeholders in a template
- * against the resolved context. Unknown tokens render as empty string.
- * Literal characters between tokens are preserved as-is.
+ * Parse a filter expression (e.g. `max:50`, `default:Untitled`).
+ * Returns `{ name, arg }`. The colon is the separator between filter
+ * name and its argument; the argument may itself contain colons.
+ */
+function parseFilter(expr) {
+  const idx = expr.indexOf(':');
+  if (idx < 0) return { name: expr.trim(), arg: null };
+  return {
+    name: expr.substring(0, idx).trim(),
+    arg: expr.substring(idx + 1)
+  };
+}
+
+/**
+ * Apply a single filter to a string value. Unknown filters pass the
+ * value through unchanged so a typo doesn't silently destroy filenames.
+ */
+function applyFilter(filter, value) {
+  switch (filter.name) {
+    case 'max': {
+      const n = parseInt(filter.arg, 10);
+      if (!Number.isFinite(n) || n <= 0) return value;
+      if (typeof value !== 'string' || value.length <= n) return value;
+      return truncate(value, n, [' ', '-', '_', '.']);
+    }
+    case 'default':
+      return (value === undefined || value === null || value === '')
+        ? (filter.arg || '')
+        : value;
+    default:
+      return value;
+  }
+}
+
+/**
+ * Resolve a token name against the context. Returns the raw string
+ * value before any filter pipeline runs. Date-family tokens accept
+ * a format string (legacy colon shortcut: `{date:YYYY-MM-DD}`).
+ */
+function resolveTokenValue(name, legacyFmt, ctx) {
+  switch (name) {
+    case 'title':    return ctx.title || '';
+    case 'host':     return ctx.host;
+    case 'domain':   return ctx.domain;
+    case 'path':     return ctx.path;
+    case 'slug':     return ctx.slug;
+    case 'date':     return formatDate(ctx.date, legacyFmt || DEFAULT_DATE_FORMAT);
+    case 'time':     return formatDate(ctx.date, legacyFmt || DEFAULT_TIME_FORMAT);
+    case 'datetime': return formatDate(ctx.date, legacyFmt || DEFAULT_DATETIME_FORMAT);
+    default:         return '';
+  }
+}
+
+/**
+ * Parse one `{...}` body into its name, legacy date-format shortcut, and
+ * a filter chain. The legacy `:fmt` only applies to date-family tokens —
+ * for non-date tokens we emit nothing (the colon-shortcut never made sense
+ * for them). Pipe filters always work.
+ *
+ * Supported forms:
+ *   "title"                       → { name: 'title' }
+ *   "date:YYYY-MM-DD"             → { name: 'date', dateFormat: 'YYYY-MM-DD' }
+ *   "title|max:50"                → { name: 'title', filters: [{ name: 'max', arg: '50' }] }
+ *   "date:YYYY-MM-DD|max:8"       → both
+ */
+function parseTokenBody(body) {
+  const parts = body.split('|');
+  const head = parts[0];
+  const filters = parts.slice(1).map(parseFilter);
+
+  const colonIdx = head.indexOf(':');
+  if (colonIdx < 0) return { name: head.trim(), dateFormat: null, filters };
+  return {
+    name: head.substring(0, colonIdx).trim(),
+    dateFormat: head.substring(colonIdx + 1),
+    filters
+  };
+}
+
+/**
+ * Expand `{...}` placeholders in a template against the resolved context.
+ * Unknown tokens render as empty string. Literal characters between tokens
+ * are preserved as-is.
  */
 function expandTemplate(template, context) {
   if (typeof template !== 'string') return '';
   const ctx = resolveContext(context);
-  return template.replace(TEMPLATE_TOKEN_RE, (_match, name, format) => {
-    switch (name) {
-      case 'title':    return ctx.title || 'page';
-      case 'host':     return ctx.host;
-      case 'domain':   return ctx.domain;
-      case 'path':     return ctx.path;
-      case 'slug':     return ctx.slug;
-      case 'date':     return formatDate(ctx.date, format || DEFAULT_DATE_FORMAT);
-      case 'time':     return formatDate(ctx.date, format || DEFAULT_TIME_FORMAT);
-      case 'datetime': return formatDate(ctx.date, format || DEFAULT_DATETIME_FORMAT);
-      default:         return '';
+  return template.replace(TEMPLATE_TOKEN_RE, (match, body) => {
+    const parsed = parseTokenBody(body);
+
+    let value = resolveTokenValue(parsed.name, parsed.dateFormat, ctx);
+
+    // Apply the default title cap when the user hasn't supplied an explicit
+    // `max:N` filter. This keeps `{title}` from blowing past the filename
+    // length cap on pages with absurdly long titles (e.g. X tweet pages).
+    if (parsed.name === 'title' && !parsed.filters.some(f => f.name === 'max')) {
+      value = applyFilter({ name: 'max', arg: String(DEFAULT_TITLE_MAX) }, value);
     }
+
+    for (const filter of parsed.filters) {
+      value = applyFilter(filter, value);
+    }
+
+    // Title fallback. Done after filters so `{title|default:foo}` works
+    // explicitly, but a bare `{title}` with no value still becomes "page"
+    // (preserves prior behavior).
+    if (parsed.name === 'title' && !value && !parsed.filters.some(f => f.name === 'default')) {
+      return 'page';
+    }
+
+    return value == null ? '' : String(value);
   });
 }
 
@@ -227,8 +330,12 @@ module.exports = {
   expandTemplate,
   applyStyle,
   slugify,
+  applyFilter,
+  parseFilter,
+  parseTokenBody,
   // Exposed for advanced callers / tests:
   MAX_FILENAME_LENGTH,
+  DEFAULT_TITLE_MAX,
   FALLBACK_FILENAME,
   DEFAULT_DATE_FORMAT,
   DEFAULT_TIME_FORMAT,

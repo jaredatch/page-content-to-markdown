@@ -22,6 +22,33 @@ class XFormatter {
   }
 
   /**
+   * Compute a filename-friendly title for the extracted content.
+   * Returns null when nothing sensible can be derived — caller falls
+   * back to document.title in that case.
+   *
+   * Tweets and threads deliberately don't embed any post text — author
+   * + date is the right disambiguator for a tweet permalink, and post
+   * text rarely makes a useful filename.
+   */
+  filenameTitle(contentType, data) {
+    if (!data) return null;
+    switch (contentType) {
+      case 'single-tweet': {
+        const handle = data.author && data.author.handle;
+        return handle ? `X Post by @${handle}` : 'X Post';
+      }
+      case 'thread': {
+        const handle = data.mainTweet && data.mainTweet.author && data.mainTweet.author.handle;
+        return handle ? `X Thread by @${handle}` : 'X Thread';
+      }
+      case 'article':
+        return (data.title && data.title.trim()) || 'X Article';
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Format a single tweet as markdown.
    * @param {TweetData} tweet
    * @returns {string}
@@ -135,6 +162,16 @@ class XFormatter {
         const text = article.bodyHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         parts.push(text);
       }
+    }
+
+    // Engagement footer — same emoji row as tweets, placed at the end so the
+    // article body leads cleanly. Skipped silently if all counts are 0.
+    const engagementLine = this._formatEngagement(article.engagement);
+    if (engagementLine) {
+      parts.push('');
+      parts.push('---');
+      parts.push('');
+      parts.push(engagementLine);
     }
 
     return parts.join('\n');

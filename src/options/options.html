@@ -89,6 +89,12 @@
                 <code>YYYY</code> <code>MM</code> <code>DD</code> <code>HH</code> <code>mm</code> <code>ss</code>.
                 <a href="https://day.js.org/docs/en/display/format" target="_blank" rel="noopener noreferrer">Full reference →</a>
               </div>
+              <div class="tokens-note">
+                Append <code>|filter</code> to any token to transform it.
+                <code>|max:N</code> caps length (default <code>{title}</code> cap is 100).
+                <code>|default:VALUE</code> substitutes when empty.
+                Example: <code>{title|max:60}&nbsp;-&nbsp;{date}</code>.
+              </div>
             </div>
           </div>
 

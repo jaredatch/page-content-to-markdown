@@ -464,4 +464,116 @@ describe('formatFilename', () => {
       expect(result).toBe('My {Title}.md');
     });
   });
+
+  describe('default title cap (sanity safety net)', () => {
+    test('caps {title} at 100 chars by default — no user filter needed', () => {
+      const longTitle = 'a'.repeat(500);
+      const ctx = { ...SAMPLE_CONTEXT, title: longTitle };
+      const result = formatFilename('{title}', 'preserve', ctx);
+      // 100 a's + .md = 103 chars
+      expect(result.length).toBe(103);
+      expect(result).toBe('a'.repeat(100) + '.md');
+    });
+
+    test('default cap walks back to a word boundary when present', () => {
+      // 12-char chunks separated by spaces — should walk back to a space boundary
+      const longTitle = 'aaaaaaaaaaaa '.repeat(20).trim();
+      const ctx = { ...SAMPLE_CONTEXT, title: longTitle };
+      const result = formatFilename('{title}', 'preserve', ctx);
+      expect(result.length).toBeLessThanOrEqual(103);
+      // Should end on a full chunk, not mid-chunk
+      expect(result).toMatch(/aaaaaaaaaaaa\.md$/);
+    });
+
+    test('explicit |max:N filter wins over default cap', () => {
+      const longTitle = 'a'.repeat(500);
+      const ctx = { ...SAMPLE_CONTEXT, title: longTitle };
+      const result = formatFilename('{title|max:30}', 'preserve', ctx);
+      expect(result).toBe('a'.repeat(30) + '.md');
+    });
+
+    test('explicit |max:N can widen beyond the default cap', () => {
+      const longTitle = 'a'.repeat(500);
+      const ctx = { ...SAMPLE_CONTEXT, title: longTitle };
+      const result = formatFilename('{title|max:160}', 'preserve', ctx);
+      // 160 a's + .md = 163; ≤ MAX_FILENAME_LENGTH
+      expect(result).toBe('a'.repeat(160) + '.md');
+    });
+
+    test('default cap leaves room for date suffix', () => {
+      // The whole problem this is solving: the X-style 280-char title used to
+      // crowd the date out. With the default cap, the suffix survives intact.
+      const longTitle = 'X Post by @author '.repeat(20); // ~360 chars
+      const ctx = { ...SAMPLE_CONTEXT, title: longTitle };
+      const result = formatFilename('{title} - {date}', 'preserve', ctx);
+      expect(result).toMatch(/ - 2026-04-25\.md$/);
+    });
+  });
+
+  describe('pipe-filter syntax', () => {
+    test('|max:N truncates the value at a word boundary when one exists in the last 30%', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: 'A very long article title here' };
+      // max=12 → substring(0,12)="A very long ", boundary at index 11 (space) → "A very long"
+      expect(formatFilename('{title|max:12}', 'preserve', ctx)).toBe('A very long.md');
+    });
+
+    test('|max:N falls back to hard cut when no word boundary fits', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: 'Antidisestablishmentarianism' };
+      // No spaces in last 30% — hard truncate at 10 chars
+      expect(formatFilename('{title|max:10}', 'preserve', ctx)).toBe('Antidisest.md');
+    });
+
+    test('|max:N with a value shorter than N is unchanged', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: 'Short' };
+      expect(formatFilename('{title|max:50}', 'preserve', ctx)).toBe('Short.md');
+    });
+
+    test('|default:VALUE supplies a fallback when token is empty', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: '', url: '' };
+      expect(formatFilename('{slug|default:untitled}', 'preserve', ctx))
+        .toBe('untitled.md');
+    });
+
+    test('|default does NOT override a non-empty value', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: 'Real Title' };
+      expect(formatFilename('{title|default:fallback}', 'preserve', ctx))
+        .toBe('Real Title.md');
+    });
+
+    test('chained filters apply left-to-right', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: '' };
+      // Default fills in "Some Long Fallback Value", then max truncates it
+      expect(formatFilename('{title|default:Some Long Fallback Value|max:10}', 'preserve', ctx))
+        .toBe('Some Long.md');
+    });
+
+    test('unknown filter is a no-op (typo-safe)', () => {
+      const ctx = { ...SAMPLE_CONTEXT, title: 'Title' };
+      expect(formatFilename('{title|nosuchfilter:foo}', 'preserve', ctx))
+        .toBe('Title.md');
+    });
+
+    test('filters work on non-title tokens too', () => {
+      const ctx = { ...SAMPLE_CONTEXT, url: 'https://example.com/very/deep/nested/path/here' };
+      // The max filter runs on the raw path; later, preserve-style sanitization
+      // replaces / with - because slashes are FS-illegal in filenames.
+      expect(formatFilename('{path|max:15}', 'preserve', ctx))
+        .toBe('very-deep-neste.md');
+    });
+  });
+
+  describe('legacy {date:fmt} colon shortcut still works', () => {
+    test('{date:YYYY-MM-DD} produces the expected date string', () => {
+      const ctx = { ...SAMPLE_CONTEXT, date: new Date(2026, 0, 5) };
+      expect(formatFilename('{date:YYYY-MM-DD}', 'preserve', ctx))
+        .toBe('2026-01-05.md');
+    });
+
+    test('legacy date format combined with pipe filter', () => {
+      const ctx = { ...SAMPLE_CONTEXT, date: new Date(2026, 0, 5) };
+      // {date:YYYY} returns "2026", then |max:2 truncates to "20"
+      expect(formatFilename('{date:YYYY|max:2}', 'preserve', ctx))
+        .toBe('20.md');
+    });
+  });
 });

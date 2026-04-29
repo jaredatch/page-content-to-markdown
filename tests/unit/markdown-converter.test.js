@@ -571,6 +571,92 @@ describe('MarkdownConverter', () => {
     });
   });
 
+  describe('list formatting (tight, single-space marker)', () => {
+    test('unordered list uses single space after marker', () => {
+      const html = '<ul><li>Alpha</li><li>Beta</li></ul>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toMatch(/^- Alpha$/m);
+      expect(md).toMatch(/^- Beta$/m);
+      // Must NOT have the Turndown default 3-space padding
+      expect(md).not.toMatch(/^- {2,}/m);
+    });
+
+    test('ordered list uses single space after marker', () => {
+      const html = '<ol><li>One</li><li>Two</li></ol>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toMatch(/^1\. One$/m);
+      expect(md).toMatch(/^2\. Two$/m);
+      expect(md).not.toMatch(/^\d+\. {2,}/m);
+    });
+
+    test('list items wrapped in <p> render tight (no blank line between)', () => {
+      // X articles, Notion exports, GitHub bodies all wrap each <li> in a <p>.
+      // Default Turndown emits "loose" output with a blank line between items.
+      const html = '<ul><li><p>Alpha</p></li><li><p>Beta</p></li><li><p>Gamma</p></li></ul>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toBe('- Alpha\n- Beta\n- Gamma');
+    });
+
+    test('ordered list items wrapped in <p> also render tight', () => {
+      const html = '<ol><li><p>First</p></li><li><p>Second</p></li></ol>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toBe('1. First\n2. Second');
+    });
+
+    test('multi-paragraph list items preserve paragraph break', () => {
+      const html = '<ul><li><p>First para</p><p>Second para</p></li><li>Just one</li></ul>';
+      const md = converter.convertHtmlFragment(html);
+
+      // Continuation paragraph indented under the marker, blank line between paragraphs
+      expect(md).toMatch(/- First para\n\n {2}Second para/);
+      expect(md).toMatch(/^- Just one$/m);
+    });
+
+    test('nested list indents under the parent item', () => {
+      const html = '<ul><li>Parent<ul><li>Child A</li><li>Child B</li></ul></li><li>Sibling</li></ul>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toMatch(/^- Parent$/m);
+      expect(md).toMatch(/^ {2}- Child A$/m);
+      expect(md).toMatch(/^ {2}- Child B$/m);
+      expect(md).toMatch(/^- Sibling$/m);
+    });
+
+    test('asterisk bullet marker also gets single-space spacing', () => {
+      // Fragment service is lazy-initialized — prime it before changing options
+      // (applyFormattingOptions only updates services that already exist)
+      converter.convertHtmlFragment('<p>prime</p>');
+      converter.applyFormattingOptions({ bulletListMarker: '*' });
+      const html = '<ul><li>Alpha</li><li>Beta</li></ul>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toMatch(/^\* Alpha$/m);
+      expect(md).toMatch(/^\* Beta$/m);
+      expect(md).not.toMatch(/^\* {2,}/m);
+    });
+  });
+
+  describe('code fence spacing', () => {
+    test('blank line preserved between heading and code fence', () => {
+      const html = '<h2>A prompt you can use</h2><pre><code class="language-js">const x = 1;</code></pre>';
+      const md = converter.convertHtmlFragment(html);
+
+      // Heading must not be jammed against the opening fence
+      expect(md).toMatch(/## A prompt you can use\n\n```/);
+    });
+
+    test('blank line preserved after closing code fence', () => {
+      const html = '<pre><code>const x = 1;</code></pre><p>After the block.</p>';
+      const md = converter.convertHtmlFragment(html);
+
+      expect(md).toMatch(/```\n\nAfter the block\./);
+    });
+  });
+
   describe('size guard', () => {
     test('convertToMarkdown should handle large HTML without throwing', () => {
       // Create a large HTML string (~1MB, below the 5MB guard)

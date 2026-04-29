@@ -277,6 +277,15 @@ describe('XExtractor', () => {
         .toBe('article');
     });
 
+    test('detects article on /{user}/article/{id} URL when read view is present', () => {
+      // X also serves the same article body at /{user}/article/{id} (visible in
+      // internal media-viewer links). Detection must rely on the DOM testid,
+      // not the URL regex, since this path doesn't match /status/ or /i/article/.
+      document.documentElement.innerHTML = X_ARTICLE_READVIEW_HTML;
+      expect(extractor.detectContentType('https://x.com/realauthor/article/2046876981711769720', document))
+        .toBe('article');
+    });
+
     test('returns unknown for non-tweet URLs', () => {
       expect(extractor.detectContentType('https://x.com/home', document))
         .toBe('unknown');
@@ -580,6 +589,109 @@ describe('XExtractor', () => {
       // /@mercury → /mercury (the displayed text @mercury is unchanged).
       expect(article.bodyHtml).toMatch(/href="https:\/\/x\.com\/mercury"/);
       expect(article.bodyHtml).not.toMatch(/href="https:\/\/x\.com\/@mercury"/);
+    });
+
+    test('dedupes preview <img> when its src matches the <video> poster', () => {
+      // X often renders animated GIFs as both an <img> still preview AND a
+      // <video poster=...> with the same URL. Without de-duping, the same
+      // media URL appears twice in the output (once with alt="GIF", once empty).
+      document.body.innerHTML = `
+        <article role="article" data-testid="tweet">
+          <div data-testid="twitterArticleReadView">
+            <div data-testid="twitterArticleRichTextView">
+              <div data-testid="videoComponent">
+                <img src="https://pbs.twimg.com/tweet_video_thumb/DUP.jpg" alt="" />
+                <video poster="https://pbs.twimg.com/tweet_video_thumb/DUP.jpg" src="https://video.twimg.com/x.mp4"></video>
+              </div>
+            </div>
+          </div>
+        </article>
+      `;
+      const article = extractor.extractArticle(document);
+      const matches = (article.bodyHtml.match(/tweet_video_thumb\/DUP\.jpg/g) || []).length;
+      expect(matches).toBe(1);
+      // The surviving image is the alt="GIF" one we substituted in.
+      expect(article.bodyHtml).toMatch(/alt="GIF"/);
+    });
+
+    test('extracts engagement (replies, reposts, likes) from page container', () => {
+      const article = extractor.extractArticle(document);
+      // Aria labels in the fixture: "20 replies", "135 reposts", "922 Likes"
+      expect(article.engagement).toBeDefined();
+      expect(article.engagement.replies).toBe(20);
+      expect(article.engagement.retweets).toBe(135);
+      expect(article.engagement.likes).toBe(922);
+    });
+
+    test('promotes inline-style bold spans to <strong>', () => {
+      // X article bodies use <span style="font-weight: bold"> (NOT <strong>) for inline
+      // bold. Turndown ignores inline styles, so without promotion every bold passage
+      // in an article silently drops to plain text.
+      document.body.innerHTML = `
+        <article role="article" data-testid="tweet">
+          <div data-testid="twitterArticleReadView">
+            <div data-testid="twitterArticleRichTextView">
+              <div data-block="true">
+                <span data-text="true">Plain text and </span>
+                <span style="font-weight: bold;"><span data-text="true">important phrase</span></span>
+                <span data-text="true"> follows.</span>
+              </div>
+              <p>
+                <span style="font-weight: 700;">numeric weight 700</span>
+                and
+                <span style="font-weight: 400;">normal 400</span>
+              </p>
+            </div>
+          </div>
+        </article>
+      `;
+      const article = extractor.extractArticle(document);
+      expect(article.bodyHtml).toMatch(/<strong><span data-text="true">important phrase<\/span><\/strong>/);
+      expect(article.bodyHtml).toMatch(/<strong>numeric weight 700<\/strong>/);
+      // 400 is not bold — must NOT be wrapped
+      expect(article.bodyHtml).not.toMatch(/<strong>normal 400<\/strong>/);
+    });
+
+    test('promotes inline-style italic spans to <em>', () => {
+      // X article bodies use <span style="font-style: italic"> (NOT <em>/<i>)
+      // for emphasis. Same Turndown blind spot as the bold case.
+      document.body.innerHTML = `
+        <article role="article" data-testid="tweet">
+          <div data-testid="twitterArticleReadView">
+            <div data-testid="twitterArticleRichTextView">
+              <p>
+                <span style="font-style: italic;"><span data-text="true">emphasis</span></span>
+                and
+                <span style="font-style: oblique;">also slanted</span>
+                and
+                <span style="font-style: normal;">not italic</span>
+              </p>
+            </div>
+          </div>
+        </article>
+      `;
+      const article = extractor.extractArticle(document);
+      expect(article.bodyHtml).toMatch(/<em><span data-text="true">emphasis<\/span><\/em>/);
+      expect(article.bodyHtml).toMatch(/<em>also slanted<\/em>/);
+      expect(article.bodyHtml).not.toMatch(/<em>not italic<\/em>/);
+    });
+
+    test('does not promote bold spans nested inside headings', () => {
+      // Headings are flattened to plain text via _flattenHeadings — wrapping
+      // their inner bold spans in <strong> first would have no visible effect
+      // but adds noise to the DOM walk. Skip them deliberately.
+      document.body.innerHTML = `
+        <article role="article" data-testid="tweet">
+          <div data-testid="twitterArticleReadView">
+            <div data-testid="twitterArticleRichTextView">
+              <h2><span style="font-weight: bold;">Heading text</span></h2>
+            </div>
+          </div>
+        </article>
+      `;
+      const article = extractor.extractArticle(document);
+      expect(article.bodyHtml).toMatch(/<h2[^>]*>Heading text<\/h2>/);
+      expect(article.bodyHtml).not.toMatch(/<strong>/);
     });
   });
 
