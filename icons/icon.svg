@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4F6BF6"/>
-      <stop offset="100%" style="stop-color:#7C3AED"/>
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="23.04" ry="23.04" fill="url(#bg)"/>
-  <g transform="translate(15.36, 34.06769230769231) scale(0.4676923076923077)">
-    <path d="M193 128H15a15 15 0 0 1-15-15V15A15 15 0 0 1 15 0h178a15 15 0 0 1 15 15v98a15 15 0 0 1-15 15zM50 98V59l20 25 20-25v39h20V30H90L70 55 50 30H30v68zm134-34h-20V30h-20v34h-20l30 35z" fill="rgba(255,255,255,0.95)"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="t d"><title id="t">Page Content to Markdown</title><desc id="d">Black app icon with a white document, folded corner, and a black hashtag representing Markdown.</desc><path d="M0 0h1024v1024H0z"/><path fill="#fff" d="M134 102h562v154a58 58 0 0 0 58 58h168v576a32 32 0 0 1-32 32H134a32 32 0 0 1-32-32V134a32 32 0 0 1 32-32Z"/><path fill="#fff" d="M729 102 908 281H756a27 27 0 0 1-27-27V102Z"/><path d="M436 334h64l-81 444h-64l81-444Zm168 0h64l-81 444h-64l81-444Zm-282 109h402v64H322v-64Zm-22 162h403v64H300v-64Z"/></svg>
