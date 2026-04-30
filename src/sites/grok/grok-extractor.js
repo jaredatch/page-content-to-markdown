@@ -130,19 +130,16 @@ class GrokExtractor {
 
     const clone = content.cloneNode(true);
 
-    // Strip U+2060 word-joiner prefix from citation chip text.
-    // Chips are <a class="citation">⁠Source</a> — we keep the link but
-    // normalize the visible text.
-    clone.querySelectorAll('a.citation').forEach(a => {
-      a.textContent = a.textContent.replace(/⁠/g, '');
-    });
-
-    // Remove multi-citation popover buttons like "⁠GitHub +2". These are
-    // <button class="no-copy ..."> chips with no href, only a popover. They
-    // render as dangling "Source +N" text in markdown since they have no
-    // stable link to preserve. The inline citations elsewhere cover the
-    // primary source; the extras would require clicking the popover.
-    clone.querySelectorAll('button.no-copy').forEach(btn => btn.remove());
+    // Drop web-search citation chrome — both the inline single-source
+    // <a class="citation"> chips and the multi-citation <button class="no-copy">
+    // popover triggers. Keeping them turns a saved conversation into a
+    // forwarded RAG payload, where a downstream agent reading the markdown
+    // is liable to chase dozens of source URLs the human asker has no use
+    // for. ChatGPT's site module strips the equivalent pills the same way.
+    //
+    // Future: a "Citation handling" pref (inline | footnotes | strip) will
+    // make this opt-in across all sites uniformly.
+    clone.querySelectorAll('a.citation, button.no-copy').forEach(el => el.remove());
 
     // Default alt text for bare images so Turndown produces ![Image](url)
     // instead of ![](url). Grok's generated images have empty alt attrs.

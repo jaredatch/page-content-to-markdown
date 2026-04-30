@@ -3,8 +3,9 @@
 const xModule = require('../sites/x');
 const claudeModule = require('../sites/claude');
 const grokModule = require('../sites/grok');
+const chatgptModule = require('../sites/chatgpt');
 
-const _sites = [xModule, claudeModule, grokModule];
+const _sites = [xModule, claudeModule, grokModule, chatgptModule];
 
 /**
  * Central registry of site modules (per-site extractors + formatters).

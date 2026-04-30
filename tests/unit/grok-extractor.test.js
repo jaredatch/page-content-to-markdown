@@ -161,18 +161,15 @@ describe('GrokExtractor', () => {
       expect(data.turns[1].contentHtml).toContain('<ol>');
     });
 
-    test('strips U+2060 word-joiner prefix from citation chip text', () => {
+    test('drops <a class="citation"> chips from assistant content', () => {
+      // Citation chrome is removed in v1 to keep saved conversations from
+      // turning into forwarded RAG payloads. ChatGPT does the same.
       const doc = makeDoc();
       const data = extractor.extractConversation(doc);
       const html = data.turns[1].contentHtml;
-      expect(html).toContain('>ExampleA<');
-      expect(html).not.toMatch(/>⁠/);
-    });
-
-    test('preserves citation chip hrefs', () => {
-      const doc = makeDoc();
-      const data = extractor.extractConversation(doc);
-      expect(data.turns[1].contentHtml).toContain('href="https://example.com/a"');
+      expect(html).not.toContain('class="citation"');
+      expect(html).not.toContain('ExampleA');
+      expect(html).not.toContain('href="https://example.com/a"');
     });
 
     test('replaces code-block wrappers with clean <pre><code>, discarding the language/Copy chrome', () => {

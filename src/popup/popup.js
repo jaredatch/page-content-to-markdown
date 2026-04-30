@@ -19,7 +19,8 @@ const RESTRICTED_PATTERNS = [
 const SITE_BADGE = {
   x: '\u{1D54F}',  // Mathematical Double-Struck Capital X (𝕏)
   claude: 'C',
-  grok: 'G'
+  grok: 'G',
+  chatgpt: '✱'  // Heavy Asterisk (✱) — evokes OpenAI's six-petal mark
 };
 
 const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';

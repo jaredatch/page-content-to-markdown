@@ -4,14 +4,12 @@
   "version": "1.0.0",
   "description": "Copy web pages as lean markdown for AI consumption",
   "permissions": [
-    "activeTab",
     "clipboardWrite",
     "contextMenus",
     "storage"
   ],
   "host_permissions": [
-    "*://x.com/*",
-    "*://*.x.com/*"
+    "*://*/*"
   ],
   "content_scripts": [
     {
