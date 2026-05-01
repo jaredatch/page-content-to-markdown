@@ -4,7 +4,25 @@ Real browser, real share URLs, real extension. Runs on a schedule, hits each URL
 
 ## Status
 
-**Planned, not yet implemented.** This doc is the design and the runbook; the architecture section becomes the source of truth once it ships.
+**Deferred. Design captured, build pending post-ship evidence.**
+
+This doc is the design and the future runbook. The architecture section becomes the source of truth once it ships, but the deliberate choice right now is *not to ship it yet*. See [When to build this](#when-to-build-this).
+
+## When to build this
+
+Not before the extension ships, and not the moment the extension ships either. Reasoning:
+
+- The [fixture suite](testing-fixtures.md) already covers code-regression detection on every push. That's the bulk of the protection.
+- Quarterly manual recapture of baselines covers the staleness gap a watcher would catch automatically. At four sites, by hand once a quarter is real but bounded work.
+- Drift watcher pays for itself when the supported-site count grows past what manual recapture sustains, or post-ship evidence shows a specific provider drifts often enough to break real users between recaptures.
+
+Concrete trigger criteria. Start the build when any one of these is true:
+
+- Supported-site count is past 8.
+- Two or more user-reported bugs in a single quarter trace to upstream DOM drift the fixture suite didn't catch.
+- A manual recapture finds drift that would have been caught a month earlier with automation, and that delay caused a real user-facing problem.
+
+Until then the design lives here, the implementation plan is ready to execute, and no code or infrastructure exists.
 
 ## Why this exists
 
@@ -22,7 +40,7 @@ The pain compounds with site count. Four supported sites is barely manageable by
 
 ## Implementation plan
 
-Six phases. ~1.5 days of build work plus the audit time for initial baselines.
+Six phases. Build effort depends on the hosting tier picked in [Architecture and technical notes](#architecture-and-technical-notes): ~1 day for the GHA-alone path, ~2–3 days for the worker-delegated path. Initial baseline audit is on top of that, ~30 minutes per case.
 
 ### Phase 1: runner
 
@@ -55,19 +73,15 @@ Initial scope: 5 cases per provider × 4 providers = 20 baselines. Each case pic
 
 ### Phase 4: scheduling
 
-A `launchd` plist on macOS scheduling the runner weekly. Output goes to a known path; on failure, a follow-up step renders the diff into something readable.
-
-Cron is the alternative if launchd is overkill. The choice doesn't matter much; both work.
+GitHub Actions cron schedule running the runner weekly. The exact dispatch shape depends on the chosen hosting model (see [Hosting model](#hosting-model) below). For the GHA-alone tier, the workflow runs Playwright directly. For the worker-delegated tiers, the workflow triggers a worker via webhook and waits for the result. Either way, the orchestration, secrets, and logs all live in GHA.
 
 ### Phase 5: notification
 
-When a run fails, surface it. Options to choose from at build time:
+GHA already provides most of what's needed. Default path:
 
-- **Local file + notification**: write `drift-report.html` to a known path, fire a `terminal-notifier` system notification on macOS. Cheapest, no external dependencies, only useful if the operator's local machine is the one running the cron.
-- **Slack webhook**: post the summary to a channel. Useful if the operator might miss a local notification.
-- **Email**: simplest if there's already a working SMTP setup; otherwise more setup than it's worth.
-
-Default: local file + system notification. Slack added later if needed.
+- **Workflow failure status + auto-issue.** Red status is visible in the repo; an action like `peter-evans/create-issue-from-file` opens an issue with the diff attached. Zero external dependencies.
+- **Email is free.** GitHub already emails repo watchers on workflow failures by default.
+- **Slack webhook** if email/issue notifications get missed in practice. Add later, not on day one.
 
 ### Phase 6: failure-report HTML
 
@@ -77,11 +91,21 @@ A small template that renders pretty diffs for review. Side-by-side or unified, 
 
 To be filled in as the runner ships. Design decisions made up front:
 
-- **Personal-machine cron, not CI.** GitHub Actions IPs are blocked by Cloudflare on multiple sites we care about. A red CI build that's red because of bot detection trains contributors to ignore red builds, which is worse than not having the test at all.
-- **Real browser, not headless-only.** Some sites render differently with no display attached. Headful Firefox/Chromium on a real Mac sidesteps this.
-- **Stealth plugin against `navigator.webdriver`.** Won't beat a full Cloudflare Turnstile challenge, but works on most public share pages.
-- **Cases as data, not code.** `cases.json` keeps the runner generic; adding a case is editing JSON plus committing a baseline, no runner changes.
+- **Cases as data, not code.** `cases.json` keeps the runner generic. Adding a case is editing JSON plus committing a baseline, no runner changes.
 - **Two runs per case** to detect A/B variants. If both runs match each other and the baseline, pass. If they match each other but not the baseline, real drift. If they don't match each other, A/B variant or transient anti-bot challenge; flag and re-run.
+- **Real browser, not pure HTML fetch.** SPAs render their actual DOM only after JS executes; the extractor needs that DOM. Pure HTTP fetches aren't useful.
+- **Stealth plugin against `navigator.webdriver`.** Helps with naive bot detection, doesn't beat Cloudflare Enterprise on its own.
+
+### Hosting model
+
+Cloudflare scores ASN reputation, so any cloud datacenter (GitHub Actions, Browserbase, Apify, AWS, Hetzner, and the rest) starts with negative reputation and gets blocked on stricter tiers. The hosting model has to match the protection level of the sites we're watching. Four layers, in cost order:
+
+- **GHA alone, ~$0/mo.** Works for sites that don't aggressively block. Smoke-test each provider's share URL before relying on it. Likely fine for Claude, Grok, X share pages; verify.
+- **GHA + residential proxy, ~$5–10/mo.** Outbound traffic via residential exit (Bright Data, IPRoyal, similar). Helps with IP reputation, but the GHA runner still has a CI-machine fingerprint Cloudflare can detect when it inspects beyond the IP.
+- **GHA + dedicated worker (DO droplet) + residential proxy, ~$10/mo.** GHA owns scheduling, secrets, config, and result handling. The droplet runs the actual browser with a stable non-CI fingerprint and a residential exit. Roughly 70–80% reliable against ChatGPT-tier Cloudflare. Setup is real but bounded: a small worker service that takes a URL and returns markdown.
+- **Managed bypass service, $50–100/mo.** Browserless BQL or ScrapingBee Cloudflare-bypass tier. Pays for full-time engineering against bot detection. The most reliable option for ChatGPT-tier protection, with a corresponding price tag.
+
+Pick the cheapest tier that covers the actual targets. For most sites, GHA alone is enough. ChatGPT specifically is the hard case; if drift detection on ChatGPT becomes important, the third or fourth tier earns its keep, and the choice between them comes down to cost vs. reliability tolerance for that one provider.
 
 ## Current coverage
 
