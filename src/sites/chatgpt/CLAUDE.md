@@ -8,7 +8,10 @@ Turns are matched by `<section data-turn="user|assistant">` with `[data-message-
 
 ## User Turns
 
-- **Attachments** render as a chip count: `*[N attachments uploaded]*`.
+- **Attachments** render as a chip count: `*[N attachments uploaded]*`. Two DOM shapes depending on the route:
+  - `/share/{id}` logged-out: one `div.text-token-text-secondary` chip per attachment with an "Uploaded an image" / "Uploaded a file" label.
+  - `/c/{id}` active conversation, **and** `/share/{id}` viewed while logged in: each attachment renders as a `<button aria-label="Open image in full view">` wrapping an `<img alt="Uploaded image">` thumbnail. No chip — the bubble is prose only and the thumbnails sit above it.
+  - `_countUserAttachments` tries the chip path first, then falls back to the thumbnail path. They're alternative renderings, not additive.
 - **Prose** preserves embedded `<pre><code>` blocks as fenced markdown by walking children rather than flattening textContent (so users who paste code in their question keep the fence in saved output).
 
 ## Assistant Turns
@@ -34,6 +37,8 @@ Collapse `.katex` / `.katex-display` to `$tex$` / `$$tex$$` via the `<annotation
 ### Writing-Block Chrome
 
 Strip canvas/email/chat/social-post embedded artifacts via `[data-testid="writing-block-header-sticky-container"]` plus `span.invisible`. The latter fixes the "Following up on our conversationFollowing up on our conversation" doubling caused by React's auto-resize textarea pattern (visible + invisible sibling spans).
+
+**Nested `.markdown` filter.** On the `/c/` active-conversation route (and `/share/` viewed while logged in), each writing-block wraps an inner ProseMirror editor that *also* carries the `markdown` class (`<div class="ProseMirror markdown prose ...">`). The outer message body's `.markdown` already serializes the writing-block content inline, so the naive `querySelectorAll('.markdown')` in `_extractAssistantTurn` returns the outer body **plus** one inner ProseMirror per draft, and re-emits each draft. Filter to top-level blocks only — those whose nearest `.markdown` ancestor inside `msgEl` doesn't exist. Reasoning-model streams (multiple `[data-message-author-role="assistant"]` siblings) keep one top-level `.markdown` per stream, so they're unaffected.
 
 ### Task Lists
 

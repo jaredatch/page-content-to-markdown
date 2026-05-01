@@ -157,6 +157,31 @@ describe('ChatGPTExtractor', () => {
       expect(data.turns[0].content).toBe('Look at these two images.');
     });
 
+    test('counts /c/ active-conversation thumbnail buttons as attachments when no chips are present', () => {
+      const html = `
+        <main>
+          <section data-testid="conversation-turn-1" data-turn="user">
+            <div data-message-author-role="user" data-message-id="u1">
+              <div>
+                <button aria-label="Open image in full view">
+                  <img alt="Uploaded image" src="https://example.com/a.jpg">
+                </button>
+                <button aria-label="Open image in full view">
+                  <img alt="Uploaded image" src="https://example.com/b.jpg">
+                </button>
+                <div class="user-message-bubble-color">
+                  <div class="whitespace-pre-wrap">Look at these two images.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      `;
+      const data = extractor.extractConversation(makeDoc(html));
+      expect(data.turns[0].attachments).toBe(2);
+      expect(data.turns[0].content).toBe('Look at these two images.');
+    });
+
     test('preserves embedded code blocks in user prose as fenced blocks', () => {
       const html = `
         <main>
@@ -343,6 +368,57 @@ line2</code></pre>That's the issue.</div>
       // Only one copy of the subject text remains (from the textarea), not two
       const matches = (html2.match(/Following up/g) || []).length;
       expect(matches).toBe(1);
+    });
+
+    test('does not duplicate writing-block body when the inner ProseMirror also carries the .markdown class', () => {
+      // Active-conversation /c/ rendering: each writing-block contains a
+      // ProseMirror editor with class="ProseMirror markdown prose ...". The
+      // outer message body (also .markdown) already serializes that prose
+      // inline, so re-walking the inner .markdown re-emits it. Filter to
+      // top-level blocks so each draft body appears exactly once.
+      const html = `
+        <main>
+          <section data-testid="conversation-turn-1" data-turn="assistant">
+            <div data-message-author-role="assistant" data-message-id="a1">
+              <div class="markdown prose markdown-new-styling">
+                <h3>Email drafts</h3>
+                <div data-testid="writing-block-container">
+                  <div data-testid="writing-block-header-sticky-container">
+                    <button data-testid="writing-block-header-magic-edit-button"><span>Edit</span></button>
+                  </div>
+                  <div class="grid">
+                    <textarea>Following up on our conversation</textarea>
+                    <span class="invisible">Following up on our conversation</span>
+                  </div>
+                  <hr>
+                  <div class="writing-block-editor">
+                    <div class="ProseMirror markdown prose">
+                      <p><span>Hi Maya,</span></p>
+                      <p><span>Thanks again for taking the time to speak with me today.</span></p>
+                      <p><span>Best,</span><br><span>Alex</span></p>
+                    </div>
+                  </div>
+                </div>
+                <h3>Chat or text-message drafts</h3>
+                <div data-testid="writing-block-container">
+                  <div data-testid="writing-block-header-sticky-container"></div>
+                  <div class="writing-block-editor">
+                    <div class="ProseMirror markdown prose">
+                      <p><span>Hey! Running about 10 minutes late, but I'm on my way now.</span></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      `;
+      const data = extractor.extractConversation(makeDoc(html));
+      const html2 = data.turns[0].contentHtml;
+      const hiMaya = (html2.match(/Hi Maya/g) || []).length;
+      const tenMin = (html2.match(/10 minutes late/g) || []).length;
+      expect(hiMaya).toBe(1);
+      expect(tenMin).toBe(1);
     });
 
     test('unwraps li.task-list-item > p so GFM task list rule fires, and trims leading space after checkbox', () => {
@@ -754,6 +830,51 @@ line2</code></pre>That's the issue.</div>
       expect(asst.contentHtml).not.toContain('webpage-citation-pill');
       expect(asst.contentHtml).not.toContain('PetMD');
       expect(asst.contentHtml).not.toContain('aria-label="Sources"');
+    });
+  });
+
+  describe('regression: logged-in captures', () => {
+    const uiUxLoggedInPath = path.join(
+      __dirname, '..', '..', 'private', 'captures',
+      'chatgpt-2026-04-30-share-loggedin.html'
+    );
+    const formattingLoggedInPath = path.join(
+      __dirname, '..', '..', 'private', 'captures',
+      'chatgpt-2026-04-30-share-2-loggedin.html'
+    );
+
+    (fs.existsSync(uiUxLoggedInPath) ? test : test.skip)('counts thumbnail-button attachments on the /share/ logged-in render (no chips)', () => {
+      const html = fs.readFileSync(uiUxLoggedInPath, 'utf8');
+      const { JSDOM } = require('jsdom');
+      const dom = new JSDOM(html, { url: 'https://chatgpt.com/share/x' });
+      const data = extractor.extractConversation(dom.window.document, dom.window.location.href);
+
+      // Logged-in viewers get the rich active-conversation chrome on /share/
+      // pages too: attachments render as <button><img alt="Uploaded image">
+      // instead of the "Uploaded an image" chip used on logged-out /share/.
+      // First user turn has 2 image attachments, third has 1.
+      const userTurns = data.turns.filter(t => t.role === 'human');
+      expect(userTurns[0].attachments).toBe(2);
+      expect(userTurns[2].attachments).toBe(1);
+    });
+
+    (fs.existsSync(formattingLoggedInPath) ? test : test.skip)('does not duplicate writing-block content on /c/ active-conversation captures', () => {
+      const html = fs.readFileSync(formattingLoggedInPath, 'utf8');
+      const { JSDOM } = require('jsdom');
+      const dom = new JSDOM(html, { url: 'https://chatgpt.com/c/x' });
+      const data = extractor.extractConversation(dom.window.document, dom.window.location.href);
+
+      const allHtml = data.turns
+        .filter(t => t.role === 'assistant')
+        .map(t => t.contentHtml || '')
+        .join('\n');
+
+      // Each writing-block draft body should appear exactly once.
+      // Without the nested-.markdown filter, the inner ProseMirror editors
+      // re-emit every draft, leading to a trailing duplicate block.
+      expect((allHtml.match(/Hi Maya/g) || []).length).toBe(1);
+      expect((allHtml.match(/Running about 10 minutes late/g) || []).length).toBe(1);
+      expect((allHtml.match(/Big milestone today/g) || []).length).toBe(1);
     });
   });
 });

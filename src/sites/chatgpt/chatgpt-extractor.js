@@ -211,15 +211,24 @@ class ChatGPTExtractor {
   }
 
   /**
-   * Count attachment chips on a user turn. ChatGPT renders one
-   * `div.text-token-text-secondary` chip per uploaded file, each containing
-   * an icon and a label span ("Uploaded an image" / "Uploaded a file"). We
-   * count chips directly — one chip means one attachment.
+   * Count attachments on a user turn. ChatGPT renders attachments in two
+   * shapes depending on the page route:
    *
-   * i18n note: the "Uploaded" prefix is English-only. Non-English ChatGPT
-   * uses a localized verb; in those cases attachment counts will be 0 and
-   * the marker won't render. The conversation prose still extracts cleanly,
-   * so this is a graceful degradation, not a hard break.
+   *   - `/share/{id}` view: one `div.text-token-text-secondary` chip per
+   *     attachment, with an icon and a label ("Uploaded an image" /
+   *     "Uploaded a file"). Counted by chip presence.
+   *   - `/c/{id}` active-conversation view: each attachment renders as a
+   *     `<button aria-label="Open image in full view">` wrapping an
+   *     `<img alt="Uploaded image">` thumbnail. No chip; the bubble has the
+   *     prose only and attachment buttons sit above it.
+   *
+   * Try the chip path first (cheaper and unambiguous), then fall back to the
+   * thumbnail-button path. They're alternative renderings, not additive.
+   *
+   * i18n note: the "Uploaded" prefix and the "Uploaded image" alt are
+   * English-only. Non-English ChatGPT will localize both, in which case
+   * attachment counts return 0 and the marker doesn't render — graceful
+   * degradation, not a hard break. Conversation prose still extracts cleanly.
    */
   _countUserAttachments(msgEl) {
     const chips = msgEl.querySelectorAll('div.text-token-text-secondary');
@@ -228,7 +237,10 @@ class ChatGPTExtractor {
       const txt = (chip.textContent || '').trim();
       if (/^Uploaded\b/i.test(txt)) count++;
     }
-    return count;
+    if (count > 0) return count;
+
+    const thumbnails = msgEl.querySelectorAll('button img[alt="Uploaded image"]');
+    return thumbnails.length;
   }
 
   /**
@@ -239,9 +251,18 @@ class ChatGPTExtractor {
    * first, which on those turns is the scaffolding and the actual answer
    * silently disappears. Gather all of them, run sanitize on each, and
    * concatenate so the full reasoning + response flow comes through.
+   *
+   * Filter out nested `.markdown` blocks: writing-block UI (canvas, email,
+   * chat, social-post previews) wraps an inner ProseMirror editor that now
+   * also carries the `markdown` class, so the naive query returns one outer
+   * body plus one inner body per writing block. The outer already serializes
+   * the writing-block content inline, so re-emitting the inner duplicates
+   * every draft. Keep only top-level blocks (no `.markdown` ancestor inside
+   * msgEl) — the standalone reasoning-model streams remain top-level too.
    */
   _extractAssistantTurn(msgEl) {
-    const blocks = msgEl.querySelectorAll('.markdown');
+    const all = Array.from(msgEl.querySelectorAll('.markdown'));
+    const blocks = all.filter(el => !el.parentElement || !el.parentElement.closest('.markdown'));
     if (blocks.length === 0) return null;
 
     const parts = [];
