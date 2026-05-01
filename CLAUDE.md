@@ -124,6 +124,8 @@ For per-site extraction code, additional conventions (i18n-safe selectors, the `
 - **Custom matcher:** `toBeValidMarkdown` — checks output contains markdown-like content.
 - **jsdom limitation:** `getBoundingClientRect()` returns 0x0, so ElementPicker tests that depend on element sizing mock `_resolveTarget` directly. Lowest coverage is `element-picker.js` (~67% lines) for this reason.
 
+The site-extractor testing strategy lives in two docs that are deeper references than this section. `docs/testing-fixtures.md` covers Tier 1 (captured-HTML regression tests in CI, partially shipped — the ChatGPT regression block is the reference implementation). `docs/testing-drift-watcher.md` covers Tier 2 (live drift watcher on personal-machine cron, planned). Read those before adding new test infrastructure for site modules.
+
 ## Browser Compatibility Notes
 
 - Firefox MV3 requires `"background": { "scripts": [...] }` instead of `"service_worker"`, plus `browser_specific_settings.gecko.id`.
