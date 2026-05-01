@@ -285,6 +285,28 @@ If a site requires login:
 2. Launch FF Dev Edition manually, open the MCP profile, log in.
 3. Restart Claude Code. Auth persists in the profile.
 
+### When the MCP can't reach the page (Cloudflare / bot detection)
+
+The MCP sets `navigator.webdriver = true`, which trips Cloudflare on some sites even when the profile is logged in. ChatGPT is the known case — `chatgpt.com` blocks the MCP at the Cloudflare challenge regardless of auth. Logging in again won't fix it; the block is on the automation flag, not the session.
+
+Workaround: capture the live DOM from your **regular** browser (not the MCP's Firefox) and inspect the captured fixture instead.
+
+1. Open the page in your normal Firefox/Chrome and log in as usual.
+2. **Scroll the conversation to the top and back** so virtualized messages render into the DOM. SPAs like ChatGPT only mount visible turns — anything off-screen won't be in the captured HTML.
+3. Open DevTools → Console and run:
+   ```js
+   // Scope to the conversation area to skip nav/sidebar noise
+   copy(document.querySelector('main').outerHTML)
+
+   // Or grab the whole document if you want everything
+   copy(document.documentElement.outerHTML)
+   ```
+4. Save to `private/captures/{site}/{scenario}.html`. Use that fixture for selector discovery and as a regression input.
+
+Why `copy(outerHTML)` and not "Save Page As": the browser's page saver rewrites URLs to local paths, normalizes attributes, and bundles assets you don't need. `outerHTML` gives you the live post-render DOM — exactly what the content script sees when extraction runs.
+
+Caveat: `outerHTML` does **not** include open shadow roots' contents. If selectors work live but fail on the captured fixture, suspect shadow DOM and capture per-shadow-root via script instead.
+
 ### When `evaluate_script` hangs
 
 Almost always means `--connect-existing` has crept back into the MCP args. Check `claude mcp list` and reinstall with the command at the top of this doc if needed.
