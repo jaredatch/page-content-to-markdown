@@ -363,11 +363,27 @@ class XExtractor {
   }
 
   /**
-   * Clone the body element and prepare it for Turndown.
-   * Hangs all article-body normalization off this single chokepoint:
-   *   - flatten Draft.js heading wrappers (h1-h6 inner blocks)
-   *   - (later) sanitize markdown-code-block containers
-   *   - (later) clean mention URLs / unwrap media link wrappers / etc.
+   * Clone the body element and run normalization passes before Turndown.
+   * Order matters where noted.
+   *
+   *   1. _promoteInlineBold      — X uses inline `font-weight` not <strong>;
+   *                                without this, bold drops to plain text.
+   *   2. _promoteInlineItalic    — same for inline `font-style: italic`.
+   *   3. _flattenHeadings        — <h2><div><span>x</span></div></h2> would
+   *                                emit `##\n\nx` due to block-level child.
+   *   4. _sanitizeCodeBlocks     — strips markdown-code-block chrome
+   *                                (language label span + Copy button).
+   *   5. _replaceVideoWithPoster — Turndown has no <video> rule. Also dedupes
+   *                                X's GIF render (still <img> + <video> with
+   *                                same URL → one img).
+   *   6. _unwrapMediaLinks       — drops in-app media-viewer route wrappers.
+   *   7. _stripVideoLabels       — strips bare <span>GIF/Video</span> badges.
+   *   8. _inlineMentionWrappers  — X wraps inline mentions in block-level
+   *                                <div>; unwrap so paragraphs flow.
+   *   9. _cleanMentionUrls       — `/@user` → `/user` (display stays @user).
+   *
+   * Blockquotes (`<blockquote class="longform-blockquote">`) work natively
+   * through Turndown's default rule even with Draft.js wrapping, so no pass.
    */
   _sanitizeArticleBody(bodyEl) {
     const clone = bodyEl.cloneNode(true);
