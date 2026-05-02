@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const GrokExtractor = require('../../src/sites/grok/grok-extractor');
 
 // ── HTML Fixtures ──
@@ -260,6 +262,69 @@ describe('GrokExtractor', () => {
       const doc = makeDoc(html);
       const data = extractor.extractConversation(doc);
       expect(data.turns[0].contentHtml).toContain('<pre><code>plain text</code></pre>');
+    });
+  });
+
+  describe('regression: real captures', () => {
+    const sharePath = path.join(
+      __dirname, '..', '..', 'private', 'captures',
+      'grok-2026-04-24-share.html'
+    );
+
+    (fs.existsSync(sharePath) ? test : test.skip)('extracts the OpenClaw mission-control share — 4H/4A turns, all assistants with thinking, code block + citations stripped', () => {
+      const html = fs.readFileSync(sharePath, 'utf8');
+      const { JSDOM } = require('jsdom');
+      const url = 'https://grok.com/share/c2hhcmQtMg%3D%3D_dummy';
+      const dom = new JSDOM(html, { url });
+      // The capture is a <main>-only fragment with no <head>/<title>. Set
+      // document.title to the page-context-suffixed form so the title-
+      // stripping path (the share-page suffix branch) is exercised here.
+      Object.defineProperty(dom.window.document, 'title', {
+        value: 'Top OpenClaw Mission Control Projects | Shared Grok Conversation',
+        configurable: true,
+      });
+      const data = extractor.extractConversation(dom.window.document, url);
+
+      expect(data).toBeTruthy();
+
+      // Title strips the share-page suffix.
+      expect(data.title).toBe('Top OpenClaw Mission Control Projects');
+
+      // 4 human + 4 assistant turns, alternating in document order.
+      expect(data.turns).toHaveLength(8);
+      expect(data.turns.map(t => t.role))
+        .toEqual(['human', 'assistant', 'human', 'assistant', 'human', 'assistant', 'human', 'assistant']);
+
+      // Every assistant turn in this capture has a "Thought for ..." label.
+      // If the thinking-container selector regresses, this drops to 0.
+      const thinkingLabels = data.turns
+        .filter(t => t.role === 'assistant')
+        .map(t => t.thinking);
+      expect(thinkingLabels).toHaveLength(4);
+      thinkingLabels.forEach(label => {
+        expect(label).toMatch(/^Thought for \d+s$/);
+      });
+
+      // First assistant turn body sample.
+      expect(data.turns[1].contentHtml).toContain('OpenClaw');
+      expect(data.turns[1].contentHtml).toContain('mission control');
+
+      // Citation chrome is stripped: inline citation chips and the
+      // multi-source "N sources" popover button.
+      const allAssistantHtml = data.turns
+        .filter(t => t.role === 'assistant')
+        .map(t => t.contentHtml)
+        .join('\n');
+      expect(allAssistantHtml).not.toMatch(/class="[^"]*\bcitation\b/);
+      expect(allAssistantHtml).not.toContain('no-copy');
+      expect(allAssistantHtml).not.toContain('Thenewstack</a>');
+
+      // Code-block sanitization: the JSON compaction snippet from turn 2
+      // becomes a clean fenced block with the language class set from the
+      // sticky-header label ("JSON" → "json").
+      expect(allAssistantHtml).toMatch(/<pre><code class="language-json">[\s\S]*softThresholdTokens/);
+      // The font-mono language-label and Copy chrome are gone.
+      expect(allAssistantHtml).not.toContain('data-testid="code-block"');
     });
   });
 });

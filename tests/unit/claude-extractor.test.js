@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const ClaudeExtractor = require('../../src/sites/claude/claude-extractor');
 
 // ── HTML Fixtures ──
@@ -325,6 +327,55 @@ describe('ClaudeExtractor', () => {
       const doc = createDoc(html);
       const result = extractor.extractConversation(doc);
       expect(result.turns[0].content).toBe('Plain text with no paragraphs');
+    });
+  });
+
+  describe('regression: real captures', () => {
+    const sharePath = path.join(
+      __dirname, '..', '..', 'private', 'captures',
+      'claude-share.html'
+    );
+
+    (fs.existsSync(sharePath) ? test : test.skip)('extracts the "Small business server setup" share — title, sharedBy, 2H/2A turns, citations preserved', () => {
+      const html = fs.readFileSync(sharePath, 'utf8');
+      const { JSDOM } = require('jsdom');
+      const url = 'https://claude.ai/share/0bc9705d-2393-478e-98c8-6d5e96e899a0';
+      const dom = new JSDOM(html, { url });
+      const data = extractor.extractConversation(dom.window.document, url);
+
+      expect(data).toBeTruthy();
+      expect(data.title).toBe('Small business server setup: NAS vs Windows PC');
+      expect(data.sharedBy).toBe('Jared');
+      expect(data.url).toBe(url);
+
+      // Two human + two assistant turns, alternating.
+      expect(data.turns).toHaveLength(4);
+      expect(data.turns.map(t => t.role)).toEqual(['human', 'assistant', 'human', 'assistant']);
+
+      // First human turn includes the literal-quoted "workstations" phrase.
+      // The container's first child is the disclaimer banner — if the
+      // border-0.5 skip ever regresses, this turn would carry banner text.
+      expect(data.turns[0].content).toContain('8 "workstations"');
+      expect(data.turns[0].content).not.toContain('This is a copy of a chat');
+
+      // First assistant turn is the deep-dive recommendation.
+      expect(data.turns[1].contentHtml).toContain('Synology');
+
+      // Inline citations preserved as <a> elements with their target href —
+      // the underlying source URL survives even though the citation chip's
+      // visual chrome (the inner pill spans) does not collapse on this
+      // capture. This is locked-in current behavior; a future i18n/citation
+      // setting may revisit how the chrome renders.
+      expect(data.turns[1].contentHtml).toMatch(/<a [^>]*href="[^"]*ifeeltech\.com/);
+
+      // "Searched the web" action button does not leak into output.
+      expect(data.turns[1].contentHtml).not.toContain('Searched the web');
+
+      // Second human turn is a follow-up; second assistant is the Tailscale
+      // recommendation. Pinning content here keeps the boundaries honest —
+      // a turn-detection regression that merged turns would silently fail
+      // length assertions but pass content sniffs without this.
+      expect(data.turns[3].contentHtml).toContain('Tailscale');
     });
   });
 });

@@ -4,7 +4,7 @@ Captured HTML in the repo, run through the extractor in jsdom, asserted via Jest
 
 ## Status
 
-**Partially shipped.** The pattern is live for ChatGPT (3 share-page captures + 2 logged-in captures) and proven by the bugs it caught on 2026-05-01 (writing-block duplication, dual-view attachment counting). X, Claude, and Grok have unit tests but no captured-fixture regression cases yet, and that gap is where the next round of work lives.
+**Shipped, with room to grow per site.** All four site modules now have at least one captured-HTML regression case in CI: ChatGPT (3 share + 2 logged-in), X article, Claude share, Grok share. ChatGPT remains the deepest coverage and is still the reference implementation. The remaining work is breadth — X needs thread / quote-tweet / single-tweet captures alongside the article, and Claude/Grok each want a second and third capture exercising different content shapes (long reasoning, code blocks, attachments).
 
 ## Why this exists
 
@@ -23,6 +23,8 @@ Captured HTML lives in `private/captures/` (the private repo). Tests gate on `fs
 ### Phase 2: extend to X, Claude, Grok
 
 Each site needs at least three captures picked to exercise the messy parts of that site. X has thread / quote tweet / article as obvious candidates because the extractor branches hard on those. Claude and Grok need a less obvious mix (long conversations, code blocks, attachments) and the right cases are best chosen by looking at what the existing inline-fixture unit tests already cover and filling the gaps with real-world DOM. The capture mechanics themselves are in `building-site-extractors.md`; the work specific to this phase is auditing the markdown output against the live page until it's correct, then committing both the fixture and the test case.
+
+**First case landed for each site (2026-05-01).** X article (`x-2026-04-28-article-fixture.html`) pins the `_sanitizeArticleBody` pipeline — title from testid, mention-URL cleanup, code-block chrome stripping, positional engagement parsing. Claude share (`claude-share.html`) pins title + sharedBy extraction, the disclaimer-banner skip, citation anchors surviving as `<a href>`, and the "Searched the web" button being filtered out. Grok share (`grok-2026-04-24-share.html`) pins title-suffix stripping, the 4-human / 4-assistant alternation, "Thought for Ns" labels on every assistant turn, citation chrome removal, and code-block language inference. Remaining captures per the table below are the breadth work for this phase.
 
 ### Phase 3: standardize the test shape
 
@@ -60,9 +62,12 @@ This keeps the public test suite green for contributors who don't have the priva
 | ChatGPT | `chatgpt-2026-04-30-share-fish-tank.html`                     | same                                                         | live   |
 | ChatGPT | `chatgpt-2026-04-30-share-loggedin.html`                      | same                                                         | live   |
 | ChatGPT | `chatgpt-2026-04-30-share-2-loggedin.html`                    | same                                                         | live   |
-| X       | (none)                                                        | `tests/unit/x-extractor.test.js` (inline fixtures only)      | gap    |
-| Claude  | (none)                                                        | `tests/unit/claude-extractor.test.js` (inline fixtures only) | gap    |
-| Grok    | (none)                                                        | `tests/unit/grok-extractor.test.js` (inline fixtures only)   | gap    |
+| X       | `x-2026-04-28-article-fixture.html`                           | `tests/unit/x-extractor.test.js` regression block            | live   |
+| X       | (thread, single-tweet, quote-tweet — none)                    | —                                                            | gap    |
+| Claude  | `claude-share.html`                                           | `tests/unit/claude-extractor.test.js` regression block       | live   |
+| Claude  | (long reasoning, code-block, attachments — none)              | —                                                            | gap    |
+| Grok    | `grok-2026-04-24-share.html`                                  | `tests/unit/grok-extractor.test.js` regression block         | live   |
+| Grok    | (long reasoning, attachments, generated images — none)        | —                                                            | gap    |
 
 ## Adding a new case
 

@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const XExtractor = require('../../src/sites/x/x-extractor');
 
 // ── HTML Fixtures ──
@@ -1647,6 +1649,66 @@ describe('XExtractor', () => {
       await jest.advanceTimersByTimeAsync(6000);
       await expect(promise).resolves.toBeUndefined();
       jest.useRealTimers();
+    });
+  });
+
+  describe('regression: real captures', () => {
+    const articleCapturePath = path.join(
+      __dirname, '..', '..', 'private', 'captures',
+      'x-2026-04-28-article-fixture.html'
+    );
+
+    (fs.existsSync(articleCapturePath) ? test : test.skip)('extracts the rywiggs "Second Brain" X Article — title, author, body, mentions, cover, engagement', () => {
+      const html = fs.readFileSync(articleCapturePath, 'utf8');
+      const { JSDOM } = require('jsdom');
+      const url = 'https://x.com/rywiggs/status/2044448092477661638';
+      const dom = new JSDOM(html, { url });
+      const data = extractor.extract('article', dom.window.document, url);
+
+      expect(data).toBeTruthy();
+
+      // Title from twitter-article-title testid, not the noisy og:title wrapper.
+      expect(data.title).toBe('Creating a Second Brain with Claude Code');
+
+      // Author from User-Name on the page container, outside the read view.
+      expect(data.author.handle).toBe('rywiggs');
+      expect(data.author.displayName).toBe('Ryan Wiggins');
+
+      // Published date is the first <time> on the page container.
+      expect(data.publishedDate).toMatch(/^2026-04-/);
+
+      // Cover image: tweetPhoto inside the read view but outside the body.
+      expect(data.coverImage).toMatch(/^https:\/\/pbs\.twimg\.com\/media\//);
+
+      // Body content samples. These pin the sanitization pipeline against the
+      // captured DOM — if any pass regresses, one of these will fail.
+      expect(data.bodyHtml).toContain('5 years of work history');
+      expect(data.bodyHtml).toContain('Claude Code launched hooks');
+      expect(data.bodyHtml).toContain('QMD');
+
+      // Inline mentions are preserved as anchors with the @ stripped from
+      // the URL but kept in the visible label (mentioned in src CLAUDE.md).
+      expect(data.bodyHtml).toMatch(/href="[^"]*\/mercury"/);
+      expect(data.bodyHtml).toMatch(/href="[^"]*\/tobi"/);
+      expect(data.bodyHtml).toMatch(/href="[^"]*\/tylercowen"/);
+      expect(data.bodyHtml).not.toMatch(/href="[^"]*\/@(mercury|tobi|tylercowen)"/);
+
+      // Code-block sanitization: the visible language-label span and the
+      // Copy button chrome get stripped, leaving the wrapper around just
+      // its inner <pre>. The wrapper itself stays — _sanitizeCodeBlocks
+      // replaces its children rather than unwrapping it.
+      expect(data.bodyHtml).not.toMatch(/aria-label="Copy"/);
+      expect(data.bodyHtml).toMatch(/data-testid="markdown-code-block"><pre/);
+
+      // Engagement summary parses positionally from the aggregated aria-label,
+      // matching X's visual order: replies, reposts, likes, bookmarks, views.
+      expect(data.engagement).toMatchObject({
+        replies: 20,
+        retweets: 135,
+        likes: 922,
+        bookmarks: 3088,
+        views: 306827,
+      });
     });
   });
 });
