@@ -25,6 +25,12 @@ const SITE_BADGE = {
 
 const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
+// Parse a static SVG markup string into a fresh Element. Used instead of
+// `innerHTML = svgString` to satisfy addons-linter UNSAFE_VAR_ASSIGNMENT.
+function svgFromMarkup(markup) {
+  return new DOMParser().parseFromString(markup, 'image/svg+xml').documentElement;
+}
+
 class PopupController {
   constructor() {
     this.elements = {
@@ -317,7 +323,7 @@ class PopupController {
     //     (e.g. x.com/home, claude.ai/new — the user can still use Page content).
     if (!site || applicable.length === 0) {
       this.elements.siteDivider.classList.add('hidden');
-      this.elements.siteRows.innerHTML = '';
+      this.elements.siteRows.replaceChildren();
       this.applySelectionClasses();
       return;
     }
@@ -327,18 +333,29 @@ class PopupController {
     this.elements.dividerText.textContent = `Available on ${shortName}`;
     this.elements.siteDivider.classList.remove('hidden');
 
-    this.elements.siteRows.innerHTML = '';
+    this.elements.siteRows.replaceChildren();
     for (const ct of applicable) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'row';
       btn.dataset.contentType = ct.id;
       btn.dataset.siteId = site.id;
-      btn.innerHTML = `
-        <span class="row-icon" aria-hidden="true">${ct.icon}</span>
-        <span class="row-label">${this.escapeHtml(ct.label)}</span>
-        <span class="row-check" aria-hidden="true">${CHECK_SVG}</span>
-      `;
+
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'row-icon';
+      iconSpan.setAttribute('aria-hidden', 'true');
+      iconSpan.appendChild(svgFromMarkup(ct.icon));
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'row-label';
+      labelSpan.textContent = ct.label;
+
+      const checkSpan = document.createElement('span');
+      checkSpan.className = 'row-check';
+      checkSpan.setAttribute('aria-hidden', 'true');
+      checkSpan.appendChild(svgFromMarkup(CHECK_SVG));
+
+      btn.append(iconSpan, labelSpan, checkSpan);
       btn.addEventListener('click', () => {
         this.selectContent(ct.id, site.id);
       });
@@ -492,12 +509,23 @@ class PopupController {
 
   flashSuccess(btn, label) {
     if (!btn) return;
-    const original = btn.innerHTML;
-    btn.innerHTML = `<span class="btn-text"><span style="display:inline-flex;align-items:center;gap:6px;vertical-align:-2px;">${CHECK_SVG}<span>${this.escapeHtml(label)}</span></span></span>`;
+    const originalNodes = Array.from(btn.childNodes);
+
+    const btnText = document.createElement('span');
+    btnText.className = 'btn-text';
+    const inner = document.createElement('span');
+    inner.style.cssText = 'display:inline-flex;align-items:center;gap:6px;vertical-align:-2px;';
+    inner.appendChild(svgFromMarkup(CHECK_SVG));
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    inner.appendChild(labelSpan);
+    btnText.appendChild(inner);
+
+    btn.replaceChildren(btnText);
     btn.classList.add('btn-success');
     setTimeout(() => {
       btn.classList.remove('btn-success');
-      btn.innerHTML = original;
+      btn.replaceChildren(...originalNodes);
     }, 1400);
   }
 

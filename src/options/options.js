@@ -23,6 +23,22 @@ const RESET_ARM_TIMEOUT_MS = 4000;
 const TOAST_VISIBLE_MS = 2200;
 const PREVIEW_FLASH_MS = 400;
 
+// Static markup for the toast checkmark. Parsed via DOMParser instead of
+// `innerHTML = ...` to satisfy addons-linter UNSAFE_VAR_ASSIGNMENT.
+const TOAST_CHECK_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>';
+
+function svgFromMarkup(markup) {
+  return new DOMParser().parseFromString(markup, 'image/svg+xml').documentElement;
+}
+
+// Parse an HTML markup string into nodes that can be appended to a target.
+// Used for the syntax-highlighted preview output, which is built by
+// `highlightMarkdown` as an HTML string of <span> tags + escaped text.
+function nodesFromHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return Array.from(doc.body.childNodes);
+}
+
 // Tokens shown in the Available-tokens disclosure. Each row is click-to-insert.
 const TOKEN_ROWS = [
   { label: '{title}',                  insert: '{title}',     example: 'Page title' },
@@ -271,17 +287,41 @@ class OptionsController {
   // Tokens panel
   // ---------------------------------------------------------------
   renderTokensList() {
-    const html = TOKEN_ROWS.map(row =>
-      `<button class="token-row" type="button" data-insert-token="${escapeAttr(row.insert)}" title="Click to insert ${escapeAttr(row.insert)} at cursor">
-        <span class="token-name">${row.label.replace(/<fmt>/g, '<span class="token-fmt">').replace(/<\/fmt>/g, '</span>')}</span>
-        <span class="token-desc">${escapeHtml(row.example)}</span>
-      </button>`
-    ).join('');
-    this.elements.tokensList.innerHTML = html;
+    this.elements.tokensList.replaceChildren();
 
-    this.elements.tokensList.querySelectorAll('[data-insert-token]').forEach(btn => {
-      btn.addEventListener('click', () => this.insertToken(btn.dataset.insertToken));
-    });
+    for (const row of TOKEN_ROWS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'token-row';
+      btn.dataset.insertToken = row.insert;
+      btn.title = `Click to insert ${row.insert} at cursor`;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'token-name';
+      // row.label may contain <fmt>...</fmt> markers that should render as
+      // a styled span. Split on those markers and build nodes alternately.
+      const parts = row.label.split(/(<fmt>[^<]*<\/fmt>)/);
+      for (const part of parts) {
+        if (!part) continue;
+        const fmtMatch = part.match(/^<fmt>([^<]*)<\/fmt>$/);
+        if (fmtMatch) {
+          const fmtSpan = document.createElement('span');
+          fmtSpan.className = 'token-fmt';
+          fmtSpan.textContent = fmtMatch[1];
+          nameSpan.appendChild(fmtSpan);
+        } else {
+          nameSpan.appendChild(document.createTextNode(part));
+        }
+      }
+
+      const descSpan = document.createElement('span');
+      descSpan.className = 'token-desc';
+      descSpan.textContent = row.example;
+
+      btn.append(nameSpan, descSpan);
+      btn.addEventListener('click', () => this.insertToken(row.insert));
+      this.elements.tokensList.appendChild(btn);
+    }
   }
 
   insertToken(token) {
@@ -351,9 +391,15 @@ class OptionsController {
   // ---------------------------------------------------------------
   showToast(message) {
     const t = this.elements.toast;
-    t.innerHTML = '<span class="check-circle">'
-      + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>'
-      + '</span><span>' + escapeHtml(message) + '</span>';
+
+    const checkCircle = document.createElement('span');
+    checkCircle.className = 'check-circle';
+    checkCircle.appendChild(svgFromMarkup(TOAST_CHECK_SVG));
+
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+
+    t.replaceChildren(checkCircle, msgSpan);
     t.classList.add('visible');
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => t.classList.remove('visible'), TOAST_VISIBLE_MS);
@@ -374,7 +420,8 @@ class OptionsController {
   // Preview generation
   // ---------------------------------------------------------------
   updatePreview() {
-    this.elements.previewContent.innerHTML = highlightMarkdown(this.generatePreviewMarkdown());
+    const html = highlightMarkdown(this.generatePreviewMarkdown());
+    this.elements.previewContent.replaceChildren(...nodesFromHtml(html));
     this.updateFilenamePreview();
   }
 

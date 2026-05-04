@@ -113,6 +113,7 @@ Per-site extractors live at `src/sites/{x,chatgpt,grok,claude}/`; each directory
 - **Error handling** — multi-layer fallbacks. Extraction must always return *something*, never throw to the caller.
 - **No TypeScript** — pure JS with ES6+, transpiled via Babel.
 - **Shadow DOM isolation** — ElementPicker UI uses Shadow DOM. Styles inlined as template strings.
+- **No `innerHTML` assignments** — use `replaceChildren` + `createElement` for built UI, or `DOMParser.parseFromString` (`'image/svg+xml'` for SVG, `'text/html'` for HTML chunks) when a static markup string is more readable. `addons-linter` flags `innerHTML = ...` as `UNSAFE_VAR_ASSIGNMENT` and AMO reviewers triage every instance — it's not worth the friction even when the data is internal. Reading `el.innerHTML` (e.g. in extractors that hand HTML to Turndown) is fine.
 
 For per-site extraction code, additional conventions (i18n-safe selectors, the `Extractor` / `Formatter` contract, `prepareForExtraction` and `detectAvailable` hooks) live in `src/sites/CLAUDE.md`.
 

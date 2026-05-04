@@ -27,6 +27,19 @@ const OVERLAY_OFFSET = 4; // matches prototype's `outline-offset: 4px`
 const EXIT_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 const CHECK_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+// Parse a static markup string into nodes that can be appended into the
+// shadow DOM. Used instead of `innerHTML = ...` to satisfy addons-linter
+// UNSAFE_VAR_ASSIGNMENT. SVG goes through image/svg+xml; HTML chunks
+// (banner, action bar) go through text/html and we adopt body children.
+function svgFromMarkup(markup) {
+  return new DOMParser().parseFromString(markup, 'image/svg+xml').documentElement;
+}
+
+function nodesFromHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return Array.from(doc.body.childNodes);
+}
+
 class ElementPicker {
   constructor({ onCopy, onSave, onCancel, initialOutputMode } = {}) {
     this.onCopy = onCopy;
@@ -480,7 +493,10 @@ class ElementPicker {
   _flashSuccess(btn, label) {
     this._endFlash();
     this._flashBtn = btn;
-    btn.innerHTML = `${CHECK_ICON_SVG} ${label}`;
+    btn.replaceChildren(
+      svgFromMarkup(CHECK_ICON_SVG),
+      document.createTextNode(' ' + label)
+    );
     btn.classList.add('success');
     this._flashTimer = setTimeout(() => this._endFlash(), SUCCESS_FLASH_MS);
   }
@@ -514,7 +530,7 @@ class ElementPicker {
   _createBanner() {
     this.banner = document.createElement('div');
     this.banner.className = BANNER_CLASS;
-    this.banner.innerHTML = `
+    this.banner.append(...nodesFromHtml(`
       <div class="mdpicker-banner-left">
         <span class="mdpicker-dot" aria-hidden="true"></span>
         <span class="mdpicker-banner-text"><strong>Selection mode</strong> &mdash; click any element to select</span>
@@ -526,7 +542,7 @@ class ElementPicker {
           <button type="button" class="mdpicker-seg-opt" data-default-mode="file" role="radio" aria-checked="false">Save</button>
         </div>
       </div>
-    `;
+    `));
     this.banner.style.pointerEvents = 'auto';
 
     this.banner.querySelectorAll('[data-default-mode]').forEach(opt => {
@@ -544,15 +560,18 @@ class ElementPicker {
     this.actionBar = document.createElement('div');
     this.actionBar.className = ACTION_BAR_CLASS;
     this.actionBar.style.pointerEvents = 'auto';
-    this.actionBar.innerHTML = `
+    this.actionBar.append(...nodesFromHtml(`
       <span class="mdpicker-count"><span class="mdpicker-count-num">0</span><span>selected</span></span>
       <div class="mdpicker-bar-divider"></div>
       <button type="button" class="mdpicker-btn mdpicker-btn-clear" data-act="clear">Clear</button>
       <button type="button" class="mdpicker-btn mdpicker-btn-secondary" data-act="secondary">Save</button>
       <button type="button" class="mdpicker-btn mdpicker-btn-primary" data-act="primary">Copy</button>
       <div class="mdpicker-bar-divider"></div>
-      <button type="button" class="mdpicker-icon-btn" data-act="exit" aria-label="Exit selection mode (Esc)" title="Exit selection mode (Esc)">${EXIT_ICON_SVG}</button>
-    `;
+      <button type="button" class="mdpicker-icon-btn" data-act="exit" aria-label="Exit selection mode (Esc)" title="Exit selection mode (Esc)"></button>
+    `));
+    // Append the SVG icon to the exit button via DOM (avoid innerHTML).
+    const exitBtn = this.actionBar.querySelector('[data-act="exit"]');
+    if (exitBtn) exitBtn.appendChild(svgFromMarkup(EXIT_ICON_SVG));
 
     this.countNum = this.actionBar.querySelector('.mdpicker-count-num');
     this.primaryBtn = this.actionBar.querySelector('[data-act="primary"]');
