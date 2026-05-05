@@ -15,9 +15,21 @@ const ALLOWED_IMAGE_SCHEMES = new Set(['http', 'https']);
 
 // Empty scheme means a relative URL (e.g. `/page`, `subpage`, `#anchor`) —
 // safe to keep, since it inherits the host page's scheme on resolve.
+//
+// Normalize the way the WHATWG URL parser does *before* scheme detection,
+// otherwise embedded control characters bypass the allowlist:
+//   1. Strip leading/trailing C0 controls + ASCII space (U+0000–U+0020).
+//   2. Strip all internal ASCII tab / LF / CR (U+0009, U+000A, U+000D).
+// Browsers apply both passes during href resolution, so without this an
+// attribute like `java\tscript:alert(1)` or `javascript:…` parses as
+// scheme="" here (treated as relative → allowed) but resolves to
+// `javascript:` on click. Match the parser's view, not the raw string.
 function _hrefScheme(href) {
   if (typeof href !== 'string') return '';
-  const m = /^([a-zA-Z][a-zA-Z0-9+\-.]*):/.exec(href.trim());
+  const normalized = href
+    .replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '')
+    .replace(/[\u0009\u000A\u000D]/g, '');
+  const m = /^([a-zA-Z][a-zA-Z0-9+\-.]*):/.exec(normalized);
   return m ? m[1].toLowerCase() : '';
 }
 

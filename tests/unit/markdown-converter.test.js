@@ -357,6 +357,52 @@ describe('MarkdownConverter', () => {
       const result = converter.convertToMarkdown(html);
       expect(result).toContain('[about](/about)');
     });
+
+    test('rejects schemes hidden behind ASCII tab/LF/CR (browser would normalize)', () => {
+      // The WHATWG URL parser strips internal tab/LF/CR before scheme parsing,
+      // so `java\tscript:` resolves to `javascript:` on click. Without
+      // normalizing here too, the scheme check would see "" (relative) and
+      // emit the unsafe href.
+      const html =
+        '<p>' +
+        '<a href="java\tscript:alert(1)">tab</a> ' +
+        '<a href="java\nscript:alert(1)">lf</a> ' +
+        '<a href="java\r\nscript:alert(1)">crlf</a>' +
+        '</p>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('tab');
+      expect(result).toContain('lf');
+      expect(result).toContain('crlf');
+      // No matter how the obfuscation is sliced, "javascript" must not
+      // appear in any emitted markdown link.
+      expect(result.toLowerCase()).not.toMatch(/\(java[\s]*script:/);
+      expect(result).not.toContain('alert(1)');
+    });
+
+    test('rejects schemes hidden behind leading C0 control characters', () => {
+      // Browsers strip leading C0 controls + space (U+0000–U+0020) before
+      // parsing, so `javascript:…` resolves to `javascript:`. Match
+      // the parser's view, not the raw string.
+      const html =
+        '<p>' +
+        '<a href="javascript:alert(1)">soh</a> ' +
+        '<a href="  javascript:alert(1)">space</a>' +
+        '</p>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('soh');
+      expect(result).toContain('space');
+      expect(result.toLowerCase()).not.toContain('javascript:');
+      expect(result).not.toContain('alert(1)');
+    });
+
+    test('image scheme allowlist also normalizes embedded controls', () => {
+      const html =
+        '<img src="java\tscript:alert(1)" alt="bad-tab">' +
+        '<img src="javascript:alert(1)" alt="bad-soh">';
+      const result = converter.convertToMarkdown(html);
+      expect(result.toLowerCase()).not.toContain('javascript:');
+      expect(result).not.toContain('alert(1)');
+    });
   });
 
   describe('image url-list dedup (Set-backed)', () => {
