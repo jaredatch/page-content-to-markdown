@@ -506,13 +506,15 @@ class BackgroundScript {
         }
       }
 
-      // handleExtractSiteContent already notifies on success (line shows
-      // contentType saved/copied). Our callback only handles the failure
-      // path so the user gets feedback either way.
+      // handleExtractSiteContent owns notifications on dispatch outcomes —
+      // success and dispatch-failure (H3). Pre-dispatch failures (no active
+      // tab, content-script extract error, exception) don't notify there, so
+      // we surface those here. `result.method` marks dispatch-path results,
+      // so we skip the duplicate notification when the handler already fired.
       const onSiteResult = (result) => {
-        if (!result || !result.success) {
-          this.showNotification('Quick-extract failed', (result && result.error) || 'Extract failed', 'error');
-        }
+        if (!result || result.success) return;
+        if (result.method) return;
+        this.showNotification('Quick-extract failed', result.error || 'Extract failed', 'error');
       };
 
       // handleExtractAndCopy doesn't notify on its own — we own both paths.
@@ -753,9 +755,14 @@ class BackgroundScript {
     const prefs = await Preferences.get();
     const mode = modeOverride || prefs.outputMode;
 
+    // Always stamp `method` on the result — success and failure alike. Quick-
+    // extract uses its presence as a marker for "dispatch was attempted (and
+    // already notified via H3)" so it can suppress its own duplicate
+    // notification.
     if (mode === 'file') {
       const filename = this.generateFilename(metadata, prefs);
-      return this.saveAsFile(markdown, filename, tabId);
+      const result = await this.saveAsFile(markdown, filename, tabId);
+      return { ...result, method: 'file' };
     }
 
     const result = await this.copyToClipboard(markdown, tabId);
