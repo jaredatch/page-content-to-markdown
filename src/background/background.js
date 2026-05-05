@@ -32,15 +32,13 @@ class BackgroundScript {
    * Set up event listeners for extension actions and messages
    */
   setupEventListeners() {
-    // Handle extension icon click
-    chrome.action.onClicked.addListener((tab) => {
-      console.log('🖱️ [background] Extension icon clicked, tab:', tab.id);
-      this.handleActionClick(tab);
-    });
+    // No `chrome.action.onClicked` listener: with `default_popup` declared in
+    // manifest.json, the toolbar click opens the popup and `onClicked` never
+    // fires. The popup drives extraction via `extractAndCopy` messages.
 
     // Handle messages from popup or content scripts
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      console.log('📨 [background] Received message:', request);
+      console.log('📨 [background] Received message:', request && request.action);
 
       if (request.action === 'extractAndCopy') {
         this.handleExtractAndCopy(sendResponse, request.mode);
@@ -147,40 +145,6 @@ class BackgroundScript {
           this.selectionState.delete(tabId);
         }
       });
-    }
-  }
-
-  /**
-   * Handle extension icon click - extract content and copy to clipboard
-   * @param {object} tab - The active tab object
-   */
-  async handleActionClick(tab) {
-    try {
-      console.log('🔄 [background] Starting content extraction for tab:', tab.id);
-
-      const extractResult = await this.extractContentFromActiveTab();
-
-      if (!extractResult.success) {
-        console.error('🚨 [background] Failed to extract content:', extractResult.error);
-        this.showNotification('Error', extractResult.error, 'error');
-        return;
-      }
-
-      const result = await this.dispatchOutput(extractResult.markdown, extractResult.metadata);
-
-      if (result.success) {
-        console.log(`✅ [background] Content successfully ${result.method === 'file' ? 'saved' : 'copied'}`);
-        const pageTitle = (extractResult.metadata && extractResult.metadata.title) || 'page';
-        const verb = result.method === 'file' ? 'saved' : 'copied';
-        this.showNotification('Success', `Page "${pageTitle}" ${verb} as markdown!`, 'success');
-      } else {
-        console.error('🚨 [background] Failed to output content:', result.error);
-        this.showNotification('Error', result.error, 'error');
-      }
-
-    } catch (error) {
-      console.error('🚨 [background] Unexpected error in handleActionClick:', error);
-      this.showNotification('Error', 'Unexpected error occurred', 'error');
     }
   }
 
@@ -596,7 +560,12 @@ class BackgroundScript {
         }
       });
 
-      console.log('📨 [background] Received response from content script:', response);
+      console.log(
+        '📨 [background] Received response from content script: success=',
+        response && response.success,
+        'len=',
+        (response && response.markdown && response.markdown.length) || 0
+      );
 
       return response;
 
@@ -766,7 +735,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     extractContentFromActiveTab: () => backgroundScript.extractContentFromActiveTab(),
     copyToClipboard: (text) => backgroundScript.copyToClipboard(text),
-    handleActionClick: (tab) => backgroundScript.handleActionClick(tab),
     handleExtractAndCopy: (sendResponse) => backgroundScript.handleExtractAndCopy(sendResponse),
     getSelectionState: () => backgroundScript.selectionState,
     toggleSelectionMode: () => backgroundScript.toggleSelectionMode(),

@@ -8,7 +8,6 @@ describe('BackgroundScript', () => {
     // Reset chrome API mocks (they're global, survive resetModules)
     chrome.tabs.query.mockReset();
     chrome.tabs.sendMessage.mockReset();
-    chrome.action.onClicked.addListener.mockReset();
     chrome.runtime.onMessage.addListener.mockReset();
     chrome.runtime.onInstalled.addListener.mockReset();
     chrome.notifications.create.mockReset();
@@ -32,12 +31,6 @@ describe('BackgroundScript', () => {
   });
 
   describe('initialization', () => {
-    test('should set up action click listener', () => {
-      expect(chrome.action.onClicked.addListener).toHaveBeenCalledWith(
-        expect.any(Function)
-      );
-    });
-
     test('should set up message listener', () => {
       expect(chrome.runtime.onMessage.addListener).toHaveBeenCalledWith(
         expect.any(Function)
@@ -174,76 +167,6 @@ describe('BackgroundScript', () => {
         success: false,
         error: 'No content to copy'
       });
-    });
-  });
-
-  describe('action click handler', () => {
-    // Helper: the onClicked callback doesn't return a promise,
-    // so we need to flush microtasks after calling it.
-    const flush = () => flushPromises();
-
-    test('should extract and copy content on action click', async () => {
-      const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
-
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
-      chrome.tabs.sendMessage.mockResolvedValue({
-        success: true,
-        markdown: '# Test Content',
-        metadata: { title: 'Test' }
-      });
-
-      navigator.clipboard.writeText.mockResolvedValue();
-
-      actionClickHandler({ id: 123 });
-      await flush();
-
-      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123,
-        expect.objectContaining({
-          action: 'extractContent',
-          options: expect.objectContaining({ includeMetadata: true })
-        })
-      );
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Test Content');
-    });
-
-    test('should handle extraction failure on action click', async () => {
-      const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
-
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
-      chrome.tabs.sendMessage.mockResolvedValue({
-        success: false,
-        error: 'Extraction failed'
-      });
-
-      const consoleSpy = jest.spyOn(console, 'error');
-
-      actionClickHandler({ id: 123 });
-      await flush();
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to extract content'),
-        expect.anything()
-      );
-
-      consoleSpy.mockRestore();
-    });
-
-    test('should handle missing metadata gracefully in notification', async () => {
-      const actionClickHandler = chrome.action.onClicked.addListener.mock.calls[0][0];
-
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
-      chrome.tabs.sendMessage.mockResolvedValue({
-        success: true,
-        markdown: '# Test Content'
-        // no metadata field
-      });
-
-      navigator.clipboard.writeText.mockResolvedValue();
-
-      actionClickHandler({ id: 123 });
-      await flush();
-
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Test Content');
     });
   });
 

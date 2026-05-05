@@ -371,6 +371,12 @@ class OptionsController {
   }
 
   async confirmReset() {
+    // A pending debounced filename-template write would otherwise fire after
+    // the reset and clobber the default template back to the in-flight value.
+    if (this.templateSaveTimer) {
+      clearTimeout(this.templateSaveTimer);
+      this.templateSaveTimer = null;
+    }
     const defaults = Preferences.DEFAULTS;
     // Preserve open/closed disclosure state — UI feel ≠ settings.
     const preserved = {

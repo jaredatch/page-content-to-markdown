@@ -541,7 +541,7 @@ class ContentScript {
    */
   setupMessageListener() {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      console.log('📨 [content-script] Received message:', request);
+      console.log('📨 [content-script] Received message:', request && request.action);
 
       if (request.action === 'extractContent') {
         this.convertPageToMarkdown(request.options || {})
