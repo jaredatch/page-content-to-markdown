@@ -22,11 +22,11 @@ This extension does not collect, transmit, or store any of your data on any serv
 
 The extension requests only the permissions it needs to function:
 
-- **activeTab** -- Access the current tab's content when you activate the extension
 - **clipboardWrite** -- Write converted markdown to your clipboard
 - **contextMenus** -- Add right-click menu options for quick conversion
+- **notifications** -- Show brief system confirmations when a conversion succeeds or fails (e.g. "Tweet copied as markdown"); used for context-menu, keyboard-shortcut, and element-picker actions where there is no popup to display feedback in
 - **storage** -- Save your preferences locally
-- **Content script on all URLs** -- The content script needs to run on any page so it can convert whatever page you are viewing
+- **Host access on all URLs** -- The content script runs on any page you choose to convert; it does nothing on page load and only reads the DOM in response to your explicit actions
 
 ## Third-party services
 
