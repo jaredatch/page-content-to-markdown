@@ -1,10 +1,12 @@
 # Claude.ai Site Module
 
-Single content type: `conversation`. Works on share pages (`claude.ai/share/{id}`).
+Single content type: `conversation`. Works on share pages (`claude.ai/share/{id}`) and active chats (`claude.ai/chat/{id}`).
 
 ## DOM Structure
 
-- **Page header:** `[data-testid="page-header"]` contains title + "Shared by {name}"
+Both routes render the same conversation DOM. The active-chat page wraps the conversation in additional chrome (composer, sidebar, model picker), but the conversation container itself is unchanged, so the same selectors apply.
+
+- **Page header:** `[data-testid="page-header"]` contains the title. The "Shared by {name}" line only appears on share pages.
 - **Conversation container:** `.flex-1.flex.flex-col.px-4.max-w-3xl`
   - Child 0: disclaimer banner (`border-0.5` class)
   - Children 1..N: alternating human/claude turns

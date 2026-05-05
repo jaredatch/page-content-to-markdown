@@ -29,7 +29,7 @@ html, body {
   padding: 0;
   font-family: var(--font-sans);
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background: transparent;
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -42,6 +42,8 @@ button { font-family: inherit; }
   width: 340px;
   background: var(--bg-primary);
   font-size: 13px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 /* Header --------------------------------------------------------------- */
@@ -66,12 +68,10 @@ button { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 5px;
-  overflow: hidden;
   flex-shrink: 0;
 }
 
-.logo svg { display: block; }
+.logo svg { display: block; width: 100%; height: 100%; }
 
 .title {
   font-weight: 500;
@@ -246,16 +246,14 @@ button { font-family: inherit; }
 .divider-badge {
   width: 14px;
   height: 14px;
-  background: var(--text-primary);
-  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-weight: 500;
-  font-size: 9px;
+  color: var(--text-primary);
   flex-shrink: 0;
 }
+
+.divider-badge svg { display: block; width: 100%; height: 100%; }
 
 .divider-text {
   font-size: 10px;

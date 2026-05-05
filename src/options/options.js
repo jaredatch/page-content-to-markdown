@@ -4,13 +4,19 @@ const FilenameTemplate = require('../utils/filename-template');
 console.log('🔧 [options] Options page loaded');
 
 // Sample doc context for the live preview pane and filename preview.
-// Static — every setting is reflected against the same canned page so users
-// can compare configurations side-by-side without needing a real tab.
+// Stable per session — `date` is captured at module load so the preview doesn't
+// shift while the user fiddles with settings, but rebuilds each time the page
+// opens so the demo never reads visibly stale.
 const PREVIEW_SAMPLE = {
-  title: 'The case for browser extensions',
-  url: 'https://www.example.com/blog/case-for-extensions',
-  date: new Date(2026, 3, 26, 14, 30, 45) // April 26 2026, 14:30:45 local
+  title: 'A small tour of Markdown',
+  url: 'https://www.example.com/docs/markdown-tour',
+  date: new Date()
 };
+
+const _pad2 = n => String(n).padStart(2, '0');
+const _sampleYMD = `${PREVIEW_SAMPLE.date.getFullYear()}-${_pad2(PREVIEW_SAMPLE.date.getMonth() + 1)}-${_pad2(PREVIEW_SAMPLE.date.getDate())}`;
+const _sampleHMS = `${_pad2(PREVIEW_SAMPLE.date.getHours())}-${_pad2(PREVIEW_SAMPLE.date.getMinutes())}-${_pad2(PREVIEW_SAMPLE.date.getSeconds())}`;
+const _sampleHM = `${_pad2(PREVIEW_SAMPLE.date.getHours())}:${_pad2(PREVIEW_SAMPLE.date.getMinutes())}`;
 
 // Debounce window for saving the filename template input. Lets users
 // type without spamming chrome.storage.local.set.
@@ -44,11 +50,11 @@ const TOKEN_ROWS = [
   { label: '{title}',                  insert: '{title}',     example: 'Page title' },
   { label: '{domain}',                 insert: '{domain}',    example: 'example.com' },
   { label: '{host}',                   insert: '{host}',      example: 'www.example.com' },
-  { label: '{path}',                   insert: '{path}',      example: 'blog/case-for-extensions' },
-  { label: '{slug}',                   insert: '{slug}',      example: 'case-for-extensions' },
-  { label: '{date<fmt>[:fmt]</fmt>}',  insert: '{date}',      example: '2026-04-26' },
-  { label: '{time<fmt>[:fmt]</fmt>}',  insert: '{time}',      example: '14-30-45' },
-  { label: '{datetime<fmt>[:fmt]</fmt>}', insert: '{datetime}', example: '2026-04-26_14-30-45' }
+  { label: '{path}',                   insert: '{path}',      example: 'docs/markdown-tour' },
+  { label: '{slug}',                   insert: '{slug}',      example: 'markdown-tour' },
+  { label: '{date<fmt>[:fmt]</fmt>}',  insert: '{date}',      example: _sampleYMD },
+  { label: '{time<fmt>[:fmt]</fmt>}',  insert: '{time}',      example: _sampleHMS },
+  { label: '{datetime<fmt>[:fmt]</fmt>}', insert: '{datetime}', example: `${_sampleYMD}_${_sampleHMS}` }
 ];
 
 // Wraps a radio-button group so it exposes the same .value / addEventListener
@@ -459,11 +465,12 @@ class OptionsController {
     const title = PREVIEW_SAMPLE.title;
 
     if (includeMetadata) {
+      const metaDate = `${_sampleYMD} ${_sampleHM}`;
       if (metadataFormat === 'yaml') {
         lines.push('---');
         lines.push('title: "' + title + '"');
         lines.push('url: ' + sourceUrl);
-        lines.push('date: 2026-04-26 14:30');
+        lines.push('date: ' + metaDate);
         lines.push('---');
         lines.push('');
       } else {
@@ -471,7 +478,7 @@ class OptionsController {
         // both formats carry the same data shape.
         lines.push('**Title:** ' + title + '  ');
         lines.push('**URL:** ' + sourceUrl + '  ');
-        lines.push('**Date:** 2026-04-26 14:30');
+        lines.push('**Date:** ' + metaDate);
         lines.push('');
         lines.push('---');
         lines.push('');
@@ -486,20 +493,17 @@ class OptionsController {
     }
     lines.push('');
 
-    lines.push('*By Jared Atchison · April 24, 2026 · 4 min read*');
+    lines.push('*Every element below is a piece of the preview you\'re looking at.*');
     lines.push('');
 
-    lines.push('*A short case for treating your browser less like a tool and more like a workshop.*');
-    lines.push('');
-
-    lines.push('The web browser has become the **operating system** for most of our work. Extensions are how we *make that environment ours*.');
+    lines.push('This sentence has a **bold word** and an *italic one*. Together they\'re how you point at something **that\'s *especially* worth pointing at** without raising your voice.');
     lines.push('');
 
     if (imageMode === 'keep') {
-      lines.push('![Toolbar screenshot](toolbar.png)');
+      lines.push('![A diagram of the document tree](document-tree.png)');
       lines.push('');
     } else if (imageMode === 'alt') {
-      lines.push('Toolbar screenshot');
+      lines.push('A diagram of the document tree');
       lines.push('');
     } else if (imageMode === 'url-list') {
       // url-list collects URLs into a section at the bottom — preview that.
@@ -507,59 +511,63 @@ class OptionsController {
     }
 
     if (headingStyle === 'atx') {
-      lines.push('## What makes a great extension');
+      lines.push('## The shapes a page can take');
     } else {
-      const h2 = 'What makes a great extension';
+      const h2 = 'The shapes a page can take';
       lines.push(h2);
       lines.push('-'.repeat(h2.length));
     }
     lines.push('');
 
-    lines.push('### Core principles');
+    lines.push('### Things in a list');
     lines.push('');
 
-    lines.push(bullet + ' Solves one specific problem');
-    lines.push(bullet + ' Disappears when you don\'t need it');
-    lines.push(bullet + ' Respects keyboard navigation');
+    lines.push(bullet + ' A short fact');
+    lines.push(bullet + ' A short opinion');
+    lines.push(bullet + ' A short question');
     lines.push('');
 
-    lines.push('> The best tools are the ones you stop noticing.');
+    lines.push('> A blockquote is the same sentence in a different voice.');
     lines.push('');
 
-    lines.push('### Quick install');
+    lines.push('### Things in an order');
     lines.push('');
-    lines.push('1. Open the extensions page');
-    lines.push('2. Toggle developer mode');
-    lines.push('3. Load the unpacked folder');
+    lines.push('1. First, a heading');
+    lines.push('2. Then a paragraph');
+    lines.push('3. Then whatever the page needs next');
     lines.push('');
 
-    lines.push('Use `chrome.runtime.openOptionsPage()` to open settings from the popup.');
+    lines.push('Inline code looks like `npm install` or `Cmd+K` — it\'s how you say *this exact string* without ambiguity.');
     lines.push('');
 
     if (codeBlockStyle === 'fenced') {
       lines.push('```js');
-      lines.push('const x = 1;');
+      lines.push('function tour() {');
+      lines.push('  return \'a small one\';');
+      lines.push('}');
       lines.push('```');
     } else {
-      lines.push('    const x = 1;');
+      lines.push('    function tour() {');
+      lines.push('      return \'a small one\';');
+      lines.push('    }');
     }
     lines.push('');
 
-    let linkUrl = 'https://example.com/blog?utm_source=newsletter&fbclid=abc123';
+    let linkUrl = 'https://example.com/further-reading?utm_source=newsletter&fbclid=abc123';
     if (stripTracking) {
-      linkUrl = 'https://example.com/blog';
+      linkUrl = 'https://example.com/further-reading';
     }
 
     if (linkMode === 'keep') {
       if (linkStyle === 'inlined') {
-        lines.push('Read more in [our blog post](' + linkUrl + ').');
+        lines.push('Most articles end with a link to [somewhere else worth reading](' + linkUrl + ').');
       } else {
-        lines.push('Read more in [our blog post][1].');
+        lines.push('Most articles end with a link to [somewhere else worth reading][1].');
       }
     } else if (linkMode === 'strip') {
-      lines.push('Read more in our blog post.');
+      lines.push('Most articles end with a link to somewhere else worth reading.');
     } else if (linkMode === 'bare') {
-      lines.push('Read more in our blog post (' + linkUrl + ').');
+      lines.push('Most articles end with a link to somewhere else worth reading (' + linkUrl + ').');
     }
 
     if (linkMode === 'keep' && linkStyle === 'referenced') {
@@ -571,7 +579,7 @@ class OptionsController {
       lines.push('');
       lines.push('## Images');
       lines.push('');
-      lines.push('- toolbar.png');
+      lines.push('- document-tree.png');
     }
 
     void p; // p kept for clarity in case of future settings; currently we

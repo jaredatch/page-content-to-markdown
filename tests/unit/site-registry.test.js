@@ -137,10 +137,10 @@ describe('SiteRegistry', () => {
       expect(types.map(t => t.id)).toEqual(['article']);
     });
 
-    test('Claude /share/ offers conversation; non-share paths offer nothing', () => {
+    test('Claude /share/ and /chat/ offer conversation; bare hostname does not', () => {
       expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/share/abc')).toHaveLength(1);
+      expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/chat/xyz')).toHaveLength(1);
       expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/new')).toHaveLength(0);
-      expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/chat/xyz')).toHaveLength(0);
       expect(SiteRegistry.applicableContentTypes(claudeSite, 'https://claude.ai/')).toHaveLength(0);
     });
 

@@ -375,7 +375,7 @@ describe('OptionsController', () => {
       opts.elements.filenameTemplate.value = '{slug}';
       opts.elements.filenameTemplate.dispatchEvent(new Event('input'));
       expect(opts.elements.previewFilename.textContent)
-        .toBe('case-for-extensions.md');
+        .toBe('markdown-tour.md');
     });
 
     test('save is debounced', async () => {
@@ -453,7 +453,7 @@ describe('OptionsController', () => {
     test('asterisk bullet marker is reflected in preview', async () => {
       const opts = await createOptions({ bulletListMarker: '*' });
       const text = opts.elements.previewContent.textContent;
-      expect(text).toMatch(/^\* Solves/m);
+      expect(text).toMatch(/^\* A short fact/m);
     });
 
     test('changing a setting updates the preview', async () => {

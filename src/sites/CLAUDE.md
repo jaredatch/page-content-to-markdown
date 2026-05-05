@@ -10,6 +10,7 @@ Each site module is a directory `src/sites/{id}/` exporting a registration objec
 {
   id: 'x',
   hostnames: ['x.com', 'twitter.com'],
+  icon: '<svg…/>',         // brand mark for the popup's "Available on …" divider
   contentTypes: [
     { id: 'single-tweet', label: 'Tweet', icon: '<svg…/>', pathPatterns: [/^\/[^/]+\/status\//] },
     { id: 'thread',       label: 'Thread', icon: '<svg…/>', pathPatterns: [/^\/[^/]+\/status\//] },
@@ -19,6 +20,8 @@ Each site module is a directory `src/sites/{id}/` exporting a registration objec
   Formatter: XFormatter    // structured data → markdown
 }
 ```
+
+Brand icons are sourced from Font Awesome 7.x Free Brands (X, Claude, OpenAI/ChatGPT) and Lobe Icons (Grok); see `ATTRIBUTIONS.md` for licensing. Each is a monochrome silhouette using `fill="currentColor"`, rendered at 14×14 in the divider in `--text-primary`.
 
 `SiteRegistry` (`src/utils/site-registry.js`) provides:
 - `detect(url)` — hostname → site

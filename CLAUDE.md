@@ -42,7 +42,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
                                                                          ↘ SiteRegistry → site modules
 ```
 
-- **Popup** (`src/popup/`) — content-first picker. Rows for "Page content" + (on supported sites) the site's content types. Footer Copy/Save buttons; user's `outputMode` pref is the filled-black primary, the other is outlined. Header has page-info checkbox + gear → options page. Honors `autoClosePopup` after success. Fires a DOM probe on open in parallel with the URL-only render (`runContentTypeProbe()`), filtering rows to what's actually present.
+- **Popup** (`src/popup/`) — content-first picker. Rows for "Page content" + (on supported sites) the site's content types. Footer Copy/Save buttons; user's `outputMode` pref is the filled-black primary, the other is outlined. Header has page-info checkbox + gear → options page. Honors `autoClosePopup` after success. Fires a DOM probe on open in parallel with the URL-only render (`runContentTypeProbe()`), filtering rows to what's actually present. Initial selection mirrors Quick Extract: `lastUsedPerSite[siteId]` if applicable → first applicable site action → Page content. The "Available on …" divider renders the site module's brand `icon` SVG (see `src/sites/CLAUDE.md`).
 - **Background** (`src/background/background.js`) — service worker. Routes messages, handles clipboard with content-script fallback, dispatches output (clipboard/file), per-tab selection state (`Map`), context menus, keyboard commands.
 - **Content Script** (`src/content/content-script.js`) — full-page extraction, selection mode, text-selection conversion, clipboard fallback, file save via Blob URL.
 - **Element Picker** (`src/content/element-picker.js`) — Shadow DOM UI for selection mode. Sticky banner, phantom capture layer (suppresses host-page `:hover`), hover/selected overlays, floating action bar.
@@ -94,6 +94,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `docs/building-site-extractors.md` | Workflow doc for adding new site extractors via `firefox-devtools-mcp` live-DOM inspection |
 | `webpack.config.js` | Build config — 4 entry points → `dist/` |
 | `store/` | Listing text, privacy policy, Chrome Web Store permission justifications |
+| `ATTRIBUTIONS.md` | Third-party asset credits (Font Awesome / Lobe Icons brand SVGs in site-module `icon` fields) |
 | `private/PLAN.md` | Project plan, phases, progress tracking (private repo) |
 
 Per-site extractors live at `src/sites/{x,chatgpt,grok,claude}/`; each directory has its own `CLAUDE.md` with site-specific gotchas.

@@ -82,16 +82,13 @@ button, input { font-family: inherit; font-size: inherit; }
 .logo {
   width: 28px;
   height: 28px;
-  background: var(--text-primary);
-  color: white;
-  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 500;
-  font-size: 14px;
-  letter-spacing: -0.01em;
+  flex-shrink: 0;
 }
+
+.logo svg { display: block; width: 100%; height: 100%; }
 
 .page-title { font-size: 15px; font-weight: 500; }
 

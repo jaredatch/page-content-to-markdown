@@ -89,6 +89,7 @@ const DEFAULT_PREFS = {
 const X_SITE = {
   id: 'x',
   name: 'X / Twitter',
+  icon: '<svg data-testid="x-icon"></svg>',
   contentTypes: [
     { id: 'single-tweet', label: 'Tweet', icon: '<svg></svg>' },
     { id: 'thread', label: 'Thread', icon: '<svg></svg>' },
@@ -99,6 +100,7 @@ const X_SITE = {
 const CLAUDE_SITE = {
   id: 'claude',
   name: 'Claude',
+  icon: '<svg data-testid="claude-icon"></svg>',
   contentTypes: [
     { id: 'conversation', label: 'Conversation', icon: '<svg></svg>' }
   ]
@@ -269,7 +271,7 @@ describe('PopupController', () => {
       const popup = await createPopup({ tabUrl: 'https://x.com/u/status/1', site: X_SITE });
       expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(false);
       expect(popup.elements.dividerText.textContent).toBe('Available on X');
-      expect(popup.elements.dividerBadge.textContent).toBe('\u{1D54F}');
+      expect(popup.elements.dividerBadge.querySelector('[data-testid="x-icon"]')).not.toBeNull();
       expect(popup.elements.siteRows.children).toHaveLength(3);
       expect(popup.elements.siteRows.children[0].dataset.contentType).toBe('single-tweet');
       expect(popup.elements.siteRows.children[1].dataset.contentType).toBe('thread');
@@ -280,7 +282,7 @@ describe('PopupController', () => {
       const popup = await createPopup({ tabUrl: 'https://claude.ai/share/abc', site: CLAUDE_SITE });
       expect(popup.elements.siteDivider.classList.contains('hidden')).toBe(false);
       expect(popup.elements.dividerText.textContent).toBe('Available on Claude');
-      expect(popup.elements.dividerBadge.textContent).toBe('C');
+      expect(popup.elements.dividerBadge.querySelector('[data-testid="claude-icon"]')).not.toBeNull();
       expect(popup.elements.siteRows.children).toHaveLength(1);
     });
 
@@ -321,10 +323,16 @@ describe('PopupController', () => {
   });
 
   describe('lastUsedPerSite — restore', () => {
-    test('defaults to "page" when nothing is remembered', async () => {
+    test('defaults to first applicable site action when nothing is remembered', async () => {
+      // Site action wins over Page content whenever one is available, so on a
+      // supported site with applicable content types we default to the first.
       const popup = await createPopup({ tabUrl: 'https://x.com/foo', site: X_SITE });
-      expect(popup.state.selectedContentType).toBe('page');
-      expect(popup.elements.pageRow.classList.contains('selected')).toBe(true);
+      expect(popup.state.selectedContentType).toBe('single-tweet');
+      expect(popup.state.selectedSiteId).toBe('x');
+
+      const tweetRow = popup.elements.siteRows.querySelector('[data-content-type="single-tweet"]');
+      expect(tweetRow.classList.contains('selected')).toBe(true);
+      expect(popup.elements.pageRow.classList.contains('selected')).toBe(false);
     });
 
     test('restores remembered content type for the current site', async () => {
@@ -341,13 +349,14 @@ describe('PopupController', () => {
       expect(popup.elements.pageRow.classList.contains('selected')).toBe(false);
     });
 
-    test('falls back to "page" if remembered content type is no longer valid', async () => {
+    test('falls back to first applicable site action if remembered content type is no longer valid', async () => {
       const popup = await createPopup({
         tabUrl: 'https://x.com/foo',
         site: X_SITE,
         prefs: { lastUsedPerSite: { x: 'something-removed' } }
       });
-      expect(popup.state.selectedContentType).toBe('page');
+      expect(popup.state.selectedContentType).toBe('single-tweet');
+      expect(popup.state.selectedSiteId).toBe('x');
     });
   });
 

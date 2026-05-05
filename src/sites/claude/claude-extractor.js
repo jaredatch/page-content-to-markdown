@@ -1,11 +1,13 @@
 'use strict';
 
 /**
- * Extracts structured conversation data from Claude share pages (claude.ai/share/...).
- * Returns plain data objects — formatting is handled by ClaudeFormatter.
+ * Extracts structured conversation data from Claude share pages (claude.ai/share/...)
+ * and active chat pages (claude.ai/chat/...). Returns plain data objects —
+ * formatting is handled by ClaudeFormatter.
  *
- * Share page DOM structure:
- *   - Page header: [data-testid="page-header"] contains title + "Shared by {name}"
+ * Both routes render the same conversation DOM:
+ *   - Page header: [data-testid="page-header"] contains the title (and, on
+ *     share pages only, "Shared by {name}")
  *   - Conversation container: .flex-1.flex.flex-col.px-4.max-w-3xl
  *     - Child 0: disclaimer banner (border-0.5 class)
  *     - Children 1..N: alternating human/claude turns

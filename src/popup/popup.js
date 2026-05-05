@@ -15,14 +15,6 @@ const RESTRICTED_PATTERNS = [
   /^file:\/\//
 ];
 
-// Site badge characters used in the divider. Falls back to first letter of site.name.
-const SITE_BADGE = {
-  x: '\u{1D54F}',  // Mathematical Double-Struck Capital X (𝕏)
-  claude: 'C',
-  grok: 'G',
-  chatgpt: '✱'  // Heavy Asterisk (✱) — evokes OpenAI's six-petal mark
-};
-
 const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
 // Parse a static SVG markup string into a fresh Element. Used instead of
@@ -212,17 +204,21 @@ class PopupController {
   }
 
   /**
-   * Restore the last-used content type for the current site (or default to 'page').
-   * Persisted in chrome.storage.local under prefs.lastUsedPerSite as { siteId: contentTypeId }.
+   * Pick the initial selection in priority order:
+   *   1. The remembered last-used site action for this site, if still applicable.
+   *   2. The first applicable site action, when the site has any.
+   *   3. Page content.
+   *
+   * lastUsedPerSite is persisted in chrome.storage.local under prefs.lastUsedPerSite
+   * as { siteId: contentTypeId }. Site actions take precedence over Page content
+   * whenever one is available — so a supported site with a recognized URL always
+   * defaults to its action, even when the user previously clicked Page content.
    */
   restoreSelectionFromMemory() {
     const site = this.state.currentSite;
     const applicable = this.state.applicableContentTypes;
     const lastUsed = this.state.prefs.lastUsedPerSite || {};
 
-    // Only restore the remembered type if it's still applicable on the current
-    // URL — otherwise (e.g. last picked "Article" on a /status/ page, now on
-    // /home) fall back to "Page content" so the action button does the right thing.
     if (site && lastUsed[site.id] && applicable.length > 0) {
       const remembered = lastUsed[site.id];
       if (applicable.some(ct => ct.id === remembered)) {
@@ -230,6 +226,12 @@ class PopupController {
         this.state.selectedSiteId = site.id;
         return;
       }
+    }
+
+    if (site && applicable.length > 0) {
+      this.state.selectedContentType = applicable[0].id;
+      this.state.selectedSiteId = site.id;
+      return;
     }
 
     this.state.selectedContentType = 'page';
@@ -328,7 +330,11 @@ class PopupController {
       return;
     }
 
-    this.elements.dividerBadge.textContent = SITE_BADGE[site.id] || (site.name.charAt(0) || '').toUpperCase();
+    if (site.icon) {
+      this.elements.dividerBadge.replaceChildren(svgFromMarkup(site.icon));
+    } else {
+      this.elements.dividerBadge.textContent = (site.name.charAt(0) || '').toUpperCase();
+    }
     const shortName = (site.name || '').split(' / ')[0];
     this.elements.dividerText.textContent = `Available on ${shortName}`;
     this.elements.siteDivider.classList.remove('hidden');
@@ -511,17 +517,15 @@ class PopupController {
     if (!btn) return;
     const originalNodes = Array.from(btn.childNodes);
 
+    // Emit icon + label as direct children so the button's own flex layout
+    // (display:inline-flex, gap:6px) handles alignment without an inner
+    // wrapper. A wrapper with vertical-align nudges grew the line-box ~2px
+    // and made the button visibly resize on success.
     const btnText = document.createElement('span');
     btnText.className = 'btn-text';
-    const inner = document.createElement('span');
-    inner.style.cssText = 'display:inline-flex;align-items:center;gap:6px;vertical-align:-2px;';
-    inner.appendChild(svgFromMarkup(CHECK_SVG));
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = label;
-    inner.appendChild(labelSpan);
-    btnText.appendChild(inner);
+    btnText.textContent = label;
 
-    btn.replaceChildren(btnText);
+    btn.replaceChildren(svgFromMarkup(CHECK_SVG), btnText);
     btn.classList.add('btn-success');
     setTimeout(() => {
       btn.classList.remove('btn-success');
