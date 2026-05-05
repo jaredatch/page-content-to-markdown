@@ -39,15 +39,34 @@ class MessageBus {
     });
 
     // chrome.runtime.sendMessage — Popup/Content → Background
-    // Supports both callback and fire-and-forget patterns
+    // Supports callback, promise (await), and fire-and-forget patterns. Real
+    // chrome API returns a Promise when no callback is supplied; mirror that
+    // so awaiting senders (e.g. selectionComplete) get the real response.
     chrome.runtime.sendMessage = jest.fn((msg, callback) => {
-      const sender = { tab: { id: self._tabId } };
-      for (const listener of self._backgroundListeners) {
-        const wantsAsync = listener(msg, sender, (response) => {
+      return new Promise((resolve) => {
+        const sender = { tab: { id: self._tabId } };
+        let resolved = false;
+        const respond = (response) => {
           if (callback) callback(response);
-        });
-        if (wantsAsync) break;
-      }
+          if (!resolved) {
+            resolved = true;
+            resolve(response);
+          }
+        };
+        let async = false;
+        for (const listener of self._backgroundListeners) {
+          const wantsAsync = listener(msg, sender, respond);
+          if (wantsAsync) {
+            async = true;
+            break;
+          }
+          if (resolved) break;
+        }
+        // No listener handled the message — resolve undefined so awaiters
+        // don't hang. Real chrome rejects, but our tests treat undefined as
+        // "nothing took it" via the response-shape check.
+        if (!async && !resolved) resolve(undefined);
+      });
     });
 
     // chrome.tabs.sendMessage — Background → Content Script
@@ -163,12 +182,16 @@ class MessageBus {
   }
 
   /**
-   * Fire the captured tabs.onRemoved handler.
+   * Fire the captured tabs.onRemoved handler. Real tab close destroys the
+   * content script along with the page, so drop the content listeners too —
+   * otherwise a post-removal ping (e.g. M5's getPickerStatus) would still be
+   * answered by a phantom listener and report incorrect state.
    */
   fireTabRemoved(tabId) {
     for (const listener of this._tabRemovedListeners) {
       listener(tabId || this._tabId);
     }
+    this._contentListeners = [];
   }
 
   /**

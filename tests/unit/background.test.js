@@ -106,9 +106,12 @@ describe('BackgroundScript', () => {
 
       const result = await BackgroundScript.extractContentFromActiveTab();
 
+      // tabId is always threaded onto the response so dispatch downstream
+      // binds to the originating tab — see H2.
       expect(result).toEqual({
         success: false,
-        error: 'Content extraction failed'
+        error: 'Content extraction failed',
+        tabId: 123
       });
     });
 
@@ -138,16 +141,15 @@ describe('BackgroundScript', () => {
       });
     });
 
-    test('should handle clipboard errors', async () => {
+    test('should handle clipboard errors when no source tab is provided', async () => {
       navigator.clipboard.writeText.mockRejectedValue(new Error('Clipboard access denied'));
-      // No active tab for fallback either
-      chrome.tabs.query.mockResolvedValue([]);
 
+      // No tabId — the SW fallback has nowhere to delegate.
       const result = await BackgroundScript.copyToClipboard('Test content');
 
       expect(result).toEqual({
         success: false,
-        error: 'Failed to copy to clipboard: SW clipboard failed (Clipboard access denied) and no active tab for fallback'
+        error: 'Failed to copy to clipboard: SW clipboard failed (Clipboard access denied); no source tab available for content-script fallback'
       });
     });
 
@@ -393,10 +395,9 @@ describe('BackgroundScript', () => {
 
   describe('saveAsFile', () => {
     test('should delegate file save to content script', async () => {
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({ success: true });
 
-      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md');
+      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md', 123);
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
         action: 'saveAsFile',
@@ -408,19 +409,17 @@ describe('BackgroundScript', () => {
     });
 
     test('should handle content script save failure', async () => {
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({ success: false, error: 'Save failed' });
 
-      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md');
+      const result = await BackgroundScript.saveAsFile('# Hello', 'test.md', 123);
       expect(result.success).toBe(false);
       expect(result.error).toBe('Save failed');
     });
 
-    test('should handle no active tab', async () => {
-      chrome.tabs.query.mockResolvedValue([]);
-
+    test('should fail when no source tab is provided', async () => {
       const result = await BackgroundScript.saveAsFile('# Hello', 'test.md');
       expect(result.success).toBe(false);
+      expect(result.error).toBe('No source tab available for file save');
     });
   });
 
@@ -438,10 +437,9 @@ describe('BackgroundScript', () => {
 
     test('should save as file when outputMode is file', async () => {
       chrome.storage.local.get.mockResolvedValue({ outputMode: 'file' });
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({ success: true });
 
-      const result = await BackgroundScript.dispatchOutput('# Content', { title: 'Test Page' });
+      const result = await BackgroundScript.dispatchOutput('# Content', { title: 'Test Page' }, undefined, 123);
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, expect.objectContaining({
         action: 'saveAsFile'
@@ -463,10 +461,9 @@ describe('BackgroundScript', () => {
   describe('clipboard fallback', () => {
     test('should fallback to content script when navigator.clipboard fails', async () => {
       navigator.clipboard.writeText.mockRejectedValue(new Error('Not allowed'));
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({ success: true });
 
-      const result = await BackgroundScript.copyToClipboard('Test content');
+      const result = await BackgroundScript.copyToClipboard('Test content', 123);
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
         action: 'writeToClipboard',
@@ -477,10 +474,9 @@ describe('BackgroundScript', () => {
 
     test('should fail if both clipboard API and fallback fail', async () => {
       navigator.clipboard.writeText.mockRejectedValue(new Error('Not allowed'));
-      chrome.tabs.query.mockResolvedValue([{ id: 123 }]);
       chrome.tabs.sendMessage.mockResolvedValue({ success: false });
 
-      const result = await BackgroundScript.copyToClipboard('Test content');
+      const result = await BackgroundScript.copyToClipboard('Test content', 123);
 
       expect(result.success).toBe(false);
     });

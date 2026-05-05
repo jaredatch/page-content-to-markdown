@@ -16,6 +16,11 @@ The extension writes converted markdown output to the user's clipboard when the 
 **Justification:**
 The extension adds two right-click context menu items: "Copy selection as Markdown" (when text is selected) and "Select element for Markdown" (when no text is selected). These provide quick access to conversion without opening the popup.
 
+### notifications
+
+**Justification:**
+The extension shows brief system notifications to confirm that markdown conversion succeeded (e.g. "Tweet copied as markdown") or to surface failures from background-driven actions where no popup is open — context-menu items, the keyboard shortcut, and the element picker. Without this permission, users have no feedback when invoking those actions, since the popup is not the trigger. No notification content includes page data; notifications only state the action result and the content type.
+
 ### storage
 
 **Justification:**

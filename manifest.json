@@ -6,6 +6,7 @@
   "permissions": [
     "clipboardWrite",
     "contextMenus",
+    "notifications",
     "storage"
   ],
   "host_permissions": [

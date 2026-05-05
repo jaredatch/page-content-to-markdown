@@ -22,6 +22,11 @@ const RESTRICTED_URL_PATTERNS = [
 
 class BackgroundScript {
   constructor() {
+    // Fast cache, not source of truth. The MV3 service worker can be evicted
+    // mid-selection — when the user's picker is still alive in the page but
+    // this Map is gone, getSelectionState would return false and the popup
+    // would show the wrong UI. We treat the Map as a hint and confirm via a
+    // ping to the active tab's content script when the popup asks.
     this.selectionState = new Map(); // tabId → { active: boolean }
     this.setupEventListeners();
     this.setupContextMenu();
@@ -71,8 +76,12 @@ class BackgroundScript {
       }
 
       if (request.action === 'selectionComplete') {
-        this.handleSelectionComplete(request.result, sender);
-        return false;
+        // Async response — picker awaits this so it only flashes "success"
+        // after the markdown has actually landed on the clipboard / disk.
+        this.handleSelectionComplete(request.result, sender)
+          .then(outputResult => sendResponse(outputResult))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
       }
 
       if (request.action === 'selectionCancelled') {
@@ -163,7 +172,12 @@ class BackgroundScript {
         return;
       }
 
-      const result = await this.dispatchOutput(extractResult.markdown, extractResult.metadata, mode);
+      const result = await this.dispatchOutput(
+        extractResult.markdown,
+        extractResult.metadata,
+        mode,
+        extractResult.tabId
+      );
       sendResponse(result);
 
     } catch (error) {
@@ -220,7 +234,12 @@ class BackgroundScript {
   }
 
   /**
-   * Handle getSelectionState message from popup
+   * Handle getSelectionState message from popup. Confirms picker liveness by
+   * pinging the content script — the in-memory Map can desync from reality
+   * after a service-worker eviction or content-script reload, and the picker
+   * itself is the only authoritative source for "is the overlay on screen?".
+   * Falls back to the cached Map if the ping fails (page not injectable, no
+   * content script yet on a freshly loaded tab, etc.).
    */
   async handleGetSelectionState(sendResponse) {
     try {
@@ -231,8 +250,31 @@ class BackgroundScript {
       }
 
       const tabId = tabs[0].id;
-      const state = this.selectionState.get(tabId);
-      sendResponse({ active: !!(state && state.active) });
+      let active = false;
+      try {
+        const status = await chrome.tabs.sendMessage(tabId, { action: 'getPickerStatus' });
+        if (status && typeof status.active === 'boolean') {
+          active = status.active;
+          // Refresh cache so toggle-selection-mode and other in-SW paths
+          // don't fight the picker's truth.
+          if (active) {
+            this.selectionState.set(tabId, { active: true });
+          } else {
+            this.selectionState.delete(tabId);
+          }
+        } else {
+          // Ping returned nothing — fall back to cache.
+          const cached = this.selectionState.get(tabId);
+          active = !!(cached && cached.active);
+        }
+      } catch (e) {
+        // Content script not reachable (restricted page, not yet injected,
+        // tab navigated). Defer to the cache; if it's empty we report
+        // inactive, which is the safe default.
+        const cached = this.selectionState.get(tabId);
+        active = !!(cached && cached.active);
+      }
+      sendResponse({ active });
     } catch (error) {
       sendResponse({ active: false });
     }
@@ -250,9 +292,10 @@ class BackgroundScript {
    * user clicked, mirroring the popup pattern: we pass it as the dispatch
    * override so a per-action click never rewrites prefs.outputMode.
    */
-  async handleSelectionComplete(result, _sender) {
+  async handleSelectionComplete(result, sender) {
+    const tabId = sender && sender.tab ? sender.tab.id : null;
     if (result && result.success && result.markdown) {
-      const outputResult = await this.dispatchOutput(result.markdown, result.metadata, result.mode);
+      const outputResult = await this.dispatchOutput(result.markdown, result.metadata, result.mode, tabId);
       if (outputResult.success) {
         const count = result.extractionInfo ? result.extractionInfo.note : '';
         const verb = outputResult.method === 'file' ? 'saved' : 'copied';
@@ -260,9 +303,11 @@ class BackgroundScript {
       } else {
         this.showNotification('Error', outputResult.error, 'error');
       }
-    } else {
-      this.showNotification('Error', (result && result.error) || 'Selection conversion failed', 'error');
+      return outputResult;
     }
+    const error = (result && result.error) || 'Selection conversion failed';
+    this.showNotification('Error', error, 'error');
+    return { success: false, error };
   }
 
   /**
@@ -311,7 +356,7 @@ class BackgroundScript {
       });
 
       if (response && response.success && response.markdown) {
-        const outputResult = await this.dispatchOutput(response.markdown, response.metadata);
+        const outputResult = await this.dispatchOutput(response.markdown, response.metadata, undefined, tab.id);
         if (outputResult.success) {
           const verb = outputResult.method === 'file' ? 'saved' : 'copied';
           this.showNotification('Success', `Selection ${verb} as markdown!`, 'success');
@@ -359,9 +404,10 @@ class BackgroundScript {
         return;
       }
 
+      const tabId = tabs[0].id;
       const prefs = await Preferences.get();
 
-      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+      const response = await chrome.tabs.sendMessage(tabId, {
         action: 'extractSiteContent',
         siteId,
         contentType,
@@ -383,9 +429,13 @@ class BackgroundScript {
         return;
       }
 
-      const result = await this.dispatchOutput(response.markdown, response.metadata, mode);
-      const verb = result.method === 'file' ? 'saved' : 'copied';
-      this.showNotification('Success', `${contentType} ${verb} as markdown`, 'success');
+      const result = await this.dispatchOutput(response.markdown, response.metadata, mode, tabId);
+      if (result.success) {
+        const verb = result.method === 'file' ? 'saved' : 'copied';
+        this.showNotification('Success', `${contentType} ${verb} as markdown`, 'success');
+      } else {
+        this.showNotification('Error', result.error || 'Output dispatch failed', 'error');
+      }
       sendResponse(result);
     } catch (error) {
       console.error(`🚨 [background] Error extracting site content (${siteId}/${contentType}):`, error);
@@ -537,6 +587,7 @@ class BackgroundScript {
       }
 
       const activeTab = tabs[0];
+      const tabId = activeTab.id;
       console.log(`📋 [background] Active tab found: ${activeTab.url}`);
 
       // Read preferences to pass includeMetadata option
@@ -545,7 +596,7 @@ class BackgroundScript {
       // Send message to content script to extract content
       console.log('📤 [background] Sending extraction request to content script');
 
-      const response = await chrome.tabs.sendMessage(activeTab.id, {
+      const response = await chrome.tabs.sendMessage(tabId, {
         action: 'extractContent',
         options: {
           includeMetadata: prefs.includeMetadata,
@@ -567,7 +618,10 @@ class BackgroundScript {
         (response && response.markdown && response.markdown.length) || 0
       );
 
-      return response;
+      // Bind the response to the tab it came from. Downstream dispatch uses
+      // this tabId so a tab switch between extract and dispatch can't make us
+      // copy Tab A's content into Tab B's clipboard or save Tab B's filename.
+      return { ...response, tabId };
 
     } catch (error) {
       console.error('🚨 [background] Error extracting content from active tab:', error);
@@ -579,11 +633,15 @@ class BackgroundScript {
   }
 
   /**
-   * Copy text to clipboard using the clipboard API
+   * Copy text to clipboard using the clipboard API. The fallback path needs
+   * a content script to delegate to, so callers must pass the originating
+   * tabId — re-querying for the active tab here would silently retarget if
+   * the user switched tabs between extract and dispatch.
    * @param {string} text - Text to copy to clipboard
+   * @param {number} [tabId] - Tab to delegate clipboard write to when the SW path fails
    * @returns {Promise<object>} Result object with success status
    */
-  async copyToClipboard(text) {
+  async copyToClipboard(text, tabId) {
     try {
       if (!text || text.trim() === '') {
         return {
@@ -600,14 +658,13 @@ class BackgroundScript {
       } catch (clipboardError) {
         // Fallback: ask content script to write to clipboard (needed in Firefox service worker)
         console.log('📋 [background] SW clipboard failed, trying content script fallback. SW error:', clipboardError && clipboardError.message);
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tabs.length === 0) {
-          throw new Error(`SW clipboard failed (${clipboardError.message}) and no active tab for fallback`);
+        if (!tabId) {
+          throw new Error(`SW clipboard failed (${clipboardError.message}); no source tab available for content-script fallback`);
         }
 
         let response;
         try {
-          response = await chrome.tabs.sendMessage(tabs[0].id, {
+          response = await chrome.tabs.sendMessage(tabId, {
             action: 'writeToClipboard',
             text
           });
@@ -659,15 +716,16 @@ class BackgroundScript {
   /**
    * Save markdown as a file download.
    * Delegates to content script which has access to Blob/URL.createObjectURL.
+   * Caller must pass the originating tabId so a tab switch between extract
+   * and dispatch can't redirect the download to a different page's context.
    */
-  async saveAsFile(markdown, filename) {
+  async saveAsFile(markdown, filename, tabId) {
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
-        return { success: false, error: 'No active tab found for file save' };
+      if (!tabId) {
+        return { success: false, error: 'No source tab available for file save' };
       }
 
-      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+      const response = await chrome.tabs.sendMessage(tabId, {
         action: 'saveAsFile',
         markdown,
         filename
@@ -689,40 +747,62 @@ class BackgroundScript {
    * @param {string} markdown - Markdown content to output
    * @param {object} metadata - Metadata object (used for filename generation)
    * @param {string} [modeOverride] - Optional explicit mode ('clipboard' | 'file'). When provided, takes precedence over the outputMode preference. Used by the popup to make Copy/Save explicit per click without rewriting the user's preferred default.
+   * @param {number} [tabId] - Originating tab for the markdown — threaded into clipboard fallback / file save so a tab switch mid-dispatch can't retarget output to the wrong tab.
    */
-  async dispatchOutput(markdown, metadata, modeOverride) {
+  async dispatchOutput(markdown, metadata, modeOverride, tabId) {
     const prefs = await Preferences.get();
     const mode = modeOverride || prefs.outputMode;
 
     if (mode === 'file') {
       const filename = this.generateFilename(metadata, prefs);
-      return this.saveAsFile(markdown, filename);
+      return this.saveAsFile(markdown, filename, tabId);
     }
 
-    const result = await this.copyToClipboard(markdown);
+    const result = await this.copyToClipboard(markdown, tabId);
     return { ...result, method: 'clipboard' };
   }
 
   /**
-   * Show notification to user (for Chrome extensions)
+   * Show notification to user. Logs always; fires a system notification when
+   * `chrome.notifications` is available (the `notifications` permission is
+   * declared in manifest, but the API may still throw if the user has muted
+   * the channel or on platforms that haven't loaded the namespace).
    * @param {string} title - Notification title
    * @param {string} message - Notification message
    * @param {string} type - Notification type (success, error, info)
    */
   showNotification(title, message, type = 'info') {
-    // For now, just log the notification
-    // In a full implementation, you might use chrome.notifications API
     const icon = type === 'success' ? '✅' : type === 'error' ? '🚨' : 'ℹ️';
     console.log(`${icon} [background] ${title}: ${message}`);
 
-    // If notifications permission is available, create a notification
-    if (chrome.notifications) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon48.png',
-        title: title,
-        message: message
-      });
+    if (!chrome.notifications || typeof chrome.notifications.create !== 'function') return;
+
+    const handleError = (err) => {
+      console.warn('🔔 [background] notifications.create failed:', err && err.message);
+    };
+
+    try {
+      // Chrome MV3 / Firefox both accept a callback; Firefox also returns a
+      // Promise. Cover both so a thrown rejection or chrome.runtime.lastError
+      // doesn't crash the SW.
+      const ret = chrome.notifications.create(
+        {
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: title,
+          message: message
+        },
+        () => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            handleError(chrome.runtime.lastError);
+          }
+        }
+      );
+      if (ret && typeof ret.then === 'function') {
+        ret.catch(handleError);
+      }
+    } catch (err) {
+      handleError(err);
     }
   }
 }
@@ -734,12 +814,12 @@ const backgroundScript = new BackgroundScript();
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     extractContentFromActiveTab: () => backgroundScript.extractContentFromActiveTab(),
-    copyToClipboard: (text) => backgroundScript.copyToClipboard(text),
+    copyToClipboard: (text, tabId) => backgroundScript.copyToClipboard(text, tabId),
     handleExtractAndCopy: (sendResponse) => backgroundScript.handleExtractAndCopy(sendResponse),
     getSelectionState: () => backgroundScript.selectionState,
     toggleSelectionMode: () => backgroundScript.toggleSelectionMode(),
     generateFilename: (metadata, prefs) => backgroundScript.generateFilename(metadata, prefs),
-    saveAsFile: (markdown, filename) => backgroundScript.saveAsFile(markdown, filename),
-    dispatchOutput: (markdown, metadata) => backgroundScript.dispatchOutput(markdown, metadata)
+    saveAsFile: (markdown, filename, tabId) => backgroundScript.saveAsFile(markdown, filename, tabId),
+    dispatchOutput: (markdown, metadata, mode, tabId) => backgroundScript.dispatchOutput(markdown, metadata, mode, tabId)
   };
 }

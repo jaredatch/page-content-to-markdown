@@ -481,10 +481,10 @@ class ContentScript {
 
   /**
    * Convert the user's selection and forward to the background for output
-   * dispatch. Returns `{ success }` so the picker can flash the button green
-   * on success and stay quiet on failure (background surfaces errors via
-   * its own notification path). Picker stays active afterwards — the user
-   * can keep refining the selection or fire the other action on the same set.
+   * dispatch. Awaits the background's response so the picker only flashes
+   * "success" once the markdown has actually landed on the clipboard / disk
+   * — flashing on send would lie if the dispatch then fails. Picker stays
+   * active afterwards either way, so the user can refine and retry.
    */
   async _completeSelection(elements, mode) {
     console.log(`🎯 [content-script] Selection ${mode}: ${elements.length} element(s)`);
@@ -495,10 +495,14 @@ class ContentScript {
     }
 
     result.mode = mode;
+    let response;
     try {
-      chrome.runtime.sendMessage({ action: 'selectionComplete', result });
+      response = await chrome.runtime.sendMessage({ action: 'selectionComplete', result });
     } catch (e) {
       return { success: false, error: e.message };
+    }
+    if (!response || response.success !== true) {
+      return { success: false, error: (response && response.error) || 'Background dispatch failed' };
     }
     return { success: true };
   }
@@ -612,6 +616,14 @@ class ContentScript {
       if (request.action === 'cancelSelectionMode') {
         this.cancelSelectionMode();
         sendResponse({ success: true });
+        return false;
+      }
+
+      if (request.action === 'getPickerStatus') {
+        // Authoritative answer for "is the picker overlay alive in this tab?".
+        // Background uses this to confirm its in-memory selection-state cache,
+        // which can desync after a service-worker eviction.
+        sendResponse({ active: !!this.elementPicker });
         return false;
       }
 
