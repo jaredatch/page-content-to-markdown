@@ -105,9 +105,13 @@ class ContentScript {
       const extractionResult = await this.fallbackExtractor.extractContent();
       console.log(`✅ [content-script] Fallback extraction succeeded (${extractionResult.method})`);
 
+      const markdown = includeMetadata
+        ? this.addMetadataHeader(extractionResult.markdown, metadata, options.metadataFormat)
+        : extractionResult.markdown;
+
       return {
         success: true,
-        markdown: extractionResult.markdown,
+        markdown,
         metadata,
         extractionInfo: {
           method: extractionResult.method,
@@ -118,8 +122,11 @@ class ContentScript {
       console.error('🚨 [content-script] Even fallback extraction failed:', error.message);
     }
 
-    // Emergency: return basic markdown with page info
-    const emergencyMarkdown = `**Title:** ${metadata.title}  \n**URL:** ${metadata.url}  \n**Date:** ${this._formatHumanDateTime(metadata.timestamp)}  \n**Method:** Emergency Fallback\n\n---\n\nContent extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.`;
+    // Emergency: return basic markdown with page info, gated on includeMetadata.
+    const emergencyBody = 'Content extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.';
+    const emergencyMarkdown = includeMetadata
+      ? this.addMetadataHeader(emergencyBody, metadata, options.metadataFormat)
+      : emergencyBody;
 
     return {
       success: true,
@@ -548,17 +555,24 @@ class ContentScript {
       console.log('📨 [content-script] Received message:', request && request.action);
 
       if (request.action === 'extractContent') {
-        this.convertPageToMarkdown(request.options || {})
+        const options = request.options || {};
+        this.convertPageToMarkdown(options)
           .then(result => {
             console.log('📤 [content-script] Sending response');
             sendResponse(result);
           })
           .catch(error => {
             console.error('🚨 [content-script] Error in message handler:', error);
+            const metadata = this._getMetadata(options);
+            const includeMetadata = options.includeMetadata !== false;
+            const body = `Content extraction encountered an error: ${error.message}`;
+            const markdown = includeMetadata
+              ? this.addMetadataHeader(body, metadata, options.metadataFormat)
+              : body;
             sendResponse({
               success: true,
-              markdown: `# Content Extraction\n\n**Error:** ${error.message}\n**URL:** ${window.location.href}\n**Time:** ${new Date().toISOString()}`,
-              metadata: this.getPageMetadata(),
+              markdown,
+              metadata,
               extractionInfo: {
                 method: 'ultimate-fallback',
                 note: 'Ultimate fallback from message handler catch'

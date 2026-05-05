@@ -192,7 +192,12 @@ describe('Simple Universal Extractor - GUARANTEED to work on ANY website', () =>
 
       expect(result.success).toBe(true);
       expect(result.method).toBe('emergency-fallback');
-      expect(result.markdown).toContain('Emergency Test');
+      // Body-only contract: emergency fallback returns scraped textContent
+      // (or document.title as a last resort). Caller adds the Title/URL/Date
+      // header when includeMetadata is on.
+      expect(result.markdown.length).toBeGreaterThan(0);
+      expect(result.markdown).toContain('Hidden content');
+      expect(result.markdown).not.toContain('**Method:**');
 
       // Restore original method
       extractor.getAllVisibleText = originalGetAllVisibleText;

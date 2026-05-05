@@ -4,6 +4,33 @@ const TurndownPluginGfmImport = require('turndown-plugin-gfm');
 const turndownPluginGfm = TurndownPluginGfmImport.gfm || TurndownPluginGfmImport;
 const UrlCleaner = require('./url-cleaner');
 
+// Allowlists for emitted URL schemes. Anything outside these gets textified
+// (links — drop the href but keep the visible text) or dropped (images —
+// emit nothing). Keeps `javascript:`, `data:`, `file:`, `vbscript:`, and
+// any other exotic scheme out of the markdown output. Trust assumption:
+// the converter is the boundary at which scheme safety is enforced;
+// downstream renderers don't need to re-validate emitted URLs.
+const ALLOWED_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
+const ALLOWED_IMAGE_SCHEMES = new Set(['http', 'https']);
+
+// Empty scheme means a relative URL (e.g. `/page`, `subpage`, `#anchor`) —
+// safe to keep, since it inherits the host page's scheme on resolve.
+function _hrefScheme(href) {
+  if (typeof href !== 'string') return '';
+  const m = /^([a-zA-Z][a-zA-Z0-9+\-.]*):/.exec(href.trim());
+  return m ? m[1].toLowerCase() : '';
+}
+
+function _isLinkSchemeAllowed(href) {
+  const scheme = _hrefScheme(href);
+  return scheme === '' || ALLOWED_LINK_SCHEMES.has(scheme);
+}
+
+function _isImageSchemeAllowed(src) {
+  const scheme = _hrefScheme(src);
+  return scheme === '' || ALLOWED_IMAGE_SCHEMES.has(scheme);
+}
+
 class MarkdownConverter {
   constructor() {
     this.turndownService = new TurndownService({
@@ -28,8 +55,10 @@ class MarkdownConverter {
     this._imageMode = 'keep';
 
     // Per-conversion image URL collection (populated by the image rule when
-    // mode is 'url-list'). Reset at the top of each conversion entry point.
+    // mode is 'url-list'). The list is the ordered output; the Set backs
+    // O(1) membership checks. Both reset at the top of each conversion entry.
     this._pendingImageUrls = [];
+    this._pendingImageUrlSet = new Set();
 
     // Configure rules for clean conversion
     this.setupCustomRules();
@@ -81,13 +110,21 @@ class MarkdownConverter {
     const src = this._resolveImageSrc(node);
     if (!src) return '';
 
+    // Drop images whose URL scheme isn't allowlisted (javascript:, file:,
+    // vbscript:, …). data: URIs are normally caught earlier in
+    // _resolveImageSrc (treated as placeholders for lazy-load attributes),
+    // but the allowlist belt-and-suspenders the case where data: is the
+    // only attribute set.
+    if (!_isImageSchemeAllowed(src)) return '';
+
     switch (this._imageMode) {
       case 'strip':
         return '';
       case 'alt':
         return alt || '';
       case 'url-list':
-        if (!this._pendingImageUrls.includes(src)) {
+        if (!this._pendingImageUrlSet.has(src)) {
+          this._pendingImageUrlSet.add(src);
           this._pendingImageUrls.push(src);
         }
         return '';
@@ -103,6 +140,7 @@ class MarkdownConverter {
    */
   _resetConversionState() {
     this._pendingImageUrls = [];
+    this._pendingImageUrlSet = new Set();
   }
 
   /**
@@ -122,24 +160,37 @@ class MarkdownConverter {
 
   /**
    * Register the Turndown rule that overrides <a> handling for strip / bare
-   * modes. When linkMode === 'keep', the filter returns false and Turndown's
-   * default inline/reference link rules handle the node.
+   * modes plus the keep-mode scheme allowlist. The filter returns true for:
+   *   - any link in strip / bare mode (textify or append URL)
+   *   - keep-mode links with a non-allowlisted scheme (textify so
+   *     `javascript:`, `file:`, `vbscript:`, etc. never reach output)
+   * Otherwise the filter returns false and Turndown's default inline/
+   * reference link rules handle the node — preserving normal http(s) /
+   * mailto links unchanged.
    */
   _registerLinkModeRule(service) {
     const converter = this;
     service.addRule('linkModeOverride', {
       filter: function (node) {
         if (node.nodeName !== 'A') return false;
-        if (!node.getAttribute('href')) return false;
-        return converter._linkMode === 'strip' || converter._linkMode === 'bare';
+        const href = node.getAttribute('href');
+        if (!href) return false;
+        if (converter._linkMode === 'strip' || converter._linkMode === 'bare') return true;
+        // keep mode: intervene only when scheme is not allowlisted.
+        return !_isLinkSchemeAllowed(href);
       },
       replacement: function (content, node) {
-        if (converter._linkMode === 'strip') return content;
-        // bare: append URL in parens. Tracking-param strip happens later in
-        // cleanupMarkdown so the URL emitted here may still contain trackers
-        // — they get stripped at the post-processing step.
         const href = node.getAttribute('href') || '';
-        return href ? `${content} (${href})` : content;
+        if (converter._linkMode === 'strip') return content;
+        if (converter._linkMode === 'bare') {
+          // bare: append URL in parens, but only for allowlisted schemes —
+          // otherwise textify. Tracking-param strip happens later in
+          // cleanupMarkdown so the URL emitted here may still contain
+          // trackers; they get stripped at the post-processing step.
+          return _isLinkSchemeAllowed(href) && href ? `${content} (${href})` : content;
+        }
+        // keep mode with non-allowlisted scheme: textify (drop the URL).
+        return content;
       }
     });
   }

@@ -307,6 +307,85 @@ describe('MarkdownConverter', () => {
       const result = converter.convertToMarkdown(html);
       expect(result).not.toContain('![No real src]');
     });
+
+    test('should drop images with non-allowlisted URL schemes', () => {
+      // javascript:, file:, vbscript:, data: (when it's the resolved src,
+      // not a placeholder) all get dropped — the converter is the trust
+      // boundary for emitted URLs.
+      const html = '<img src="javascript:alert(1)" alt="js">' +
+                   '<img src="file:///etc/passwd" alt="file">' +
+                   '<img src="vbscript:msgbox(1)" alt="vbs">';
+      const result = converter.convertToMarkdown(html);
+      expect(result).not.toContain('javascript:');
+      expect(result).not.toContain('file:');
+      expect(result).not.toContain('vbscript:');
+    });
+  });
+
+  describe('URL scheme allowlist (links)', () => {
+    test('keeps http/https/mailto links untouched', () => {
+      const html = '<p>See <a href="https://example.com/x">site</a> or ' +
+                   '<a href="mailto:hi@example.com">email</a>.</p>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('[site](https://example.com/x)');
+      expect(result).toContain('[email](mailto:hi@example.com)');
+    });
+
+    test('textifies links with non-allowlisted schemes (keep mode)', () => {
+      const html = '<p>Click <a href="javascript:alert(1)">here</a> or ' +
+                   '<a href="file:///etc/passwd">local</a>.</p>';
+      const result = converter.convertToMarkdown(html);
+      // Visible text is preserved; the unsafe href never makes it into output.
+      expect(result).toContain('here');
+      expect(result).toContain('local');
+      expect(result).not.toContain('javascript:');
+      expect(result).not.toContain('file:');
+    });
+
+    test('bare mode drops the URL for non-allowlisted schemes', () => {
+      converter.applyFormattingOptions({ linkMode: 'bare' });
+      const html = '<p>Bad <a href="javascript:alert(1)">link</a>.</p>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('link');
+      expect(result).not.toContain('javascript:');
+      // Bare-mode parens should not appear since the scheme was rejected.
+      expect(result).not.toContain('(javascript:');
+    });
+
+    test('keeps relative URLs (no scheme inherits host page scheme)', () => {
+      const html = '<p>See <a href="/about">about</a>.</p>';
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('[about](/about)');
+    });
+  });
+
+  describe('image url-list dedup (Set-backed)', () => {
+    test('deduplicates identical image URLs across many occurrences', () => {
+      converter.applyFormattingOptions({ imageMode: 'url-list' });
+      const repeated = Array(5).fill(
+        '<img src="https://example.com/photo.jpg" alt="x">'
+      ).join('');
+      const html = `<article>${repeated}</article>`;
+      const result = converter.convertToMarkdown(html);
+      expect(result).toContain('## Images');
+      // The URL should appear exactly once in the bulleted list.
+      const matches = result.match(/https:\/\/example\.com\/photo\.jpg/g) || [];
+      expect(matches.length).toBe(1);
+    });
+
+    test('preserves order of first appearance', () => {
+      converter.applyFormattingOptions({ imageMode: 'url-list' });
+      const html = `<article>
+        <img src="https://example.com/a.jpg" alt="a">
+        <img src="https://example.com/b.jpg" alt="b">
+        <img src="https://example.com/a.jpg" alt="a">
+      </article>`;
+      const result = converter.convertToMarkdown(html);
+      const aIdx = result.indexOf('a.jpg');
+      const bIdx = result.indexOf('b.jpg');
+      expect(aIdx).toBeGreaterThan(-1);
+      expect(bIdx).toBeGreaterThan(aIdx);
+    });
   });
 
   describe('cleanupMarkdown', () => {

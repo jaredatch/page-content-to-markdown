@@ -1,21 +1,12 @@
 /**
  * Simple Universal Content Extractor - GUARANTEED to work on ANY website
  *
- * This takes a completely different approach:
- * 1. Extract ALL visible text from the page
- * 2. Apply basic filtering to remove obvious navigation/UI
- * 3. Convert to markdown with basic structure
- * 4. ALWAYS succeed - even if it's just raw text
+ * Returns body-only markdown: title/url/date/method header is the caller's
+ * job (ContentScript.addMetadataHeader, gated on the user's includeMetadata
+ * + metadataFormat prefs). Keeping the extractor body-only means the
+ * fallback path respects the same metadata toggle as the primary Turndown
+ * path and avoids double-headering when callers prepend metadata themselves.
  */
-
-// Match the inline-header date format from content-script.js — local
-// `YYYY-MM-DD HH:mm`. UTC date splits showed the wrong day for evenings
-// west of UTC; explicit local-time formatting fixes that.
-function formatLocalDateTime(d) {
-  const date = d instanceof Date && !Number.isNaN(d.getTime()) ? d : new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 class SimpleUniversalExtractor {
   constructor() {
@@ -229,33 +220,19 @@ class SimpleUniversalExtractor {
   }
 
   /**
-   * Convert filtered text to basic markdown structure
+   * Convert filtered text to basic markdown structure (body only).
    */
   convertToBasicMarkdown(text) {
     if (!text) return '';
 
-    // Get page title for header
-    const pageTitle = document.title || 'Extracted Content';
-    const pageUrl = window.location ? window.location.href : 'Unknown URL';
-    const timestamp = formatLocalDateTime(new Date());
-
-    // Create inline metadata header — keys mirror the canonical schema
-    // (title/url/date) so consumers can grep across formats.
     let markdown = '';
-    markdown += `**Title:** ${pageTitle}  \n`;
-    markdown += `**URL:** ${pageUrl}  \n`;
-    markdown += `**Date:** ${timestamp}  \n`;
-    markdown += `**Method:** Universal Text Extraction\n\n`;
-    markdown += `---\n\n`;
-
-    // Process the text into basic markdown structure
     const lines = text.split('\n').filter(line => line.trim().length > 0);
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // Try to identify potential headings (lines that are shorter than the next line)
+      // Identify potential headings (lines shorter than the next line).
       const nextLine = lines[i + 1]?.trim();
       if (line.length < 60 && nextLine && nextLine.length > line.length * 1.5) {
         markdown += `\n## ${line}\n\n`;
@@ -268,40 +245,35 @@ class SimpleUniversalExtractor {
   }
 
   /**
-   * Emergency fallback that ALWAYS works
+   * Emergency fallback that ALWAYS returns a non-empty body string.
    */
   emergencyFallback() {
-    const title = document.title || 'Webpage Content';
-    const url = (window.location && window.location.href) || 'Unknown URL';
-
-    // Try to get any text we can find
     let bodyText = '';
     try {
       if (document.body) {
-        // Try different approaches to get text
-        bodyText = document.body.textContent || 
-                  document.body.innerText || 
+        bodyText = document.body.textContent ||
+                  document.body.innerText ||
                   this.stripHtmlTags(document.body.innerHTML) ||
-                  'Content could not be extracted, but page was accessible.';
+                  '';
       }
     } catch (error) {
-      bodyText = 'Emergency extraction mode - minimal content available.';
+      bodyText = '';
     }
 
-    // Clean up the text
     bodyText = bodyText.replace(/\s+/g, ' ').trim();
     if (bodyText.length > 5000) {
       bodyText = bodyText.substring(0, 5000) + '... (truncated)';
     }
 
-    return `**Title:** ${title}
-**URL:** ${url}
-**Date:** ${formatLocalDateTime(new Date())}
-**Method:** Emergency Extraction
+    // Honor the "always returns something" guarantee. The caller prepends
+    // a metadata header (Title/URL/Date) when the includeMetadata pref is on.
+    if (!bodyText) {
+      bodyText = document.title
+        ? document.title
+        : 'Content could not be extracted, but page was accessible.';
+    }
 
----
-
-${bodyText}`;
+    return bodyText;
   }
 }
 
