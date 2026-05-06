@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a new feature, an improvement, or support for a new site.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Concrete use cases help a lot — "what are you trying to do" usually shapes the answer more than "what should the feature be."
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What are you trying to do?
+      description: The real-world workflow or problem behind the request.
+      placeholder: |
+        I save research articles to Obsidian, and I want the page's publish date in the YAML frontmatter
+        so I can sort notes chronologically.
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired
+    attributes:
+      label: What would you like the extension to do?
+      description: How you imagine it working. Sketches, example output, or settings UI ideas all welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Workarounds you've tried, other tools that handle this, or related features in this extension that almost-but-don't-quite work.
+
+  - type: input
+    id: site
+    attributes:
+      label: For new site support — which site?
+      description: Skip if this isn't a site-support request.
+      placeholder: https://example.com — and the page type that matters (article, thread, conversation, etc.)

@@ -1,0 +1,77 @@
+name: Bug report
+description: Something isn't working — extraction is wrong, output is broken, the popup misbehaves, etc.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more specific you can be, the faster it gets fixed.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what did you get instead?
+      placeholder: |
+        I clicked Save on a Wikipedia article and the output was missing the infobox table.
+        I expected the table to be converted to a Markdown table.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimum steps that reliably trigger the bug.
+      placeholder: |
+        1. Open https://en.wikipedia.org/wiki/Markdown
+        2. Click the extension icon
+        3. Click Save on "Page content"
+        4. Open the saved .md file
+    validations:
+      required: true
+
+  - type: input
+    id: page-url
+    attributes:
+      label: Page URL (if shareable)
+      description: A public URL where the bug reproduces. Skip if the page is private.
+      placeholder: https://example.com/article
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Firefox 134.0 / Chrome 132.0.6834.84 / Edge 132.0.2957.115
+    validations:
+      required: true
+
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension version
+      description: Find it on `about:addons` (Firefox) or `chrome://extensions` (Chrome).
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15.2 / Windows 11 / Ubuntu 24.04
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: |
+        Any errors from the browser DevTools console (F12) or the extension's background page.
+        For the background page: `about:debugging` → This Firefox → Inspect, or `chrome://extensions` → Service worker → Inspect.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, sample input/output, settings that matter, edge cases you noticed, etc.
