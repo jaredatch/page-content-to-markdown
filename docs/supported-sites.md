@@ -9,8 +9,9 @@ On X, the popup goes a step further and detects what's actually on the page — 
 | Site | Actions | Where it works |
 |---|---|---|
 | X / Twitter | Tweet, Thread, Article | `x.com`, `twitter.com` |
-| Claude | Conversation | Share pages (`claude.ai/share/...`) |
+| Claude | Conversation | Share pages and active chats (`claude.ai/share/...`, `claude.ai/chat/...`) |
 | Grok | Conversation | Share pages and active chats (`grok.com/share/...`, `grok.com/c/...`) |
+| ChatGPT | Conversation | Share pages and active chats (`chatgpt.com/share/...`, `chatgpt.com/c/...`) |
 
 If a site action fails (e.g., the site changed its DOM and we haven't caught up), the extension falls back to [general content extraction](content-extraction.md). You'll always get something out.
 
@@ -30,9 +31,9 @@ Three actions, depending on what's on the page:
 
 ## Claude
 
-**Conversation.** Works on Claude's share pages (`claude.ai/share/...`). Captures the conversation title, the "Shared by {name}" attribution, and every human and Claude turn in order, with formatting preserved (headings, lists, code blocks, etc.).
+**Conversation.** Works on share pages (`claude.ai/share/...`) and your own active chats (`claude.ai/chat/...`). Captures the conversation title, every human and Claude turn in order, and formatting like headings, lists, and code blocks. Share pages also include the "Shared by {name}" attribution above the first turn.
 
-Active chats in your own account aren't supported. For those, use the **select elements on page** link in the popup to pick the parts you want.
+Share pages work whether or not you're logged in; active chats require being logged into your own Claude account.
 
 ---
 
@@ -47,6 +48,22 @@ Active chats in your own account aren't supported. For those, use the **select e
 - Code blocks with language hints preserved
 
 Share pages work whether or not you're logged in; active chats require being logged into your own Grok account.
+
+---
+
+## ChatGPT
+
+**Conversation.** Works on share pages (`chatgpt.com/share/...`) and your own active chats (`chatgpt.com/c/...`). Captures:
+
+- Conversation title
+- Every user and assistant turn in order
+- Reasoning streams from o-series models (preamble blocks + final answer, with the "Thought for Nm Ns" label preserved)
+- Code blocks with language hints (reconstructed from ChatGPT's CodeMirror panels into clean fenced code)
+- KaTeX math preserved as `$tex$` / `$$tex$$`
+- Assistant-generated images
+- User attachments as a chip count (e.g., `*[2 attachments uploaded]*`)
+
+Citation pills and the "Sources" footnote are stripped so saved conversations don't turn into RAG-style URL dumps. Share pages work whether or not you're logged in; active chats require being logged into your own ChatGPT account.
 
 ---
 

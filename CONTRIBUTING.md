@@ -61,7 +61,7 @@ src/
 ├── background/    Service worker (routes messages, dispatches output, manages context menus)
 ├── content/       Content script + element picker (runs in page context)
 ├── options/       Settings page
-├── sites/         Per-site modules (X, Claude, Grok)
+├── sites/         Per-site modules (X, Claude, Grok, ChatGPT)
 └── utils/         Shared utilities (markdown converter, site registry, preferences)
 
 tests/

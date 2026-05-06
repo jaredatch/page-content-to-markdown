@@ -221,7 +221,7 @@ detectAvailable(doc, url) {
 
 The popup fires this through `probeContentTypes` on open, runs in parallel with the optimistic URL-applicable render, filters rows when the result lands. The same probe is used by the `quick-extract` keyboard command to pick the right action without a popup.
 
-**If you implement this, also add `host_permissions` to manifest.json for your site's hostnames** so the content script auto-injects on page load — without that, the popup's probe races a just-in-time content script injection on first popup open and gets nothing back. Add a privacy justification entry in `store/chrome-privacy-justifications.md`.
+**If you implement this, also add `host_permissions` to manifest.json for your site's hostnames** so the content script auto-injects on page load — without that, the popup's probe races a just-in-time content script injection on first popup open and gets nothing back. Add a privacy justification entry in `private/store/chrome-privacy-justifications.md`.
 
 **Conservative defaults:** the popup treats `null` (method not defined) and all-false maps as "inconclusive — keep URL-applicable rows" so a partially-loaded page can't strand the user without options. Filtering only happens when at least one value is `true`.
 
@@ -324,6 +324,7 @@ The MCP's spawned Firefox didn't start. Verify the profile path in `claude mcp l
 | `x` | X / Twitter | `x.com`, `twitter.com` (+ `www.`/`mobile.` variants) | Tweet, Thread, Article |
 | `claude` | Claude | `claude.ai`, `www.claude.ai` | Conversation |
 | `grok` | Grok | `grok.com` | Conversation |
+| `chatgpt` | ChatGPT | `chatgpt.com`, `www.chatgpt.com` | Conversation |
 
 ## Queued / Planned Targets
 
@@ -333,7 +334,7 @@ _(none currently — open an issue or add to `private/PLAN.md`)_
 
 ## Pointers
 
-- Existing site modules: `src/sites/claude/`, `src/sites/x/`, `src/sites/grok/`
+- Existing site modules: `src/sites/x/`, `src/sites/claude/`, `src/sites/grok/`, `src/sites/chatgpt/`
 - Registry: `src/utils/site-registry.js`
 - MCP project (upstream): https://github.com/mozilla/firefox-devtools-mcp
 - Captures directory: `private/captures/` (lives in the private repo — see CLAUDE.md)

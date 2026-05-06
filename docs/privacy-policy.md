@@ -34,4 +34,4 @@ None. The extension has no network calls, no external dependencies at runtime, a
 
 ## Contact
 
-If you have questions about this privacy policy, contact [YOUR EMAIL].
+If you have questions about this privacy policy, contact addons@ja.red.

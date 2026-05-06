@@ -59,5 +59,9 @@ temp/
 # extractor development. See CLAUDE.md → "Private working directory" for setup.
 private/
 
+# Store-submission material (listing copy, Chrome reviewer justifications, etc.).
+# Kept locally for your own reference but not tracked publicly.
+store/
+
 # Local tooling state
 .superset/
