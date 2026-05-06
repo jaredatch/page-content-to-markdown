@@ -1,7 +1,7 @@
 {
   "name": "page-content-to-markdown",
   "version": "1.0.0",
-  "description": "Browser extension that converts web pages to clean Markdown for notes, docs, and LLMs",
+  "description": "A browser extension that turns the main content of any web page into clean Markdown for your notes, docs, or AI.",
   "main": "dist/background.js",
   "scripts": {
     "test": "jest",
@@ -25,7 +25,7 @@
     "ai",
     "universal-compatibility"
   ],
-  "author": "Page Content to Markdown Contributors",
+  "author": "Jared Atchison",
   "license": "MIT",
   "repository": {
     "type": "git",

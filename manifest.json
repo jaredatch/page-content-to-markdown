@@ -2,7 +2,13 @@
   "manifest_version": 3,
   "name": "Page Content to Markdown",
   "version": "1.0.0",
-  "description": "Convert web pages to clean Markdown for notes, docs, and LLMs",
+  "description": "A browser extension that turns the main content of any web page into clean Markdown for your notes, docs, or AI.",
+  "author": "Jared Atchison",
+  "developer": {
+    "name": "Jared Atchison",
+    "url": "https://github.com/jaredatch/page-content-to-markdown"
+  },
+  "homepage_url": "https://github.com/jaredatch/page-content-to-markdown",
   "permissions": [
     "clipboardWrite",
     "contextMenus",
