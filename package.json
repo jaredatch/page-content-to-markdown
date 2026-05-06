@@ -1,7 +1,7 @@
 {
-  "name": "browser-extension-copy-page-as-markdown",
+  "name": "page-content-to-markdown",
   "version": "1.0.0",
-  "description": "Browser extension for copying web pages as lean markdown for AI consumption",
+  "description": "Browser extension that converts web pages to clean Markdown for notes, docs, and LLMs",
   "main": "dist/background.js",
   "scripts": {
     "test": "jest",
@@ -25,7 +25,7 @@
     "ai",
     "universal-compatibility"
   ],
-  "author": "Browser Extension Copy Page as Markdown Contributors",
+  "author": "Page Content to Markdown Contributors",
   "license": "MIT",
   "repository": {
     "type": "git",

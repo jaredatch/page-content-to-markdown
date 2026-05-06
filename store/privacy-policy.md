@@ -1,10 +1,10 @@
-# Privacy Policy - Copy Page as Markdown
+# Privacy Policy - Page Content to Markdown
 
 **Last updated:** March 2026
 
 ## What this extension does
 
-Copy Page as Markdown reads the content of web pages you are viewing in order to convert that content into markdown format. It can also write to your clipboard when you choose to copy the converted output.
+Page Content to Markdown reads the content of web pages you are viewing in order to convert that content into markdown format. It can also write to your clipboard when you choose to copy the converted output.
 
 By default it strips well-known tracking parameters (utm_*, fbclid, gclid, and similar) from URLs in the converted output. This happens entirely within your browser; the original page is unaffected.
 

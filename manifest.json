@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Copy Page as Markdown",
+  "name": "Page Content to Markdown",
   "version": "1.0.0",
-  "description": "Copy web pages as lean markdown for AI consumption",
+  "description": "Convert web pages to clean Markdown for notes, docs, and LLMs",
   "permissions": [
     "clipboardWrite",
     "contextMenus",
@@ -24,7 +24,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "copy-page-as-markdown@extension",
+      "id": "page-content-to-markdown@extension",
       "strict_min_version": "109.0",
       "data_collection_permissions": {
         "required": ["none"]
@@ -33,7 +33,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Copy Page as Markdown",
+    "default_title": "Page Content to Markdown",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

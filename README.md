@@ -1,6 +1,6 @@
-# Copy Page as Markdown
+# Page Content to Markdown
 
-A browser extension that turns web pages into clean markdown. It finds the meaningful content of a page and skips the chrome around it (nav, ads, footers, comments). For X, Claude, and Grok, dedicated extractors produce even cleaner output.
+A browser extension that converts web pages to clean Markdown — for notes, docs, and feeding to LLMs. It finds the meaningful content of a page and skips the chrome around it (nav, ads, footers, comments). For X, Claude, and Grok, dedicated extractors produce even cleaner output.
 
 Firefox-first, with Chrome support.
 

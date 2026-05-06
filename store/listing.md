@@ -1,16 +1,16 @@
-# Store Listing - Copy Page as Markdown
+# Store Listing - Page Content to Markdown
 
 ## Extension Name
 
-Copy Page as Markdown
+Page Content to Markdown
 
 ## Short Summary
 
-Convert web pages to clean markdown. Full page or selected elements. Dedicated support for X/Twitter, Claude, and Grok. Tables, code blocks, clipboard and file output.
+Convert web pages to clean Markdown for notes, docs, and LLMs. Full page or selected elements. Dedicated support for X/Twitter, Claude, and Grok. Tables, code blocks, clipboard and file output.
 
 ## Full Description
 
-Copy Page as Markdown converts web page content into clean, structured markdown with one click.
+Page Content to Markdown converts web page content into clean, structured markdown with one click — ready to drop into your notes, docs, or an LLM prompt.
 
 **What it does:**
 

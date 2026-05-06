@@ -139,7 +139,7 @@ describe('Browser Extension E2E Tests', () => {
       await page.waitForSelector('#extractBtn');
 
       const buttonText = await page.$eval('#extractBtn .btn-text', el => el.textContent);
-      expect(buttonText).toContain('Copy Page as Markdown');
+      expect(buttonText).toContain('Page Content to Markdown');
     });
   });
 
