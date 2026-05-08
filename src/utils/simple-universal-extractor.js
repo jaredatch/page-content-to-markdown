@@ -8,6 +8,8 @@
  * path and avoids double-headering when callers prepend metadata themselves.
  */
 
+const ExtractionTrace = require('./extraction-trace');
+
 class SimpleUniversalExtractor {
   constructor() {
     this.ready = false;
@@ -15,9 +17,18 @@ class SimpleUniversalExtractor {
 
   /**
    * Extract content from ANY website - GUARANTEED to work
+   *
+   * Optional `options.trace` accepts an ExtractionTrace (or a plain target
+   * object) for dev-tool instrumentation. When absent, behavior is byte-
+   * identical to the un-traced version — the tracer's methods all
+   * short-circuit on a null target.
+   *
+   * @param {object} [options]
+   * @param {ExtractionTrace|object} [options.trace]
    * @returns {Promise<object>} Always succeeds with some content
    */
-  async extractContent() {
+  async extractContent(options = {}) {
+    const trace = ExtractionTrace.from(options.trace);
     try {
       console.log('🚀 [simple-extractor] Starting GUARANTEED universal extraction');
 
@@ -34,7 +45,9 @@ class SimpleUniversalExtractor {
       const markdown = this.convertToBasicMarkdown(filteredContent);
 
       console.log(`✅ [simple-extractor] SUCCESSFULLY extracted ${markdown.length} characters`);
-      
+
+      trace.setPath('guaranteed-text', `text extraction returned ${markdown.length} chars`);
+
       return {
         success: true,
         markdown: markdown,
@@ -44,10 +57,12 @@ class SimpleUniversalExtractor {
 
     } catch (error) {
       console.warn('⚠️ [simple-extractor] Primary extraction failed, using emergency fallback');
-      
+
       // EMERGENCY FALLBACK - just get document title and whatever text we can
       const emergencyText = this.emergencyFallback();
-      
+
+      trace.setPath('emergency-fallback', `primary extraction threw: ${error && error.message}`);
+
       return {
         success: true,
         markdown: emergencyText,

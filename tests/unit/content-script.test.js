@@ -2,7 +2,8 @@
 jest.mock('../../src/utils/markdown-converter', () => {
   return jest.fn().mockImplementation(() => ({
     convertToMarkdown: jest.fn().mockReturnValue(''),
-    convertFromDOM: jest.fn().mockReturnValue('')
+    convertFromDOM: jest.fn().mockReturnValue(''),
+    setTrace: jest.fn()
   }));
 });
 
@@ -68,7 +69,8 @@ describe('ContentScript', () => {
     MarkdownConverter.mockImplementation(() => ({
       convertToMarkdown: mockConvertToMarkdown,
       convertFromDOM: mockConvertFromDOM,
-      convertHtmlFragment: mockConvertHtmlFragment
+      convertHtmlFragment: mockConvertHtmlFragment,
+      setTrace: jest.fn()
     }));
 
     mockExtractContent = jest.fn().mockResolvedValue({

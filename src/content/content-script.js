@@ -9,6 +9,7 @@ const SimpleUniversalExtractor = require('../utils/simple-universal-extractor');
 const ElementPicker = require('./element-picker');
 const SiteRegistry = require('../utils/site-registry');
 const UrlCleaner = require('../utils/url-cleaner');
+const ExtractionTrace = require('../utils/extraction-trace');
 
 class ContentScript {
   constructor() {
@@ -33,110 +34,138 @@ class ContentScript {
     const metadata = this._getMetadata(options);
     const includeMetadata = options.includeMetadata !== false;
 
-    // Size guard: skip full conversion for extremely large pages
-    const MAX_ELEMENTS = 50000;
-    const elementCount = document.body ? document.body.querySelectorAll('*').length : 0;
-    if (elementCount > MAX_ELEMENTS) {
-      console.warn(`⚠️ [content-script] Page has ${elementCount} elements (>${MAX_ELEMENTS}), using text extraction`);
+    // Optional dev-tool trace target. ExtractionTrace.from returns a no-op
+    // wrapper when options.trace is absent, so production paths see no
+    // observable difference. Detached again in finally so the converter
+    // doesn't hold a reference to the caller's target across calls.
+    const tracer = ExtractionTrace.from(options.trace);
+    this.converter.setTrace(tracer);
+
+    try {
+      // Size guard: skip full conversion for extremely large pages
+      const MAX_ELEMENTS = 50000;
+      const elementCount = document.body ? document.body.querySelectorAll('*').length : 0;
+      tracer.setElementCount(elementCount);
+
+      if (elementCount > MAX_ELEMENTS) {
+        console.warn(`⚠️ [content-script] Page has ${elementCount} elements (>${MAX_ELEMENTS}), using text extraction`);
+        try {
+          // Don't pass the tracer to the fallback in this branch — we want
+          // path='size-guard' to advertise *why* SUE was invoked, not the
+          // sub-method SUE happened to use internally.
+          const extractionResult = await this.fallbackExtractor.extractContent();
+          const markdown = includeMetadata
+            ? this.addMetadataHeader(extractionResult.markdown, metadata, options.metadataFormat)
+            : extractionResult.markdown;
+          tracer.setPath('size-guard', `${elementCount} elements > ${MAX_ELEMENTS}, routed to ${extractionResult.method}`);
+          tracer.setOutput(extractionResult.method, markdown, metadata);
+          return {
+            success: true,
+            markdown,
+            metadata,
+            extractionInfo: {
+              method: extractionResult.method,
+              note: `Page too large (${elementCount} elements) — used text extraction`
+            }
+          };
+        } catch (e) {
+          // Continue to normal path if fallback fails
+        }
+      }
+
       try {
-        const extractionResult = await this.fallbackExtractor.extractContent();
+        console.log('🔄 [content-script] Starting page conversion (Turndown primary)');
+
+        // Primary path: pass live DOM directly to MarkdownConverter (no serialization)
+        let markdown = '';
+        let method = 'turndown';
+
+        if (document.body && typeof this.converter.convertFromDOM === 'function') {
+          markdown = this.converter.convertFromDOM(document.body);
+          method = 'turndown-dom';
+        }
+
+        // Fallback to string path if DOM-direct returned empty
+        if (!markdown || markdown.trim().length <= 50) {
+          console.log('⚠️ [content-script] DOM-direct path returned insufficient output, trying string path');
+          const html = document.documentElement.outerHTML;
+          markdown = this.converter.convertToMarkdown(html);
+          method = 'turndown';
+        }
+
+        if (markdown && markdown.trim().length > 50) {
+          console.log(`✅ [content-script] Turndown conversion succeeded (${method})`);
+          const result = includeMetadata ? this.addMetadataHeader(markdown, metadata, options.metadataFormat) : markdown;
+          const tracePath = method === 'turndown-dom' ? 'turndown-dom' : 'turndown-string';
+          tracer.setPath(tracePath, `${tracePath} returned ${markdown.length} chars`);
+          tracer.setOutput(method, result, metadata);
+          return {
+            success: true,
+            markdown: result,
+            metadata,
+            extractionInfo: {
+              method,
+              note: method === 'turndown-dom'
+                ? 'DOM-direct HTML-to-Markdown conversion via Turndown'
+                : 'Primary HTML-to-Markdown conversion via Turndown'
+            }
+          };
+        }
+
+        // Turndown returned empty/short content — fall through to fallback
+        console.log('⚠️ [content-script] Turndown output too short, falling back to text extraction');
+      } catch (error) {
+        console.warn('⚠️ [content-script] Turndown conversion failed, falling back:', error.message);
+      }
+
+      // Fallback: SimpleUniversalExtractor (always returns something).
+      // Pass the tracer through so SUE records its sub-path
+      // (guaranteed-text vs emergency-fallback) into the trace.
+      try {
+        console.log('🔄 [content-script] Using SimpleUniversalExtractor fallback');
+        const extractionResult = await this.fallbackExtractor.extractContent({ trace: tracer });
+        console.log(`✅ [content-script] Fallback extraction succeeded (${extractionResult.method})`);
+
         const markdown = includeMetadata
           ? this.addMetadataHeader(extractionResult.markdown, metadata, options.metadataFormat)
           : extractionResult.markdown;
+
+        tracer.setOutput(extractionResult.method, markdown, metadata);
+
         return {
           success: true,
           markdown,
           metadata,
           extractionInfo: {
             method: extractionResult.method,
-            note: `Page too large (${elementCount} elements) — used text extraction`
+            note: extractionResult.note
           }
         };
-      } catch (e) {
-        // Continue to normal path if fallback fails
-      }
-    }
-
-    try {
-      console.log('🔄 [content-script] Starting page conversion (Turndown primary)');
-
-      // Primary path: pass live DOM directly to MarkdownConverter (no serialization)
-      let markdown = '';
-      let method = 'turndown';
-
-      if (document.body && typeof this.converter.convertFromDOM === 'function') {
-        markdown = this.converter.convertFromDOM(document.body);
-        method = 'turndown-dom';
+      } catch (error) {
+        console.error('🚨 [content-script] Even fallback extraction failed:', error.message);
       }
 
-      // Fallback to string path if DOM-direct returned empty
-      if (!markdown || markdown.trim().length <= 50) {
-        console.log('⚠️ [content-script] DOM-direct path returned insufficient output, trying string path');
-        const html = document.documentElement.outerHTML;
-        markdown = this.converter.convertToMarkdown(html);
-        method = 'turndown';
-      }
+      // Emergency: return basic markdown with page info, gated on includeMetadata.
+      const emergencyBody = 'Content extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.';
+      const emergencyMarkdown = includeMetadata
+        ? this.addMetadataHeader(emergencyBody, metadata, options.metadataFormat)
+        : emergencyBody;
 
-      if (markdown && markdown.trim().length > 50) {
-        console.log(`✅ [content-script] Turndown conversion succeeded (${method})`);
-        const result = includeMetadata ? this.addMetadataHeader(markdown, metadata, options.metadataFormat) : markdown;
-        return {
-          success: true,
-          markdown: result,
-          metadata,
-          extractionInfo: {
-            method,
-            note: method === 'turndown-dom'
-              ? 'DOM-direct HTML-to-Markdown conversion via Turndown'
-              : 'Primary HTML-to-Markdown conversion via Turndown'
-          }
-        };
-      }
-
-      // Turndown returned empty/short content — fall through to fallback
-      console.log('⚠️ [content-script] Turndown output too short, falling back to text extraction');
-    } catch (error) {
-      console.warn('⚠️ [content-script] Turndown conversion failed, falling back:', error.message);
-    }
-
-    // Fallback: SimpleUniversalExtractor (always returns something)
-    try {
-      console.log('🔄 [content-script] Using SimpleUniversalExtractor fallback');
-      const extractionResult = await this.fallbackExtractor.extractContent();
-      console.log(`✅ [content-script] Fallback extraction succeeded (${extractionResult.method})`);
-
-      const markdown = includeMetadata
-        ? this.addMetadataHeader(extractionResult.markdown, metadata, options.metadataFormat)
-        : extractionResult.markdown;
+      tracer.setPath('emergency-fallback', 'both Turndown and SimpleUniversalExtractor failed');
+      tracer.setOutput('emergency-fallback', emergencyMarkdown, metadata);
 
       return {
         success: true,
-        markdown,
+        markdown: emergencyMarkdown,
         metadata,
         extractionInfo: {
-          method: extractionResult.method,
-          note: extractionResult.note
+          method: 'emergency-fallback',
+          note: 'Emergency fallback — both Turndown and text extraction failed'
         }
       };
-    } catch (error) {
-      console.error('🚨 [content-script] Even fallback extraction failed:', error.message);
+    } finally {
+      this.converter.setTrace(null);
     }
-
-    // Emergency: return basic markdown with page info, gated on includeMetadata.
-    const emergencyBody = 'Content extraction encountered an error. The page was accessible but content could not be extracted.\nError details have been logged to the browser console.';
-    const emergencyMarkdown = includeMetadata
-      ? this.addMetadataHeader(emergencyBody, metadata, options.metadataFormat)
-      : emergencyBody;
-
-    return {
-      success: true,
-      markdown: emergencyMarkdown,
-      metadata,
-      extractionInfo: {
-        method: 'emergency-fallback',
-        note: 'Emergency fallback — both Turndown and text extraction failed'
-      }
-    };
   }
 
   /**
@@ -396,6 +425,9 @@ class ContentScript {
     const metadata = this._getMetadata(options);
     const includeMetadata = options.includeMetadata !== false;
 
+    const tracer = ExtractionTrace.from(options.trace);
+    this.converter.setTrace(tracer);
+
     try {
       const site = SiteRegistry.getById(siteId);
       if (!site) throw new Error(`Unknown site: ${siteId}`);
@@ -434,6 +466,13 @@ class ContentScript {
         markdown = this.addMetadataHeader(markdown, metadata, options.metadataFormat);
       }
 
+      // Site context recorded only on success; the catch path falls back
+      // to the general extractor and the fallback's own setPath/setOutput
+      // become the trace's record of what actually ran.
+      tracer.setSiteContext({ id: site.id, name: site.name }, contentType);
+      tracer.setPath('site-action', `${site.name} ${contentType} extractor returned ${markdown.length} chars`);
+      tracer.setOutput(`${siteId}-${contentType}`, markdown, metadata);
+
       console.log(`✅ [content-script] ${site.name} extraction succeeded: ${contentType}`);
       return {
         success: true,
@@ -447,6 +486,8 @@ class ContentScript {
     } catch (error) {
       console.warn(`⚠️ [content-script] Site action extraction failed for ${siteId}/${contentType}, falling back to general conversion:`, error.message);
       return this.convertPageToMarkdown(options);
+    } finally {
+      this.converter.setTrace(null);
     }
   }
 
@@ -569,6 +610,11 @@ class ContentScript {
             const markdown = includeMetadata
               ? this.addMetadataHeader(body, metadata, options.metadataFormat)
               : body;
+            if (options.trace) {
+              const tracer = ExtractionTrace.from(options.trace);
+              tracer.setPath('ultimate-fallback', `message handler caught: ${error && error.message}`);
+              tracer.setOutput('ultimate-fallback', markdown, metadata);
+            }
             sendResponse({
               success: true,
               markdown,

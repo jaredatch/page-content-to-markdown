@@ -90,6 +90,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `src/utils/url-cleaner.js` | Tracking-param stripper (`utm_*`, `fbclid`, `gclid`, etc.) |
 | `src/utils/site-registry.js` | Site module detection, lookup, dispatch |
 | `src/utils/simple-universal-extractor.js` | Text extraction fallback (guaranteed to return something) |
+| `src/utils/extraction-trace.js` | Optional dev-tool instrumentation; inert in prod (no-op when no trace target supplied). Schema doc lives in the file's JSDoc. |
 | `src/options/options.js` | Options page controller |
 | `docs/building-site-extractors.md` | Workflow doc for adding new site extractors via `firefox-devtools-mcp` live-DOM inspection |
 | `webpack.config.js` | Build config — 4 entry points → `dist/` |

@@ -3,6 +3,7 @@ const TurndownService = TurndownImport.default || TurndownImport;
 const TurndownPluginGfmImport = require('turndown-plugin-gfm');
 const turndownPluginGfm = TurndownPluginGfmImport.gfm || TurndownPluginGfmImport;
 const UrlCleaner = require('./url-cleaner');
+const ExtractionTrace = require('./extraction-trace');
 
 // Allowlists for emitted URL schemes. Anything outside these gets textified
 // (links — drop the href but keep the visible text) or dropped (images —
@@ -44,7 +45,7 @@ function _isImageSchemeAllowed(src) {
 }
 
 class MarkdownConverter {
-  constructor() {
+  constructor(options = {}) {
     this.turndownService = new TurndownService({
       headingStyle: 'atx',
       codeBlockStyle: 'fenced',
@@ -72,8 +73,23 @@ class MarkdownConverter {
     this._pendingImageUrls = [];
     this._pendingImageUrlSet = new Set();
 
+    // Optional dev-tool trace. Defaults to a disabled tracer whose methods
+    // are all early-returns, so production extraction pays nothing for
+    // trace support. Callers swap in a real target via setTrace.
+    this._trace = ExtractionTrace.from(options.trace);
+
     // Configure rules for clean conversion
     this.setupCustomRules();
+  }
+
+  /**
+   * Attach (or detach) a trace target. Accepts an ExtractionTrace instance,
+   * a plain JSON-serializable target object, or null to disable. Used by
+   * ContentScript to scope tracing to a single extraction call without
+   * recreating the converter.
+   */
+  setTrace(traceOrTarget) {
+    this._trace = ExtractionTrace.from(traceOrTarget);
   }
 
   /**
@@ -199,9 +215,17 @@ class MarkdownConverter {
           // otherwise textify. Tracking-param strip happens later in
           // cleanupMarkdown so the URL emitted here may still contain
           // trackers; they get stripped at the post-processing step.
-          return _isLinkSchemeAllowed(href) && href ? `${content} (${href})` : content;
+          if (_isLinkSchemeAllowed(href) && href) {
+            return `${content} (${href})`;
+          }
+          // bare-mode non-allowlisted scheme is a security-relevant drop —
+          // user-mode strip/bare on allowed schemes is *not* recorded
+          // since that's intentional formatting, not a content rejection.
+          converter._trace.recordRejected('linkModeOverride', `non-allowlisted scheme dropped: ${_hrefScheme(href) || '(empty)'}`, node);
+          return content;
         }
         // keep mode with non-allowlisted scheme: textify (drop the URL).
+        converter._trace.recordRejected('linkModeOverride', `non-allowlisted scheme dropped: ${_hrefScheme(href) || '(empty)'}`, node);
         return content;
       }
     });
@@ -256,13 +280,28 @@ class MarkdownConverter {
     this.turndownService.addRule('removeNonContent', {
       filter: (node) => {
         const tagName = node.tagName?.toLowerCase();
-        if (nonContentTags.has(tagName)) return true;
+        if (nonContentTags.has(tagName)) {
+          this._trace.recordRejected('removeNonContent', `tag in nonContentTags set: ${tagName}`, node);
+          return true;
+        }
 
         const className = (node.className || '').toLowerCase();
         const id = (node.id || '').toLowerCase();
         const text = className + ' ' + id;
 
-        return nonContentWordRegex.test(text) || nonContentSubstringRegex.test(text);
+        const wordMatch = nonContentWordRegex.exec(text);
+        if (wordMatch) {
+          this._trace.recordRejected('removeNonContent', `matched word pattern: ${wordMatch[0].trim()}`, node);
+          return true;
+        }
+        const substrMatch = nonContentSubstringRegex.exec(text);
+        if (substrMatch) {
+          this._trace.recordRejected('removeNonContent', `matched substring pattern: ${substrMatch[0]}`, node);
+          return true;
+        }
+
+        this._trace.recordKept();
+        return false;
       },
       replacement: () => ''
     });
@@ -407,25 +446,46 @@ class MarkdownConverter {
    * Reuses the same selector strategy as extractMainContent but avoids serialization.
    */
   extractMainContentFromDOM(rootElement) {
-    for (const selector of this._contentSelectors()) {
+    const selectors = this._contentSelectors();
+    const tried = [];
+    for (let i = 0; i < selectors.length; i++) {
+      const selector = selectors[i];
       const element = rootElement.querySelector(selector);
-      if (element && this.hasSignificantContent(element)) {
-        console.log(`🎯 [markdown-converter] Found main content using selector: ${selector}`);
-        return element;
+      if (!element) {
+        tried.push({ selector, result: 'no-match' });
+        continue;
       }
+      if (!this.hasSignificantContent(element)) {
+        tried.push({ selector, result: 'no-significant-content' });
+        continue;
+      }
+      tried.push({ selector, result: 'matched-significant' });
+      for (let j = i + 1; j < selectors.length; j++) {
+        tried.push({ selector: selectors[j], result: 'skipped-not-yet-tried' });
+      }
+      this._trace.setContentDiscovery('content-selector', selector, tried);
+      console.log(`🎯 [markdown-converter] Found main content using selector: ${selector}`);
+      return element;
     }
 
     // Fallback: largest text block (returns DOM node)
     const largest = this._findLargestTextBlockNode(rootElement);
-    if (largest) return largest;
+    if (largest) {
+      this._trace.setContentDiscovery('largest-text-block', null, tried);
+      return largest;
+    }
 
     // Fallback: framework content (returns DOM node)
     const framework = this._findFrameworkContentNode(rootElement);
-    if (framework) return framework;
+    if (framework) {
+      this._trace.setContentDiscovery('framework-content', null, tried);
+      return framework;
+    }
 
     // Last resort: return the root element itself.
     // Turndown's removeNonContent rule will handle filtering during traversal.
     console.log('📄 [markdown-converter] Using root element as fallback (Turndown will filter)');
+    this._trace.setContentDiscovery('body-fallback', null, tried);
     return rootElement;
   }
 
@@ -524,34 +584,48 @@ class MarkdownConverter {
       doc = dom.window.document;
     }
 
-    for (const selector of this._contentSelectors()) {
+    const selectors = this._contentSelectors();
+    const tried = [];
+    for (let i = 0; i < selectors.length; i++) {
+      const selector = selectors[i];
       const element = doc.querySelector(selector);
-      if (element && this.hasSignificantContent(element)) {
-        console.log(`🎯 [markdown-converter] Found main content using selector: ${selector}`);
-        return element.innerHTML;
+      if (!element) {
+        tried.push({ selector, result: 'no-match' });
+        continue;
       }
+      if (!this.hasSignificantContent(element)) {
+        tried.push({ selector, result: 'no-significant-content' });
+        continue;
+      }
+      tried.push({ selector, result: 'matched-significant' });
+      for (let j = i + 1; j < selectors.length; j++) {
+        tried.push({ selector: selectors[j], result: 'skipped-not-yet-tried' });
+      }
+      this._trace.setContentDiscovery('content-selector', selector, tried);
+      console.log(`🎯 [markdown-converter] Found main content using selector: ${selector}`);
+      return element.innerHTML;
     }
 
-    // Enhanced fallback strategy for complex sites
-    const fallbackStrategies = [
-      // Look for the largest text block
-      () => this.findLargestTextBlock(doc),
-      
-      // Look for content in common framework containers
-      () => this.findFrameworkContent(doc),
-      
-      // Clean body content as last resort
-      () => this.getCleanedBodyContent(doc)
-    ];
-
-    for (const strategy of fallbackStrategies) {
-      const content = strategy();
-      if (content && content.trim()) {
-        return content;
-      }
+    // Enhanced fallback strategy for complex sites — same application order
+    // as before, restructured so each tier can be named in the trace.
+    const largest = this.findLargestTextBlock(doc);
+    if (largest && largest.trim()) {
+      this._trace.setContentDiscovery('largest-text-block', null, tried);
+      return largest;
+    }
+    const framework = this.findFrameworkContent(doc);
+    if (framework && framework.trim()) {
+      this._trace.setContentDiscovery('framework-content', null, tried);
+      return framework;
+    }
+    const body = this.getCleanedBodyContent(doc);
+    if (body && body.trim()) {
+      this._trace.setContentDiscovery('body-fallback', null, tried);
+      return body;
     }
 
     console.warn('⚠️ [markdown-converter] No suitable content found, returning original HTML');
+    this._trace.setContentDiscovery('body-fallback', null, tried);
     return html;
   }
 
