@@ -128,7 +128,7 @@ No changes needed to popup, background, or content script — the registry handl
 
 ### 7. Verify against the sample
 
-If you captured a markdown file (e.g., `private/captures/grok-2026-04-24-share.md`) showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well. Captures live in the private repo — see CLAUDE.md → "Private working directory" and `private/README.md` → "Captures".
+If you have a previously-captured markdown file showing the expected output shape, diff your output against it. Otherwise hand-check that the markdown reads well.
 
 ### 8. Write tests
 
@@ -221,7 +221,7 @@ detectAvailable(doc, url) {
 
 The popup fires this through `probeContentTypes` on open, runs in parallel with the optimistic URL-applicable render, filters rows when the result lands. The same probe is used by the `quick-extract` keyboard command to pick the right action without a popup.
 
-**If you implement this, also add `host_permissions` to manifest.json for your site's hostnames** so the content script auto-injects on page load — without that, the popup's probe races a just-in-time content script injection on first popup open and gets nothing back. Add a privacy justification entry in `private/store/chrome-privacy-justifications.md`.
+**If you implement this, also add `host_permissions` to manifest.json for your site's hostnames** so the content script auto-injects on page load — without that, the popup's probe races a just-in-time content script injection on first popup open and gets nothing back. Document the new permission's privacy justification when the next store submission goes out.
 
 **Conservative defaults:** the popup treats `null` (method not defined) and all-false maps as "inconclusive — keep URL-applicable rows" so a partially-loaded page can't strand the user without options. Filtering only happens when at least one value is `true`.
 
@@ -301,7 +301,7 @@ Workaround: capture the live DOM from your **regular** browser (not the MCP's Fi
    // Or grab the whole document if you want everything
    copy(document.documentElement.outerHTML)
    ```
-4. Save to `private/captures/{site}/{scenario}.html`. Use that fixture for selector discovery and as a regression input.
+4. Save to a gitignored captures location (the existing convention is a `private/captures/` directory, which the public `.gitignore` excludes from tracking). Use that fixture for selector discovery and as a regression input.
 
 Why `copy(outerHTML)` and not "Save Page As": the browser's page saver rewrites URLs to local paths, normalizes attributes, and bundles assets you don't need. `outerHTML` gives you the live post-render DOM — exactly what the content script sees when extraction runs.
 
@@ -328,7 +328,7 @@ The MCP's spawned Firefox didn't start. Verify the profile path in `claude mcp l
 
 ## Queued / Planned Targets
 
-_(none currently — open an issue or add to `private/PLAN.md`)_
+_(none currently — open an issue if you'd like to suggest one)_
 
 ---
 
@@ -337,4 +337,4 @@ _(none currently — open an issue or add to `private/PLAN.md`)_
 - Existing site modules: `src/sites/x/`, `src/sites/claude/`, `src/sites/grok/`, `src/sites/chatgpt/`
 - Registry: `src/utils/site-registry.js`
 - MCP project (upstream): https://github.com/mozilla/firefox-devtools-mcp
-- Captures directory: `private/captures/` (lives in the private repo — see CLAUDE.md)
+- Captures directory: `private/captures/` (gitignored — keep your captures here so they don't get tracked)

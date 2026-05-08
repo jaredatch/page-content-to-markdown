@@ -18,7 +18,7 @@ The pattern itself is shipped, so most of this is about extending coverage to th
 
 ### Phase 1: pattern definition (done)
 
-Captured HTML lives in `private/captures/` (the private repo). Tests gate on `fs.existsSync()` so contributors without the private repo still get a green build via `test.skip`. Each provider's regression block sits inside `tests/unit/{site}-extractor.test.js` under a `describe('regression: real captures', ...)` group. The ChatGPT block at the bottom of `tests/unit/chatgpt-extractor.test.js` is the reference implementation.
+Captured HTML lives in `private/captures/`, which is gitignored. Tests gate on `fs.existsSync()` so the build stays green for contributors without local captures — those tests skip via `test.skip`. Each provider's regression block sits inside `tests/unit/{site}-extractor.test.js` under a `describe('regression: real captures', ...)` group. The ChatGPT block at the bottom of `tests/unit/chatgpt-extractor.test.js` is the reference implementation.
 
 ### Phase 2: extend to X, Claude, Grok
 
@@ -49,7 +49,7 @@ const capturePath = path.join(__dirname, '..', '..', 'private', 'captures', '...
 (fs.existsSync(capturePath) ? test : test.skip)('extracts ...', () => { ... });
 ```
 
-This keeps the public test suite green for contributors who don't have the private repo. Skipped tests are visible in the Jest output, so you can see what's being skipped if you go looking.
+This keeps the build green for contributors who don't have local captures. Skipped tests are visible in the Jest output, so you can see what's being skipped if you go looking.
 
 **What to assert.** Lean toward structural and content-shape assertions, not full markdown-equality. Equality assertions break on every rendering tweak even when extraction is correct. Prefer "this turn count is N", "this string appears exactly once", "this content does not appear", "this language label resolved to `python`".
 
@@ -75,7 +75,7 @@ The whole loop, end to end. ~15 minutes per case once the workflow is muscle mem
 
 1. **Capture the page.** Use the live-DOM workflow in `building-site-extractors.md`. If the MCP can reach the page, that's preferred. If it's blocked by Cloudflare or behind login, use the DevTools `copy(document.querySelector('main').outerHTML)` workaround documented in the same file.
 
-2. **Save the HTML** to `private/captures/{site}-YYYY-MM-DD-{slug}.html`. Pick a slug that describes what the capture exercises ("thread-with-quote", "long-reasoning-with-citations").
+2. **Save the HTML** to a gitignored captures location your test will read from (existing tests use `path.join(__dirname, '..', '..', 'private', 'captures', '...')`, so any path under a gitignored `private/captures/` directory works). Filename convention: `{site}-YYYY-MM-DD-{slug}.html`, slug describing what the capture exercises ("thread-with-quote", "long-reasoning-with-citations").
 
 3. **Generate the markdown** by loading the extension and saving the live page output. Save it next to the HTML for reference during audit. This is just a working copy; the asserts in the test file are the source of truth.
 
@@ -85,7 +85,7 @@ The whole loop, end to end. ~15 minutes per case once the workflow is muscle mem
 
 6. **Run locally:** `npm test -- {site}`. Confirm green.
 
-7. **Commit.** HTML to private (`cd private && git add captures/... && git commit`). Test code to public.
+7. **Commit the test code.** The captured HTML stays gitignored; only the test that consumes it lands in the repo.
 
 ## When a fixture test fails
 
@@ -109,7 +109,7 @@ In steady state this suite should fail only when extractor code regresses. Inter
 Things this tier explicitly does not cover, so future-you doesn't try to make it do them:
 
 - **Live DOM drift.** Captured HTML is frozen. If ChatGPT renames a class tomorrow, this suite will keep passing on yesterday's HTML. The [drift watcher](testing-drift-watcher.md) is the answer there.
-- **Browser-integration paths.** Popup, content script messaging, clipboard, file save, keyboard shortcuts, picker UI on real layouts. jsdom can't simulate any of those. Selenium e2e (Phase 6.3/6.4 in `private/PLAN.md`) is the planned answer.
+- **Browser-integration paths.** Popup, content script messaging, clipboard, file save, keyboard shortcuts, picker UI on real layouts. jsdom can't simulate any of those. Selenium e2e is the planned answer.
 - **Logged-in flow correctness.** A logged-in capture in this suite tests *extraction* correctness on logged-in DOM, but not the live login flow itself, account-specific features, or anti-bot challenges. Manual periodic dogfood covers those.
 - **Cross-browser parity.** The same extractor runs in jsdom regardless of where it'll deploy. Real Firefox vs Chrome rendering differences only show up in live e2e.
 
@@ -123,4 +123,3 @@ Append-only. Each entry: date, what failed, what the actual cause was, what the 
 
 - [Drift watcher (Tier 2)](testing-drift-watcher.md): catches the upstream side that this tier doesn't.
 - [Building site extractors](building-site-extractors.md): the live-DOM workflow that produces the captures used here.
-- `private/PLAN.md`: phase tracking for the broader testing strategy.

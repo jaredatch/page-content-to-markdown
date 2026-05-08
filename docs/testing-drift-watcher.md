@@ -28,7 +28,7 @@ Until then the design lives here, the implementation plan is ready to execute, a
 
 Site DOM drifts. ChatGPT renames classes, X reshuffles testids, Claude changes how artifacts render. The [fixture suite](testing-fixtures.md) catches our code regressing, but it can't catch the world changing underneath us because the captured HTML is frozen in time. Without something watching the live sites, we find out about drift via user reports or our own dogfooding, both of which are slow and reactive.
 
-The pain compounds with site count. Four supported sites is barely manageable by hand. Twenty sites is impossible. If we want the supported-sites roadmap in `private/supported-sites-ideas.md` to be realistic, we need an automated signal that says "site X changed today, look at it."
+The pain compounds with site count. Four supported sites is barely manageable by hand. Twenty sites is impossible. If we want to grow the supported-sites roadmap to many sites, we need an automated signal that says "site X changed today, look at it."
 
 ## What it is and isn't
 
@@ -183,7 +183,7 @@ Quarterly: re-audit each baseline against a fresh capture of the live page. The 
 Things this tier explicitly does not cover:
 
 - **Code regression detection.** That's the [fixture suite](testing-fixtures.md). A drift watcher run can't tell whether the cause is upstream or downstream without context.
-- **Browser-integration paths.** Popup, content script messaging, clipboard, file save, picker UI. Selenium e2e (Phase 6.3/6.4 in `private/PLAN.md`) is the planned answer.
+- **Browser-integration paths.** Popup, content script messaging, clipboard, file save, picker UI. Selenium e2e is the planned answer.
 - **Logged-in flow correctness.** Cloudflare blocks automated logged-in browsing reliably enough that there's no path. Manual periodic dogfood covers it; the assumption is that logged-out drift is a strong proxy for logged-in regressions because both views share most of the DOM.
 - **Performance regressions.** A run that takes twice as long but produces correct output passes here. Performance work happens elsewhere if it happens at all.
 - **Cross-browser parity.** Drift watcher runs in one browser at a time. Cross-browser differences are a separate concern handled at the e2e layer.
@@ -198,4 +198,3 @@ Append-only. Each entry: date, case(s) affected, root cause, fix.
 
 - [Fixture-based regression tests (Tier 1)](testing-fixtures.md): the deterministic counterpart to this watcher.
 - [Building site extractors](building-site-extractors.md): the live-DOM workflow that informs both the fixture suite and the baseline audits here.
-- `private/PLAN.md`: phase tracking for the broader testing strategy.

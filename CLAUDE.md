@@ -2,7 +2,7 @@
 
 Browser extension (Firefox primary, Chrome secondary) that converts web pages to clean markdown. Provides **general actions** (full-page conversion, selective element conversion) on any page, plus **site actions** for supported sites (X/Twitter, Claude, Grok, ChatGPT) powered by per-site **site modules** in `src/sites/`.
 
-> Per-site extraction quirks live in each site's own `src/sites/{id}/CLAUDE.md`, auto-loaded when working in that directory. The site module contract and shared rules (including i18n-safe selectors) live in `src/sites/CLAUDE.md`. Project status, plans, and design notes live in `private/PLAN.md`.
+> Per-site extraction quirks live in each site's own `src/sites/{id}/CLAUDE.md`, auto-loaded when working in that directory. The site module contract and shared rules (including i18n-safe selectors) live in `src/sites/CLAUDE.md`. Maintainer-only project status / plans / design notes live in `private/PLAN.md` — that file (and the `private/` directory generally) is gitignored and may not be present; see [Private Working Directory](#private-working-directory-maintainer-only--skip-if-absent) below.
 
 ## Terminology
 
@@ -31,7 +31,7 @@ npm run test:all         # Unit (with coverage) + integration
 npm run test:watch       # Unit tests in watch mode
 npm run test:e2e         # End-to-end tests (Puppeteer)
 npm run lint             # ESLint
-npm run status           # Side-by-side git status of public + private/ repos
+npm run status           # Maintainer: side-by-side git status of public + private/ (no-op if private/ isn't checked out)
 ```
 
 ## Architecture
@@ -95,7 +95,7 @@ Popup (UI) → Background (service worker) → Content Script (page context) →
 | `webpack.config.js` | Build config — 4 entry points → `dist/` |
 | `docs/privacy-policy.md` | Privacy policy (public; URL submitted to Firefox AMO and Chrome Web Store) |
 | `ATTRIBUTIONS.md` | Third-party asset credits (Font Awesome / Lobe Icons brand SVGs in site-module `icon` fields) |
-| `private/PLAN.md` | Project plan, phases, progress tracking (private repo) |
+| `private/PLAN.md` | Project plan, phases, progress tracking (maintainer-only; gitignored, may not be present) |
 
 Per-site extractors live at `src/sites/{x,chatgpt,grok,claude}/`; each directory has its own `CLAUDE.md` with site-specific gotchas.
 
@@ -144,19 +144,13 @@ The site-extractor testing strategy lives in two docs that are deeper references
 - **Runtime:** `turndown` (HTML→Markdown), `turndown-plugin-gfm` (tables, strikethrough, task lists)
 - **Dev:** Webpack, Babel, Jest, Puppeteer, ESLint
 
-## Private Working Directory
+## Private Working Directory (maintainer-only — skip if absent)
 
-The `private/` directory is a **nested independent git repository** (`page-content-to-markdown-private`) for working notes, plans, and sample pages too large or sensitive for the public repo. The public `.gitignore` excludes `private/`; it has its own `.git/`, commits, and remote.
+> **Guard:** if `private/` is not present in your working tree, you don't have maintainer access — **skip the rest of this section**. The public codebase, tests, build, and store-listing artifacts in `release/` all work fine without `private/`. Any other reference to `private/PLAN.md`, `private/captures/`, `private/store/`, etc. elsewhere in this CLAUDE.md is also maintainer-only and can be ignored.
 
-**What lives there:** `private/PLAN.md` (project plan, phases, progress), `private/DESIGN-BRIEF.md`, `private/captures/` (HTML/markdown captures for site module dev and regression checking), `private/store/` (store-listing copy, Chrome Web Store reviewer justifications — public privacy policy lives at `docs/privacy-policy.md`).
+The `private/` directory is a **nested independent git repository** for working notes, plans, and sample pages too large or sensitive for the public repo. The public `.gitignore` excludes `private/`; it has its own `.git/`, commits, and remote.
 
-**Setup with private-repo access:**
-```bash
-git clone <public-repo-url> page-content-to-markdown
-cd page-content-to-markdown
-git clone <private-repo-url> private
-```
-Without access the directory is simply absent — public-repo code, tests, and build all work fine without it.
+**What lives there (when present):** `private/PLAN.md` (project plan, phases, progress), `private/DESIGN-BRIEF.md`, `private/captures/` (HTML/markdown captures for site module dev and regression checking), `private/store/` (store-listing copy, Chrome Web Store reviewer justifications — public privacy policy lives at `docs/privacy-policy.md`).
 
 **Commit hygiene:** when committing changes to the public repo, also check `private/` (`cd private && git status`). Commit and push private changes separately. When the change relates to a public commit, reference its hash in the private commit message. Run `npm run status` before/after committing to catch drift (exit codes: `0` clean, `1` uncommitted, `2` `private/` missing).
 
@@ -173,7 +167,7 @@ Without access the directory is simply absent — public-repo code, tests, and b
 - **Page-info format** — `ContentScript.addMetadataHeader(markdown, metadata, format)` emits inline (`format === 'header'`, `**Key:** value` block with hard-breaks) or YAML frontmatter. Both carry Title, URL, Date. Inline date is human (`April 29, 2026 at 11:35 AM`) matching tweet/article timestamps; YAML date is sortable (`2026-04-29 11:35`). Local time, not UTC. Domain is deliberately omitted — redundant against URL.
 - **Tracking-param strip** — `src/utils/url-cleaner.js`: `cleanUrl(urlStr)` deletes well-known tracking params (utm_*, __hs*, _hs* prefixes; explicit names: fbclid, gclid, dclid, msclkid, yclid, wbraid, gbraid, twclid, mc_cid, mc_eid, mkt_tok, vero_*, hsCtaTracking, igshid, ref_src, ref_url, _ga, _gl). Generic params like `s`, `t`, `ref` are left alone. Applied at metadata URL and in `cleanupMarkdown` for content URLs.
 - **URL scheme allowlist** — `src/utils/markdown-converter.js` is the trust boundary for emitted URLs. Links allowlist `http`, `https`, `mailto`; images allowlist `http`, `https`. Other schemes (`javascript:`, `data:`, `file:`, `vbscript:`, …) get textified (links — keep visible text, drop href) or dropped (images — emit nothing). Relative URLs (no scheme) are kept since they inherit the host page's scheme. The trust assumption is that downstream renderers don't need to re-validate emitted URLs; the converter has already done it. Note: `tel:` and `sms:` are deliberately not allowlisted right now — revisit if a real use case shows up.
-- **Broad `host_permissions: ["*://*/*"]`** (http/https only). Content script auto-injects on every page so the popup probe and quick-extract have no activation handshake to wait on. The content script does nothing on page load — only responds to explicit user actions and never transmits page content. Privacy posture justified in `private/store/chrome-privacy-justifications.md`.
+- **Broad `host_permissions: ["*://*/*"]`** (http/https only). Content script auto-injects on every page so the popup probe and quick-extract have no activation handshake to wait on. The content script does nothing on page load — only responds to explicit user actions and never transmits page content. Privacy posture justified in the store-listing materials (maintainer-only).
 - **Size guards** — content script skips full Turndown for pages with >50K elements (uses `SimpleUniversalExtractor` directly). `convertToMarkdown` truncates HTML strings >5MB to prevent browser hangs. Popup shows escalating progress messages during long conversions.
 - **DOM-direct conversion** — `convertFromDOM(element)` in `markdown-converter.js` accepts a live DOM Element and passes it directly to Turndown (which clones internally), avoiding the serialize→reparse round-trip of `convertToMarkdown(html)`. Content script uses this as the primary path with the string path as fallback.
 

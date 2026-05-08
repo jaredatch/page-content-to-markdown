@@ -17,8 +17,6 @@ Both routes render the same conversation DOM. The active-chat page wraps the con
 
 The "Shared by {name}" extraction uses an English phrase prefix to locate the speaker name in the page header. This is **cosmetic only** (used to title the conversation header in markdown output) — it does not gate any extraction. Per `src/sites/CLAUDE.md`'s i18n rules, phrase matching for cosmetic behavior is acceptable; if non-English Claude share pages start rendering a translated label, the extractor degrades gracefully (no name shown) rather than failing.
 
-Followup tracked in `private/PLAN.md` → Future Ideas → "i18n hardening followups".
-
 ## Title
 
 `filenameTitle` returns `Claude — {title}` or `Claude Conversation` when title is empty.
