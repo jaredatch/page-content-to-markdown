@@ -338,6 +338,18 @@ describe('Real-World Website Compatibility', () => {
     const vergeCapture = path.join(
       captureDir, 'theverge.com', 'cap_1778533795840_gj302q.html'
     );
+    const techcrunchCapture = path.join(
+      captureDir, 'techcrunch.com', 'cap_1778533822205_j35t64.html'
+    );
+    const mashableCapture = path.join(
+      captureDir, 'mashable.com', 'cap_1778533836791_p3pvq1.html'
+    );
+    const tomsguideCapture = path.join(
+      captureDir, 'tomsguide.com', 'cap_1778533856533_1lwqcs.html'
+    );
+    const substackCapture = path.join(
+      captureDir, 'thisweekinai.ai', 'cap_1778533871290_md3hdz.html'
+    );
 
     // Bug C — Verge: first-article-wins picked a related-cards stub
     // instead of the story body. Output was 0 chars on master.
@@ -354,6 +366,61 @@ describe('Real-World Website Compatibility', () => {
         expect(result).toContain(
           'A massive outage of the learning platform started with a ransom message'
         );
+      }
+    );
+
+    // Bug B — TechCrunch: affiliate disclosure + author-card bio leak
+    // into the article body. Real lede should survive.
+    (fs.existsSync(techcrunchCapture) ? test : test.skip)(
+      'techcrunch.com — strips affiliate disclosure and author bio card (Bug B)',
+      () => {
+        const html = fs.readFileSync(techcrunchCapture, 'utf8');
+        const result = converter.convertToMarkdown(html);
+
+        expect(result).toContain('When Anthropic unveiled its new Mythos model');
+        expect(result).not.toContain('When you purchase through links in our articles');
+        expect(result).not.toContain('Russell Brandom has been covering the tech industry');
+      }
+    );
+
+    // Bug B — Mashable: trailing FAQ wrapper (id=frequently-asked-questions)
+    // ships through. Real body content should survive.
+    (fs.existsSync(mashableCapture) ? test : test.skip)(
+      'mashable.com — strips the trailing FAQ section (Bug B)',
+      () => {
+        const html = fs.readFileSync(mashableCapture, 'utf8');
+        const result = converter.convertToMarkdown(html);
+
+        expect(result).toContain('Nintendo Switch 2');
+        expect(result).not.toContain('Frequently Asked Questions');
+      }
+    );
+
+    // Bug B — Tom's Guide: slice-author-bio container leaks the bio
+    // block. Real body content should survive.
+    (fs.existsSync(tomsguideCapture) ? test : test.skip)(
+      "tomsguide.com — strips the author bio slice (Bug B)",
+      () => {
+        const html = fs.readFileSync(tomsguideCapture, 'utf8');
+        const result = converter.convertToMarkdown(html);
+
+        expect(result).toContain('$50 price hike for Switch 2');
+        expect(result).not.toContain("Tom is the Tom's Guide's UK Phones Editor");
+      }
+    );
+
+    // Bug B — Substack (thisweekinai.ai): subscribe widget +
+    // "Already have an account" sign-in chrome leaks. Real post body
+    // should survive.
+    (fs.existsSync(substackCapture) ? test : test.skip)(
+      'thisweekinai.ai (Substack) — strips subscribe widget chrome (Bug B)',
+      () => {
+        const html = fs.readFileSync(substackCapture, 'utf8');
+        const result = converter.convertToMarkdown(html);
+
+        expect(result).toContain('the template I use for global instructions');
+        expect(result).not.toContain('By subscribing, you agree');
+        expect(result).not.toContain('Already have an account? Sign in');
       }
     );
   });

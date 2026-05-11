@@ -44,6 +44,34 @@ function _isImageSchemeAllowed(src) {
   return scheme === '' || ALLOWED_IMAGE_SCHEMES.has(scheme);
 }
 
+// Return the trimmed textContent of the FIRST heading found at the
+// section's top — either as the direct first element child, or one
+// level deeper as the first element child of the section's first wrapper
+// div. Used to detect "Related Articles" / "Topics" / "FAQ" /
+// "Subscribe to X" sections by their visible heading instead of by
+// framework-generated class names that don't pattern-match. The two-
+// level walk catches CTA blocks that wrap a title div + a widget div as
+// siblings (e.g. Substack's end-of-post subscribe block). Strict to
+// "first child" at each step to keep false-positive risk low —
+// narrative sections that start with a paragraph or image still stay.
+function _firstHeadingChildText(node) {
+  const children = node.children;
+  if (!children || children.length === 0) return null;
+  const first = children[0];
+  const tag = (first.tagName || '').toLowerCase();
+  if (/^h[1-6]$/.test(tag)) {
+    return (first.textContent || '').trim();
+  }
+  if (tag === 'div' && first.children && first.children.length > 0) {
+    const grand = first.children[0];
+    const gtag = (grand.tagName || '').toLowerCase();
+    if (/^h[1-6]$/.test(gtag)) {
+      return (grand.textContent || '').trim();
+    }
+  }
+  return null;
+}
+
 // SVG elements expose `className` as a SVGAnimatedString object whose
 // string value lives on `.baseVal` — calling `.toLowerCase()` on it
 // throws. Read class via getAttribute (universal) and fall back to the
@@ -290,8 +318,21 @@ class MarkdownConverter {
     // use word-boundary regex. Longer patterns use a single combined regex
     // instead of iterating an array with .includes() for each node.
     const nonContentWordRegex = /(?:^|[\s_-])(?:ad|nav|menu|aside|header|footer|like|vote|rating)(?:[\s_-]|$)/i;
-    const nonContentSubstringRegex = /navigation|sidebar|advertisement|banner|social|share|comment|related|recommended|popup|modal|overlay|cookie|gdpr|subscription|newsletter|signup|buy-now|purchase|cart|checkout|engagement|breadcrumb|pagination/i;
+    // Expanded for visible-chrome that ships inside the content tree on
+    // news sites: author bio cards, topics/tags rows, FAQ/related/further-
+    // reading sections, affiliate disclosures, share rows, subscribe forms.
+    // `subscribe` (not just `subscription`) catches Substack's
+    // subscribeWidget / subscribeDialog / subscribe-btn variants.
+    const nonContentSubstringRegex = /navigation|sidebar|advertisement|banner|social|share|comment|related|recommended|popup|modal|overlay|cookie|gdpr|subscription|subscribe|newsletter|signup|buy-now|purchase|cart|checkout|engagement|breadcrumb|pagination|author-bio|author-card|byline-bio|topics-list|tags-list|tags-row|affiliate|disclosure|disclaimer|share-row|share-icons|social-icons|related-articles|related-stories|read-more-cta|keep-reading|frequently-asked|faq-|further-reading|comments-section/i;
     const nonContentTags = new Set(['nav', 'aside', 'header', 'footer']);
+    // Sections whose first heading child reads as "Topics" / "Related" /
+    // "FAQ" / etc. get rejected wholesale, regardless of class names —
+    // many sites ship framework-generated class names like
+    // `mx-auto mt-12` that don't pattern-match.
+    // Heading prefixes that signal junk sections: card grids, related-
+    // article lists, FAQ blocks, end-of-post subscribe CTAs. Word-bounded
+    // so "Topics" matches but "Topical" doesn't.
+    const junkSectionHeadingRegex = /^(topics|tags|related|frequently asked|further reading|read next|keep reading|recommended|subscribe to)\b/i;
 
     this.turndownService.addRule('removeNonContent', {
       filter: (node) => {
@@ -314,6 +355,14 @@ class MarkdownConverter {
         if (substrMatch) {
           this._trace.recordRejected('removeNonContent', `matched substring pattern: ${substrMatch[0]}`, node);
           return true;
+        }
+
+        if (tagName === 'section' || tagName === 'div') {
+          const headingText = _firstHeadingChildText(node);
+          if (headingText && junkSectionHeadingRegex.test(headingText)) {
+            this._trace.recordRejected('removeNonContent', `junk section heading: ${headingText}`, node);
+            return true;
+          }
         }
 
         this._trace.recordKept();
