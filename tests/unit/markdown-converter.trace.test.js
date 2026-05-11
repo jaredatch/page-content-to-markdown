@@ -9,8 +9,9 @@ describe('MarkdownConverter trace plumbing', () => {
         <html><body>
           <article>
             <h1>Headline</h1>
-            <p>This is a substantial article body with enough content to clear the
-            significance threshold for extraction. Multiple sentences, real prose.</p>
+            <p>First paragraph of body prose with enough length to anchor the significance threshold — multi-clause sentence, real article texture, clearly not boilerplate or navigation chrome.</p>
+            <p>Second paragraph continuing the body of the piece with additional context, more substantial sentences, and the kind of paragraph density that distinguishes a real article body from a card grid.</p>
+            <p>Third paragraph rounding out the body so the fixture clears the threshold of three paragraphs and five hundred characters of trimmed text content.</p>
           </article>
         </body></html>
       `);
@@ -30,8 +31,9 @@ describe('MarkdownConverter trace plumbing', () => {
         <html><body>
           <main>
             <h1>Headline</h1>
-            <p>Substantial main-element content that should clear the significance
-            threshold and become the winning content selector.</p>
+            <p>First paragraph of substantial main-element content meant to clear the new significance threshold of three paragraphs plus five hundred characters of trimmed text content.</p>
+            <p>Second paragraph adding the kind of body weight that real articles carry — multi-clause sentences, more than a card grid headline or sidebar link list could ever produce on its own.</p>
+            <p>Third paragraph rounding the fixture out so the main element comfortably clears the trimmed-text length floor and wins as the content selector tier in the trace.</p>
           </main>
         </body></html>
       `);
@@ -67,8 +69,9 @@ describe('MarkdownConverter trace plumbing', () => {
         <html><body>
           <ion-content>
             <h1>App Heading</h1>
-            <p>Ionic app content with enough prose to clear the significance threshold and become the framework winner.</p>
-            <p>A second paragraph for body weight.</p>
+            <p>First paragraph of Ionic app content with enough prose to clear the new significance threshold and become the framework-tier winner with real article texture and density.</p>
+            <p>Second paragraph carrying more body weight — multi-clause sentences, plausible article density, clearly not card chrome, sidebar links, or framework-shell scaffolding around an empty body.</p>
+            <p>Third paragraph rounding the fixture out so the three-paragraph plus five-hundred-character significance threshold is comfortably satisfied at the framework tier.</p>
           </ion-content>
         </body></html>
       `);
@@ -94,8 +97,9 @@ describe('MarkdownConverter trace plumbing', () => {
         <html><body>
           <article>
             <h1>Live DOM</h1>
-            <p>This is a substantial DOM-rooted article body with enough prose
-            to clear the significance threshold without reserialization.</p>
+            <p>First paragraph of a DOM-rooted article body with enough length to anchor the significance threshold — multi-clause sentence, real article texture, clearly not navigation chrome or sidebar links.</p>
+            <p>Second paragraph continuing the body of the piece with more substantial sentences and the kind of paragraph density that distinguishes real prose from a card grid or link list of headlines.</p>
+            <p>Third paragraph rounding out the fixture so it comfortably clears the three-paragraph plus five-hundred-character significance threshold on the DOM path through extractMainContentFromDOM.</p>
           </article>
         </body></html>
       `, 'text/html');
@@ -245,7 +249,9 @@ describe('MarkdownConverter trace plumbing', () => {
         <html><body>
           <article>
             <h1>One</h1>
-            <p>First call body with substantial prose to clear the significance threshold and trigger the article selector match.</p>
+            <p>First paragraph of article body prose meant to clear the new significance threshold — three paragraphs and five hundred characters of trimmed text content, comfortably above the floor.</p>
+            <p>Second paragraph adding the kind of body weight that real article fixtures need so the article selector wins on both setTrace targets without depending on the old looser thresholds.</p>
+            <p>Third paragraph rounding out the fixture so the trace-target swap test stays focused on its actual assertion about independent population rather than drifting on threshold tuning.</p>
           </article>
         </body></html>
       `;

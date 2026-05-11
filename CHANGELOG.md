@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **General extractor picks the largest matching candidate per selector, not the first.** On The Verge, the first `<article>` on a story page is a related-cards stub — first-match-wins picked it and returned empty markdown. Score every match by `textContent.length` and pick the largest qualifying candidate.
+- **Tighter content-significance threshold.** Bump the `hasSignificantContent` floor to ≥3 `<p>` descendants and ≥500 chars of trimmed text. Rejects related-card grids that previously slipped through because their aggregated link text passed the old 50-char gate.
+- **SVG elements no longer crash Turndown mid-traversal.** SVG `className` is a `SVGAnimatedString`, not a string; calling `.toLowerCase()` on it threw and Turndown returned `''` for the whole page. Read class via `getAttribute('class')` throughout the converter, with a fallback to `.baseVal` for safety. Eliminates a silent empty-output failure mode on news sites that ship inline SVG icons.
+
 ## [1.0.0] - 2026-05-06
 
 First public release. Firefox-first, Chrome supported.

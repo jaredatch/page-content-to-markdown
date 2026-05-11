@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const MarkdownConverter = require('../../src/utils/markdown-converter');
 
 describe('Real-World Website Compatibility', () => {
@@ -175,7 +177,9 @@ describe('Real-World Website Compatibility', () => {
                     </header>
                     <div class="post-body">
                       <div class="entry-content">
-                        <p>This content is deeply nested but should be extracted.</p>
+                        <p>This content is deeply nested but should be extracted. Real article prose has multi-clause sentences with enough body weight to anchor the significance threshold.</p>
+                        <p>A second paragraph carries the kind of density that distinguishes real article bodies from card grids and link lists nested inside framework wrappers.</p>
+                        <p>A third paragraph rounds out the fixture so it clears the three-paragraph + five-hundred-character gate used to reject related-card stubs.</p>
                       </div>
                     </div>
                   </article>
@@ -322,5 +326,35 @@ describe('Real-World Website Compatibility', () => {
         expect(result).toContain('## Section 999');
       }).not.toThrow();
     });
+  });
+
+  // Regression coverage against real captures of sites that triggered
+  // bugs catalogued in private/dev/PHASE-1-FINDINGS.md. Captures live in
+  // private/captures/<host>/ and are gitignored, so tests skip cleanly
+  // when run without local fixtures.
+  describe('regression: captured pages', () => {
+    const captureDir = path.join(__dirname, '..', '..', 'private', 'captures');
+
+    const vergeCapture = path.join(
+      captureDir, 'theverge.com', 'cap_1778533795840_gj302q.html'
+    );
+
+    // Bug C — Verge: first-article-wins picked a related-cards stub
+    // instead of the story body. Output was 0 chars on master.
+    (fs.existsSync(vergeCapture) ? test : test.skip)(
+      'theverge.com — picks the story body, not the related-cards stub (Bug C)',
+      () => {
+        const html = fs.readFileSync(vergeCapture, 'utf8');
+        const result = converter.convertToMarkdown(html);
+
+        expect(result.length).toBeGreaterThan(1000);
+        expect(result).toContain(
+          'Canvas is online again after ShinyHunters threaten to leak schools'
+        );
+        expect(result).toContain(
+          'A massive outage of the learning platform started with a ransom message'
+        );
+      }
+    );
   });
 }); 

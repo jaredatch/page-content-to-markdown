@@ -44,6 +44,22 @@ function _isImageSchemeAllowed(src) {
   return scheme === '' || ALLOWED_IMAGE_SCHEMES.has(scheme);
 }
 
+// SVG elements expose `className` as a SVGAnimatedString object whose
+// string value lives on `.baseVal` — calling `.toLowerCase()` on it
+// throws. Read class via getAttribute (universal) and fall back to the
+// HTMLElement shape only if the attribute is missing.
+function _classString(node) {
+  if (!node) return '';
+  if (typeof node.getAttribute === 'function') {
+    const attr = node.getAttribute('class');
+    if (typeof attr === 'string') return attr;
+  }
+  const cn = node.className;
+  if (typeof cn === 'string') return cn;
+  if (cn && typeof cn.baseVal === 'string') return cn.baseVal;
+  return '';
+}
+
 class MarkdownConverter {
   constructor(options = {}) {
     this.turndownService = new TurndownService({
@@ -285,7 +301,7 @@ class MarkdownConverter {
           return true;
         }
 
-        const className = (node.className || '').toLowerCase();
+        const className = _classString(node).toLowerCase();
         const id = (node.id || '').toLowerCase();
         const text = className + ' ' + id;
 
@@ -322,7 +338,7 @@ class MarkdownConverter {
     // Handle social media specific elements
     this.turndownService.addRule('socialElements', {
       filter: (node) => {
-        const className = node.className || '';
+        const className = _classString(node);
         const socialPatterns = ['tweet', 'post', 'status', 'update'];
         return socialPatterns.some(pattern => className.toLowerCase().includes(pattern));
       },
@@ -379,7 +395,7 @@ class MarkdownConverter {
         ];
         this._fragmentService.addRule('removeJunk', {
           filter: (node) => {
-            const className = (node.className || '').toLowerCase();
+            const className = _classString(node).toLowerCase();
             const id = (node.id || '').toLowerCase();
             const text = className + ' ' + id;
             return junkRegexes.some(re => re.test(text));
@@ -450,12 +466,16 @@ class MarkdownConverter {
     const tried = [];
     for (let i = 0; i < selectors.length; i++) {
       const selector = selectors[i];
-      const element = rootElement.querySelector(selector);
-      if (!element) {
+      const matches = rootElement.querySelectorAll(selector);
+      if (matches.length === 0) {
         tried.push({ selector, result: 'no-match' });
         continue;
       }
-      if (!this.hasSignificantContent(element)) {
+      // Score every match by textContent length and pick the largest
+      // qualifying candidate. First-match-wins picked a related-cards
+      // stub on The Verge — the actual story body was deeper in the DOM.
+      const best = this._pickLargestSignificant(matches);
+      if (!best) {
         tried.push({ selector, result: 'no-significant-content' });
         continue;
       }
@@ -465,7 +485,7 @@ class MarkdownConverter {
       }
       this._trace.setContentDiscovery('content-selector', selector, tried);
       console.log(`🎯 [markdown-converter] Found main content using selector: ${selector}`);
-      return element;
+      return best;
     }
 
     // Fallback: largest text block (returns DOM node)
@@ -588,12 +608,13 @@ class MarkdownConverter {
     const tried = [];
     for (let i = 0; i < selectors.length; i++) {
       const selector = selectors[i];
-      const element = doc.querySelector(selector);
-      if (!element) {
+      const matches = doc.querySelectorAll(selector);
+      if (matches.length === 0) {
         tried.push({ selector, result: 'no-match' });
         continue;
       }
-      if (!this.hasSignificantContent(element)) {
+      const best = this._pickLargestSignificant(matches);
+      if (!best) {
         tried.push({ selector, result: 'no-significant-content' });
         continue;
       }
@@ -603,7 +624,7 @@ class MarkdownConverter {
       }
       this._trace.setContentDiscovery('content-selector', selector, tried);
       console.log(`🎯 [markdown-converter] Found main content using selector: ${selector}`);
-      return element.innerHTML;
+      return best.innerHTML;
     }
 
     // Enhanced fallback strategy for complex sites — same application order
@@ -631,21 +652,36 @@ class MarkdownConverter {
 
   hasSignificantContent(element) {
     if (!element) return false;
-    
+
     const text = element.textContent || '';
     const trimmedText = text.trim();
-    
-    // Must have substantial text content
-    if (trimmedText.length < 50) return false;
-    
-    // Must have more text than just navigation/UI elements
-    const words = trimmedText.split(/\s+/).length;
-    if (words < 10) return false;
-    
-    // Check for presence of paragraph-like content
-    const hasStructuredContent = element.querySelector('p, h1, h2, h3, h4, h5, h6, li, blockquote');
-    
-    return hasStructuredContent;
+
+    // Tightened thresholds reject related-card containers on news sites:
+    // ≥500 chars of text rules out short stubs whose aggregated link text
+    // still passes a 50-char gate, and requiring ≥3 <p> descendants rules
+    // out card grids where the text comes from headlines and link labels.
+    if (trimmedText.length < 500) return false;
+
+    const paragraphCount = element.querySelectorAll('p').length;
+    if (paragraphCount < 3) return false;
+
+    return true;
+  }
+
+  // Pick the largest-textContent candidate from a NodeList that passes
+  // hasSignificantContent. Returns null if none qualify.
+  _pickLargestSignificant(matches) {
+    let best = null;
+    let bestLength = 0;
+    for (const candidate of matches) {
+      if (!this.hasSignificantContent(candidate)) continue;
+      const len = (candidate.textContent || '').length;
+      if (len > bestLength) {
+        best = candidate;
+        bestLength = len;
+      }
+    }
+    return best;
   }
 
   findLargestTextBlock(doc) {
@@ -780,7 +816,7 @@ class MarkdownConverter {
     const text = (element.textContent || '').trim();
     if (text.length < 100) return false;
 
-    const className = element.className || '';
+    const className = _classString(element);
     const id = element.id || '';
 
     // Exclude elements that are likely not content
