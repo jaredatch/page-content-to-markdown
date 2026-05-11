@@ -4,8 +4,30 @@ const xModule = require('../sites/x');
 const claudeModule = require('../sites/claude');
 const grokModule = require('../sites/grok');
 const chatgptModule = require('../sites/chatgpt');
+const { compilePathPattern } = require('./path-pattern');
 
 const _sites = [xModule, claudeModule, grokModule, chatgptModule];
+
+// Compiled-pattern cache keyed by the raw pathPatterns entry. String
+// patterns are cheap to compile but `applicableContentTypes` runs on
+// every popup open and quick-extract trigger; cache so repeat opens
+// don't redo the work. RegExp entries are stored as themselves.
+const _patternCache = new Map();
+function _compileCached(entry) {
+  if (entry instanceof RegExp) return entry;
+  if (typeof entry !== 'string') return null;
+  const hit = _patternCache.get(entry);
+  if (hit) return hit;
+  try {
+    const compiled = compilePathPattern(entry);
+    _patternCache.set(entry, compiled);
+    return compiled;
+  } catch (err) {
+    console.warn(`[site-registry] invalid pathPattern "${entry}":`, err.message);
+    _patternCache.set(entry, null);
+    return null;
+  }
+}
 
 /**
  * Central registry of site modules (per-site extractors + formatters).
@@ -66,7 +88,10 @@ class SiteRegistry {
     }
     return site.contentTypes.filter(ct => {
       if (!ct.pathPatterns || ct.pathPatterns.length === 0) return true;
-      return ct.pathPatterns.some(p => p.test(path));
+      return ct.pathPatterns.some(p => {
+        const re = _compileCached(p);
+        return re ? re.test(path) : false;
+      });
     });
   }
 }

@@ -165,5 +165,46 @@ describe('SiteRegistry', () => {
       const types = SiteRegistry.applicableContentTypes(fakeSite, 'https://example.com/anywhere');
       expect(types.map(t => t.id)).toEqual(['always']);
     });
+
+    test('glob string pathPatterns are accepted alongside RegExp', () => {
+      const fakeSite = {
+        contentTypes: [
+          { id: 'post', label: 'Post', icon: '', pathPatterns: ['/item'] },
+          { id: 'thread', label: 'Thread', icon: '', pathPatterns: ['/r/*/comments/*'] }
+        ]
+      };
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://news.ycombinator.com/item').map(t => t.id))
+        .toEqual(['post']);
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://news.ycombinator.com/items').map(t => t.id))
+        .toEqual([]);
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://reddit.com/r/programming/comments/abc').map(t => t.id))
+        .toEqual(['thread']);
+    });
+
+    test('regex strings (with metachars) are compiled as regex, not glob', () => {
+      const fakeSite = {
+        contentTypes: [
+          { id: 'either', label: 'Either', icon: '', pathPatterns: ['^/(foo|bar)$'] }
+        ]
+      };
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://e.com/foo')).toHaveLength(1);
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://e.com/bar')).toHaveLength(1);
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://e.com/baz')).toHaveLength(0);
+    });
+
+    test('invalid pathPattern strings are skipped without crashing', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const fakeSite = {
+        contentTypes: [
+          { id: 'broken', label: 'Broken', icon: '', pathPatterns: ['https://full.url/item'] }
+        ]
+      };
+      expect(SiteRegistry.applicableContentTypes(fakeSite, 'https://full.url/item')).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('invalid pathPattern'),
+        expect.any(String)
+      );
+      warn.mockRestore();
+    });
   });
 });

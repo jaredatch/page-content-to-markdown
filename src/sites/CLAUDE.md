@@ -28,6 +28,18 @@ Brand icons are sourced from Font Awesome 7.x Free Brands (X, Claude, OpenAI/Cha
 - `getById(id)` — direct lookup
 - `applicableContentTypes(site, url)` — filters `contentTypes` by `pathPatterns` against `URL.pathname`. Content types without `pathPatterns` are always-applicable.
 
+### `pathPatterns` syntax
+
+Each entry in `pathPatterns` can be a `RegExp`, a glob string, or a regex string. Matching is against `URL.pathname` only — hostname lives in the module's `hostnames` array, and query strings live in `detectAvailable` or are implicit. Compilation goes through `src/utils/path-pattern.js`.
+
+| Shape | Example | Notes |
+|---|---|---|
+| `RegExp` literal | `/^\/share\//i` | Convention used by the existing modules. |
+| Glob string | `'/item'`, `'/r/*/comments/*'`, `'/docs/**'` | `*` = one non-empty segment (`[^/]+`), `**` = multi-segment (`.*`, may be empty). Anchored both ends by default; matching is case-insensitive. URL-routing intent — `/users/*` matches `/users/alice` but not the half-formed `/users/`. |
+| Regex string | `'^/(item\|comment)$'` | Anything containing `^ $ \ ( ) \| [ ] + { }` is compiled as a regex, not a glob. |
+
+Patterns starting with `http(s)://`, hostname-shaped prefixes, or containing `?` are rejected with a clear console warning and skipped at runtime — drop the hostname (use `hostnames`) and don't try to match query strings here (use `detectAvailable`).
+
 The popup uses `applicableContentTypes` to render only rows that fit the current URL. On URLs that match a single content type only that row renders; on `/status/` URLs all three X rows show because the popup can't disambiguate without DOM (the `detectAvailable` probe handles that — see below).
 
 ## Required Methods
