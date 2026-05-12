@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Minimum Firefox bumped from 109 to 140** (Firefox for Android: 142+). Aligns `strict_min_version` with the floor for `browser_specific_settings.gecko.data_collection_permissions`, which Firefox 140 introduced and Firefox for Android 142 picked up. The privacy-disclosure manifest key is now visible on every supported version instead of silently ignored on 109–139. FF 140 shipped June 2025; impact on the existing install base is expected to be minimal.
+
 ## [1.0.1] - 2026-05-12
 
 ### Fixed
