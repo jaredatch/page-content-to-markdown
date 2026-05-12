@@ -42,7 +42,10 @@ Everything happens in your browser. No servers, no telemetry, no third parties, 
 
 ## Install
 
-> **Heads up:** Firefox-first, with Chrome supported. Listings on Firefox Add-ons and the Chrome Web Store are on the way; for now you can build from source.
+- **Firefox:** [install from Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/page-content-to-markdown/).
+- **Chrome / Edge / Brave / Arc:** Chrome Web Store listing pending review. For now, build from source — instructions below.
+
+### Build from source
 
 ```bash
 git clone https://github.com/jaredatch/page-content-to-markdown.git
