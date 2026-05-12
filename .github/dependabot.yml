@@ -1,20 +1,33 @@
 version: 2
 updates:
+  # npm: monthly cadence, all deps grouped into one batch PR, skip
+  # major-version bumps (they need per-package evaluation that
+  # individual auto-PRs can't drive well). Security updates from CVEs
+  # are handled separately via the repo-level "Dependabot security
+  # updates" toggle (auto-enabled via `gh api -X PUT
+  # /repos/.../automated-security-fixes`) and aren't gated by this
+  # config — security fixes always open even when they're major bumps.
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     groups:
-      dev-dependencies:
-        dependency-type: development
+      all-dependencies:
+        patterns:
+          - "*"
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
+  # github-actions: monthly, individual PRs (low volume, easy to review).
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
