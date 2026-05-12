@@ -17,7 +17,7 @@
     "start": "npm run build:dev",
     "package": "bash scripts/package-release.sh",
     "bump": "node scripts/bump-version.js",
-    "release:amo": "node scripts/release-amo.js",
+    "release:amo": "op run --env-file=.env.local --no-masking -- node scripts/release-amo.js",
     "status": "bash scripts/private-status.sh",
     "status:verbose": "bash scripts/private-status.sh -v"
   },
