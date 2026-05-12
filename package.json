@@ -1,6 +1,6 @@
 {
   "name": "page-content-to-markdown",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A browser extension that turns the main content of any web page into clean Markdown for your notes, docs, or AI.",
   "main": "dist/background.js",
   "scripts": {

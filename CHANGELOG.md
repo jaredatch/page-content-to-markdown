@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-05-12
+
 ### Fixed
 
 - **General extractor picks the largest matching candidate per selector, not the first.** On The Verge, the first `<article>` on a story page is a related-cards stub — first-match-wins picked it and returned empty markdown. Score every match by `textContent.length` and pick the largest qualifying candidate.
@@ -38,5 +40,6 @@ First public release. Firefox-first, Chrome supported.
 - **Browser support.** Firefox MV3 and Chromium-based browsers (Chrome, Edge, Brave, Arc, etc.).
 - **No telemetry.** Everything runs locally in the browser. No servers, no third parties.
 
-[Unreleased]: https://github.com/jaredatch/page-content-to-markdown/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/jaredatch/page-content-to-markdown/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/jaredatch/page-content-to-markdown/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jaredatch/page-content-to-markdown/releases/tag/v1.0.0
