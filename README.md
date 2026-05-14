@@ -9,6 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="https://chromewebstore.google.com/detail/blcbhchkabgacofebjcjmkmajgiopjhp"><img src="https://img.shields.io/badge/Add%20to%20Chrome-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Add to Chrome"></a>
+  &nbsp;
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/page-content-to-markdown/"><img src="https://img.shields.io/badge/Add%20to%20Firefox-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Add to Firefox"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/jaredatch/page-content-to-markdown/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/jaredatch/page-content-to-markdown/test.yml?branch=master&label=CI" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 </p>
@@ -42,8 +48,8 @@ Everything happens in your browser. No servers, no telemetry, no third parties, 
 
 ## Install
 
-- **Firefox:** [install from Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/page-content-to-markdown/).
-- **Chrome / Edge / Brave / Arc:** Chrome Web Store listing pending review. For now, build from source — instructions below.
+- **Firefox / Zen / LibreWolf:** [install from Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/page-content-to-markdown/).
+- **Chrome / Edge / Brave / Arc:** [install from the Chrome Web Store](https://chromewebstore.google.com/detail/blcbhchkabgacofebjcjmkmajgiopjhp).
 
 ### Build from source
 
@@ -178,7 +184,7 @@ See the [Privacy Policy](docs/privacy-policy.md) for the full breakdown of permi
 
 ## Browser compatibility
 
-- **Firefox** (primary target): MV3 with `background.scripts` (also works great with [Zen Browser](https://zen-browser.app/))
+- **Firefox:** MV3 with `background.scripts` (also works great with [Zen Browser](https://zen-browser.app/))
 - **Chrome**: MV3 with `service_worker`
 - **Keyboard shortcuts:** `Cmd+Shift+M` / `Ctrl+Shift+M` toggles selection mode (avoids Firefox's `Cmd+Shift+S` screenshot conflict). Quick-extract has no default key; bind your own.
 
