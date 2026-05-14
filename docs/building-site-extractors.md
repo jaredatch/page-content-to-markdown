@@ -121,7 +121,7 @@ Add one line to `src/utils/site-registry.js`:
 
 ```js
 const myModule = require('../sites/{id}');
-const _sites = [xModule, claudeModule, myModule];
+const _sites = [xModule, claudeModule, grokModule, chatgptModule, myModule];
 ```
 
 No changes needed to popup, background, or content script — the registry handles detection, dispatch, and popup UI dynamically from the module's registration object.

@@ -52,7 +52,7 @@ Selectors are tried in priority order. The first that matches *and* contains rea
 
 - `.container .content`, `.main-content`, `.primary-content`, `.page-content`
 
-A match only counts if `hasSignificantContent()` returns true: 50+ characters, 10+ words, at least one paragraph or heading inside. This stops us matching a sidebar that happens to be called `.content`, or an `<article>` wrapping a related-stories tile.
+A match only counts if `hasSignificantContent()` returns true: 500+ characters of trimmed text **and** at least three `<p>` descendants. This stops us matching a sidebar that happens to be called `.content`, or an `<article>` wrapping a related-stories grid whose aggregated link text would pass a looser gate.
 
 ---
 

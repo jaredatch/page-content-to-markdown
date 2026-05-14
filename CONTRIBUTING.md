@@ -19,7 +19,7 @@ Load `dist/` as an unpacked extension:
 - **Firefox:** `about:debugging` → "This Firefox" → "Load Temporary Add-on" → `dist/manifest.json`
 - **Chrome:** `chrome://extensions` → enable Developer Mode → "Load unpacked" → `dist/`
 
-Firefox is the primary target; Chrome support is secondary.
+Both browsers are first-class. The extension ships on the [Chrome Web Store](https://chromewebstore.google.com/detail/blcbhchkabgacofebjcjmkmajgiopjhp) and [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/page-content-to-markdown/).
 
 ---
 
@@ -67,7 +67,7 @@ src/
 tests/
 ├── unit/          Per-module unit tests (Jest + jsdom)
 ├── integration/   Background and content-script wired together via message bus helper
-└── e2e/           Puppeteer-based; being replaced by Selenium
+└── e2e/           Puppeteer scaffolding; Selenium replacement planned
 ```
 
 Pure JavaScript (ES6+, transpiled via Babel), no TypeScript. Webpack bundles four entry points into `dist/`. See [CLAUDE.md](CLAUDE.md) at the repo root for deeper architecture notes.

@@ -1,6 +1,6 @@
 # Privacy Policy - Page Content to Markdown
 
-**Last updated:** March 2026
+**Last updated:** May 2026
 
 ## What this extension does
 

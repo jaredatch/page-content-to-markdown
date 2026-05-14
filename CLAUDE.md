@@ -123,7 +123,7 @@ For per-site extraction code, additional conventions (i18n-safe selectors, the `
 
 - **Unit tests:** Jest + jsdom in `tests/unit/`. Mock Chrome APIs via `tests/setup.js`. Coverage via `npm run test:coverage`.
 - **Integration tests:** Jest + jsdom in `tests/integration/`. Real Background + Content Script wired together via a MessageBus helper that simulates Chrome message passing.
-- **E2E tests:** Jest + Puppeteer in `tests/e2e/`. Currently scaffolding only — being replaced by Selenium (Phase 6.3–6.4 planned).
+- **E2E tests:** Jest + Puppeteer in `tests/e2e/`. Currently scaffolding only — Selenium-based replacement planned (no concrete schedule).
 - **Custom matcher:** `toBeValidMarkdown` — checks output contains markdown-like content.
 - **jsdom limitation:** `getBoundingClientRect()` returns 0x0, so ElementPicker tests that depend on element sizing mock `_resolveTarget` directly. Lowest coverage is `element-picker.js` (~67% lines) for this reason.
 
